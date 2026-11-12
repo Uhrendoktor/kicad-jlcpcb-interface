@@ -348,18 +348,21 @@ class ComponentBrowser:
 
         links = ttk.Frame(content)
         links.grid(row=6, column=0, sticky="ew", pady=(8, 0))
-        ttk.Button(links, text="Copy part ID", command=self.copy_part_id).pack(
-            side="left", padx=(0, 8)
+        links.columnconfigure((0, 1), weight=1)
+        link_actions = (
+            ("Copy part ID", self.copy_part_id),
+            ("Search LCSC", self.search_lcsc),
+            ("Open product page", self.open_product_page),
+            ("Open datasheet", self.open_datasheet),
         )
-        ttk.Button(links, text="Search LCSC", command=self.search_lcsc).pack(
-            side="left", padx=(0, 8)
-        )
-        ttk.Button(links, text="Open product page", command=self.open_product_page).pack(
-            side="left", padx=(0, 8)
-        )
-        ttk.Button(links, text="Open datasheet", command=self.open_datasheet).pack(
-            side="left"
-        )
+        for index, (label, command) in enumerate(link_actions):
+            ttk.Button(links, text=label, command=command).grid(
+                row=index // 2,
+                column=index % 2,
+                sticky="ew",
+                padx=(0, 6) if index % 2 == 0 else (0, 0),
+                pady=(0, 4),
+            )
 
         footer = ttk.Frame(self.root, padding=(16, 0, 16, 12))
         footer.grid(row=2, column=0, sticky="ew")
@@ -428,7 +431,7 @@ class ComponentBrowser:
         self.detail_vars["value"].set(component.value or "—")
         self.detail_vars["part"].set(component.part_reference or "—")
         self.detail_vars["footprint"].set(component.footprint or "—")
-        self.detail_vars["datasheet"].set(component.datasheet or "—")
+        self.detail_vars["datasheet"].set(self._format_datasheet_display(component.datasheet))
         self.detail_vars["sheet"].set(component.sheet_path or "—")
         self._clear_catalogue_detail()
         self.catalogue_status_var.set("Loading catalogue metadata…")
@@ -489,6 +492,15 @@ class ComponentBrowser:
                 continue
             self._show_catalogue_details(details, image_data)
         self._poll_id = self.root.after(120, self._drain_catalogue_queue)
+
+    @staticmethod
+    def _format_datasheet_display(url: str) -> str:
+        """Keep the schematic properties card readable while retaining the full URL for opening."""
+        parsed = urlparse(str(url or ""))
+        if parsed.scheme == "https" and parsed.hostname:
+            filename = Path(parsed.path).name
+            return f"{parsed.hostname} / {filename}" if filename else parsed.hostname
+        return str(url or "—")
 
     def _clear_catalogue_detail(self) -> None:
         self._catalogue_details = None
