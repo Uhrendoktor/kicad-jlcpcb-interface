@@ -75,7 +75,7 @@ jobs:
           set -euo pipefail
           rm -rf "$OUTPUT_DIR"
           mkdir -p "$OUTPUT_DIR"
-          xvfb-run -a -s "-screen 0 1920x1400x24" \
+          xvfb-run -a -s "-screen 0 1920x1500x24" \
             python3 tests/capture_visual_docs.py --output-dir "$OUTPUT_DIR"
 
       - name: Upload generated visual documentation bundle
