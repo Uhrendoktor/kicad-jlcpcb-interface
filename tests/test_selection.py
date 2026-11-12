@@ -287,6 +287,18 @@ class SelectionTests(unittest.TestCase):
         )
         self.assertIs(target, schematic)
 
+    def test_datasheet_display_uses_compact_host_and_filename(self):
+        self.assertEqual(
+            ComponentBrowser._format_datasheet_display(
+                "https://example.test/path/to/C123456.pdf?download=1"
+            ),
+            "example.test / C123456.pdf",
+        )
+        self.assertEqual(
+            ComponentBrowser._format_datasheet_display(""),
+            "—",
+        )
+
     def test_reads_kicad_human_readable_sheet_path(self):
         field = SimpleNamespace(name="LCSC", text=SimpleNamespace(value="C123456"))
         sheet_path = SimpleNamespace(
