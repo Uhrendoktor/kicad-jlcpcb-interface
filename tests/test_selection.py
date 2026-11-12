@@ -190,8 +190,18 @@ class SelectionTests(unittest.TestCase):
         symbol_a = SimpleNamespace(id=SimpleNamespace(value="uuid-1"), path=path)
         symbol_b = SimpleNamespace(id=SimpleNamespace(value="uuid-2"), path=path)
         items = [
-            SimpleNamespace(reference="U2", part_code="C123456", sheet_path="/Root/Power", symbol=symbol_a),
-            SimpleNamespace(reference="U3", part_code="C123456", sheet_path="/Root/Power", symbol=symbol_b),
+            SimpleNamespace(
+                reference="U2",
+                part_code="C123456",
+                sheet_path="/Root/Power",
+                symbol=symbol_a,
+            ),
+            SimpleNamespace(
+                reference="U3",
+                part_code="C123456",
+                sheet_path="/Root/Power",
+                symbol=symbol_b,
+            ),
         ]
 
         google_module = ModuleType("google")
@@ -262,7 +272,10 @@ class SelectionTests(unittest.TestCase):
         ComponentBrowser._select_symbols(browser, items)
 
         self.assertFalse(browser.schematic.cleared)
-        self.assertEqual(browser.status_var.value, "Selection failed: KiCad FocusOnItems can navigate only one sheet per operation.")
+        self.assertEqual(
+            browser.status_var.value,
+            "Selection failed: KiCad FocusOnItems can navigate only one sheet per operation.",
+        )
 
     def test_focus_helper_falls_back_for_current_sheet_only_objects(self):
         schematic = FakeSchematic()
