@@ -3,11 +3,6 @@
 The provider intentionally uses only Python's standard library. The search
 service is a third-party catalogue snapshot, not an authenticated JLCPCB quote.
 """
-"""Cached client for community JLCPCB/LCSC component metadata.
-
-The provider intentionally uses only Python's standard library. The search
-service is a third-party catalogue snapshot, not an authenticated JLCPCB quote.
-"""
 
 from __future__ import annotations
 
