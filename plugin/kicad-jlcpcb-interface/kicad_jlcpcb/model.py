@@ -1,5 +1,4 @@
 """Schematic component discovery and local search helpers."""
-"""Schematic component discovery and local search helpers."""
 
 from __future__ import annotations
 
