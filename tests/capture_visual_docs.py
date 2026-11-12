@@ -10,7 +10,6 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -81,10 +80,10 @@ def _make_product_fixture(path: Path, part_type: str, part_code: str) -> bytes:
             draw.rectangle((591, y, 612, y + 16), fill=(190, 151, 77))
         title = "INTEGRATED CIRCUIT"
 
-    draw.text((420, 218), title, fill=(245, 248, 251) if part_type in {"resistor", "ic"} else (38, 50, 61),
-              font=title_font, anchor="mm")
-    draw.text((420, 267), part_code, fill=(176, 204, 226) if part_type in {"resistor", "ic"} else (68, 82, 96),
-              font=body_font, anchor="mm")
+    title_color = (245, 248, 251) if part_type in {"resistor", "ic"} else (38, 50, 61)
+    code_color = (176, 204, 226) if part_type in {"resistor", "ic"} else (68, 82, 96)
+    draw.text((420, 218), title, fill=title_color, font=title_font, anchor="mm")
+    draw.text((420, 267), part_code, fill=code_color, font=body_font, anchor="mm")
     draw.text(
         (420, 388),
         "DOCUMENTATION FIXTURE - NOT A SUPPLIER PHOTO",
