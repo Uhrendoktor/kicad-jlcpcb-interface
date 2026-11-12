@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
-from tempfile import TemporaryDirectory
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]

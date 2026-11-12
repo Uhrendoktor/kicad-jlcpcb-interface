@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any
 
 DEFAULT_PART_FIELD = "LCSC"

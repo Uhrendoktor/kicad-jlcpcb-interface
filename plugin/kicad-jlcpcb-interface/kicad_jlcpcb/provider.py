@@ -6,12 +6,12 @@ service is a third-party catalogue snapshot, not an authenticated JLCPCB quote.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import json
-from pathlib import Path
 import re
 import sqlite3
 import time
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode

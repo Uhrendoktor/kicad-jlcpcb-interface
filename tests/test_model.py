@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
-from types import SimpleNamespace
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
@@ -37,7 +37,7 @@ def symbol(
         user_fields=fields,
         footprint_field=field("Footprint", footprint),
         datasheet_field=field("Datasheet", datasheet),
-        path=sheet_path,
+        path=SimpleNamespace(path_human_readable=sheet_path),
     )
 
 

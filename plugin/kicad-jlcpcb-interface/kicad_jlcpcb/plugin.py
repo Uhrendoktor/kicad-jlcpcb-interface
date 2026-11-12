@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor
 import queue
+import webbrowser
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus, urlparse
 from urllib.request import Request, urlopen
-import webbrowser
 
 from .model import (
     DEFAULT_PART_FIELD,
