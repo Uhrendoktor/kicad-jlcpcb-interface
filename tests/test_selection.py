@@ -51,7 +51,7 @@ class FakeRepeatedItems(list):
 
 class FakeFocusCommand:
     def __init__(self):
-        self.document = SimpleNamespace(copied_from=None)
+        self.document = FakeDocument("command-document")
         self.items = FakeRepeatedItems()
 
 
