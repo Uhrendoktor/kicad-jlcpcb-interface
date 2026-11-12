@@ -22,7 +22,9 @@ ASSET_NAMES = {
 BRANCH = "docs/previews"
 
 
-def run(*args: str, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run(
+    *args: str, cwd: Path | None = None, check: bool = True
+) -> subprocess.CompletedProcess[str]:
     """Run a bounded text-mode subprocess and preserve failure output."""
     return subprocess.run(
         args,
