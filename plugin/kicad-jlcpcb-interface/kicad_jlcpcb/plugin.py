@@ -41,10 +41,21 @@ def focus_schematic_items(
         return schematic
 
     target_schematic = schematic.for_sheet(sheet_path)
+    path_proto = getattr(sheet_path, "proto", None)
+    if path_proto is None:
+        raise RuntimeError(
+            "The KiCad Python binding did not expose the target sheet path "
+            "protobuf required by FocusOnItems."
+        )
+
     command = focus_command_type()
     command.document.CopyFrom(target_schematic.document)
+    command.document.sheet_path.CopyFrom(path_proto)
     for symbol in symbols:
-        command.items.add().value = str(symbol.id)
+        raw_id = getattr(symbol.id, "value", None)
+        if not raw_id:
+            raw_id = str(symbol.id)
+        command.items.add().value = str(raw_id)
     target_schematic.client.send(command, empty_response_type)
     return target_schematic
 
@@ -179,7 +190,7 @@ class ComponentBrowser:
         ttk.Label(list_frame, text="LINKED SCHEMATIC COMPONENTS").grid(
             row=0, column=0, sticky="w", pady=(0, 8)
         )
-        columns = ("reference", "value", "part", "footprint")
+        columns = ("reference", "value", "part", "footprint", "sheet")
         self.tree = ttk.Treeview(
             list_frame, columns=columns, show="headings", selectmode="browse"
         )
@@ -187,7 +198,8 @@ class ComponentBrowser:
             "reference": ("Reference", 90),
             "value": ("Value", 220),
             "part": ("LCSC / JLCPCB", 150),
-            "footprint": ("Footprint", 220),
+            "footprint": ("Footprint", 190),
+            "sheet": ("Sheet", 150),
         }
         for key, (label, width) in headings.items():
             self.tree.heading(key, text=label)
@@ -195,7 +207,7 @@ class ComponentBrowser:
                 key,
                 width=width,
                 minwidth=65,
-                stretch=key in {"value", "footprint"},
+                stretch=key in {"value", "footprint", "sheet"},
             )
         self.tree.grid(row=1, column=0, sticky="nsew")
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
@@ -353,6 +365,7 @@ class ComponentBrowser:
                     component.value,
                     component.part_code,
                     component.footprint,
+                    component.sheet_path,
                 ),
             )
         if filtered:
