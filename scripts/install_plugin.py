@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """Install KiCad JLCPCB Interface into the current user's KiCad IPC plugin directory."""
-#!/usr/bin/env python3
-"""Install KiCad JLCPCB Interface into the current user's KiCad IPC plugin directory."""
 
 from __future__ import annotations
 
