@@ -2,13 +2,19 @@
 
 A KiCad 11 Schematic Editor IPC add-on for reviewing JLCPCB/LCSC catalogue information for a selected symbol or an entire schematic.
 
+## Motivation and current scope
+
+The long-term goal is to make common catalogue parts almost as quick to add as entering an LCSC part number. For a basic part such as a cheap 10 kΩ resistor, the LCSC record should eventually provide the symbol, footprint, value, description, manufacturer part number, datasheet and other useful properties with minimal manual work. For more complex devices, the tool should make conservative suggestions and leave uncertain pin mappings, footprints or properties for the user to complete.
+
+**PR3 implements the inspection and BOM groundwork, not full component generation or synchronization.** It works with symbols that are already placed in a schematic and linked by an LCSC custom field. It retrieves and presents supplier data, helps compare purchasable MPN matches, and summarizes catalogue cost and stock for the design. It does not yet create KiCad symbols or footprints, write catalogue values back into a symbol, or synchronize library files from an LCSC number. Automatic generation for simple components, with manual completion for uncertain fields, is a follow-up milestone.
+
 ## Visual previews
 
 The previews are captured from a real KiCad Eeschema session. The demo schematic contains fixed example LCSC/MPN inputs, while catalogue facts, stock, price breaks and the product photograph are fetched live from JLCPCB during capture. The image is the supplier's own product photo; no package artwork or catalogue values are generated.
 
 <p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-workflow.gif" alt="The schematic component overview with part search, cost estimate and stock coverage" width="900"></p>
 
-<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-selected.png" alt="JLCPCB catalogue properties for the selected STM32 symbol" width="720"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-selected.png" alt="JLCPCB catalogue properties for the selected 10 kΩ YAGEO resistor (LCSC C60489)" width="720"></p>
 
 <p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/jlcpcb-resistor-symbol.svg" alt="KiCad-native resistor symbol preview" width="230"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/jlcpcb-capacitor-symbol.svg" alt="KiCad-native capacitor symbol preview" width="230"></p>
 
@@ -84,7 +90,7 @@ python -m compileall -q plugin tests scripts
 ruff check plugin tests scripts
 ```
 
-Unit tests use fake schematic objects. A live integration test against the targeted KiCad nightly is still required before calling the UI/selection behavior release-ready.
+Unit tests use fake schematic objects. The CI visual job also launches KiCad 10.99 Eeschema and verifies IPC symbol creation, LCSC/MPN field read-back, live selection, the properties window and live supplier data. Full plugin registration/discovery and cross-sheet GUI navigation still need separate validation before release.
 
 ## Planned milestones
 
@@ -97,12 +103,15 @@ Unit tests use fake schematic objects. A live integration test against the targe
 - [x] Compact supplier-photo/catalogue detail layout, manufacturer/package/attribute summary, stock and full price breaks.
 - [x] JLCPCB MPN-keyword alternatives with exact/related match labels, stock, minimum order and price comparisons.
 - [x] Selected-symbol properties action and schematic-wide estimated-cost/stock-coverage summary.
-- [ ] End-to-end live Eeschema selection-to-properties GIF and supplier-data visual evidence (CI capture must pass before marking complete).
+- [x] End-to-end live Eeschema selection-to-properties GIF and supplier-data visual evidence, captured from real KiCad 10.99 IPC and live JLCPCB responses.
+- [x] Live fixture verifies IPC-created LCSC/MPN fields remain readable after their display annotations are hidden.
+- [ ] Verify plugin discovery/registration, full-hierarchy scanning and cross-sheet GUI selection against a live KiCad 10.99 nightly.
+- [ ] Generate/synchronize complete KiCad components from an LCSC number for supported simple parts, with explicit manual completion for uncertain/complex fields.
 - [ ] Footprint and 3D model previews.
 - [x] Catalogue stock/pricing display, clearly labelled as indicative and source-dated.
 - [x] Cross-sheet navigation and selection through KiCad's `FocusOnItems` command.
 - [ ] Continuous synchronization when the user changes sheets or selection while the browser remains open.
-- [ ] Live KiCad nightly GUI integration test and reproducible release package.
+- [ ] Reproducible release package and broader platform/KiCad-version validation.
 
 ## License
 
