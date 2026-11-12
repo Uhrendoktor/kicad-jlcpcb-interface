@@ -51,6 +51,7 @@ class SchematicComponent:
                 self.part_reference,
                 self.part_code,
                 self.footprint,
+                self.sheet_path,
             )
         ).casefold()
 
@@ -107,6 +108,31 @@ def find_linked_components(
         if (component := component_from_symbol(symbol, property_name)) is not None
     )
     return sorted(components, key=lambda item: (item.reference.casefold(), item.value.casefold()))
+
+
+
+def find_linked_components_all_sheets(
+    schematic: Any, property_name: str = DEFAULT_PART_FIELD
+) -> list[SchematicComponent]:
+    """Enumerate linked symbols across every instance in the schematic hierarchy."""
+    if not hasattr(schematic, "iter_sheets") or not hasattr(schematic, "for_sheet"):
+        return find_linked_components(schematic, property_name)
+
+    found: dict[tuple[str, str], SchematicComponent] = {}
+    for sheet in schematic.iter_sheets():
+        sheet_view = schematic.for_sheet(sheet)
+        for component in find_linked_components(sheet_view, property_name):
+            key = (component.sheet_path, str(component.symbol.id))
+            found[key] = component
+
+    return sorted(
+        found.values(),
+        key=lambda item: (
+            item.sheet_path.casefold(),
+            item.reference.casefold(),
+            item.value.casefold(),
+        ),
+    )
 
 
 def search_components(
