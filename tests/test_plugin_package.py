@@ -15,11 +15,15 @@ class PluginPackageTests(unittest.TestCase):
         self.assertEqual(manifest["identifier"], "org.uhrendoktor.kicadjlcpcb")
         self.assertEqual(manifest["runtime"]["type"], "python")
         self.assertEqual(manifest["runtime"]["min_version"], "3.12")
-        self.assertEqual(len(manifest["actions"]), 1)
-        action = manifest["actions"][0]
-        self.assertEqual(action["scopes"], ["schematic"])
-        self.assertTrue(action["show-button"])
-        self.assertTrue((PLUGIN / action["entrypoint"]).is_file())
+        self.assertEqual(
+            {action["identifier"] for action in manifest["actions"]},
+            {"component-properties", "component-overview"},
+        )
+        for action in manifest["actions"]:
+            with self.subTest(action=action["identifier"]):
+                self.assertEqual(action["scopes"], ["schematic"])
+                self.assertTrue(action["show-button"])
+                self.assertTrue((PLUGIN / action["entrypoint"]).is_file())
 
     def test_dependency_is_pinned_and_has_supported_binary_wheels(self):
         lock = (PLUGIN / "kicad-python.lock").read_text(encoding="utf-8").strip()
