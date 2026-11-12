@@ -2,14 +2,14 @@
 
 A KiCad 11 Schematic Editor IPC add-on for browsing components already placed in a schematic and navigating back to their symbol instances.
 
-**Status: early prototype.** The current implementation discovers symbols exposed by the active schematic IPC view when they have a configurable custom field (default: `LCSC`), provides local search, selects symbols in Eeschema, and loads catalogue metadata and product images on demand. Live product details are retrieved from JLCPCB's public parts-page endpoint (an undocumented website endpoint, not its approved partner API), with a community catalogue fallback. Stock/prices are indicative catalogue snapshots, not guaranteed real-time quotes. Footprint/3D previews, continuous editor synchronization and cross-sheet navigation remain future work.
+**Status: early prototype.** The current implementation walks the full schematic sheet hierarchy and discovers symbols carrying a configurable custom field (default: `LCSC`), provides local search, navigates to and selects matching symbols in Eeschema, and loads catalogue metadata and product images on demand. Live product details are retrieved from JLCPCB's public parts-page endpoint (an undocumented website endpoint, not its approved partner API), with a community catalogue fallback. Stock/prices are indicative catalogue snapshots, not guaranteed real-time quotes. Footprint/3D previews, continuous editor synchronization and cross-sheet navigation remain future work.
 
 ## Intended workflow
 
 1. Add an `LCSC` custom field to a symbol and set it to an LCSC code (for example `C123456`) or a URL containing that code.
 2. Launch **JLCPCB Component Browser** from the Schematic Editor toolbar or Plugins menu.
 3. Search the project component list by reference, value, LCSC code or footprint.
-4. Select the schematic symbol from the browser, or select matching instances of the same part on the same sheet. KiCad's selection API only selects objects on the currently displayed sheet, so cross-sheet navigation is not implemented yet.
+4. Select the schematic symbol from the browser, or select matching instances of the same part on that symbol's sheet. The browser uses KiCad's `FocusOnItems` command to navigate to the correct sheet, zoom to the symbol(s), and then apply the editor selection.
 5. Review the product image, manufacturer, MPN, package, selected technical attributes, catalogue stock/price and source freshness; copy the part ID or open the product page/datasheet.
 
 The part-link field name is editable in the browser, so projects using another property name (for example `JLCPCB` or `LCSC Part Number`) do not need to rename their fields.
@@ -77,12 +77,13 @@ Unit tests use fake schematic objects. A live integration test against the targe
 - [x] Scan symbol custom fields and list matching schematic symbols.
 - [x] Filter/search by reference, value, part ID and footprint.
 - [x] Select a symbol or same-part instances on the current sheet.
-- [ ] Verify registration and selection against a live KiCad 10.99 nightly GUI.
+- [ ] Verify registration, full-hierarchy scanning and cross-sheet selection against a live KiCad 10.99 nightly GUI.
 - [x] JLCPCB data-provider abstraction, exact lookup and SQLite cache/offline fallback.
 - [x] Product-image card, manufacturer/package/attribute summary, stock/price and source freshness.
 - [ ] Footprint and 3D model previews.
 - [x] Catalogue stock/pricing display, clearly labelled as indicative and source-dated.
-- [ ] Selection synchronization and robust cross-sheet navigation.
+- [x] Cross-sheet navigation and selection through KiCad's `FocusOnItems` command.
+- [ ] Continuous synchronization when the user changes sheets or selection while the browser remains open.
 - [ ] Live KiCad nightly GUI integration test and reproducible release package.
 
 ## License
