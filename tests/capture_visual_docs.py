@@ -78,7 +78,7 @@ def _make_product_fixture(path: Path, part_type: str, part_code: str) -> bytes:
         for y in range(122, 310, 36):
             draw.rectangle((228, y, 249, y + 16), fill=(190, 151, 77))
             draw.rectangle((591, y, 612, y + 16), fill=(190, 151, 77))
-        title = "INTEGRATED CIRCUIT"
+        title = "MCU"
 
     title_color = (245, 248, 251) if part_type in {"resistor", "ic"} else (38, 50, 61)
     code_color = (176, 204, 226) if part_type in {"resistor", "ic"} else (68, 82, 96)
@@ -243,7 +243,7 @@ def _drive_browser(
         ),
     ):
         browser = browser_module.ComponentBrowser(schematic, cache_dir)
-        browser.root.geometry("1480x1100+20+20")
+        browser.root.geometry("1480x1250+20+20")
         root = browser.root
         failures: list[str] = []
         frames = [
