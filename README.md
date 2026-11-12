@@ -2,15 +2,15 @@
 
 A KiCad 11 Schematic Editor IPC add-on for browsing components already placed in a schematic and navigating back to their symbol instances.
 
-**Status: initial scaffold / early prototype.** The first milestone discovers symbols that have a configurable custom field (default: `LCSC`), provides local search, displays the linked identifier and symbol fields, and selects symbols in Eeschema. Live JLCPCB metadata, product photographs, stock/pricing, footprint previews and continuous editor synchronization are planned follow-on work; they are not claimed to work yet.
+**Status: early prototype.** The current implementation discovers symbols exposed by the active schematic IPC handle when they have a configurable custom field (default: `LCSC`), provides local search, displays schematic properties, and selects symbols in Eeschema. Live JLCPCB metadata, product photographs, stock/pricing, footprint previews and continuous editor synchronization are not implemented yet. The UI currently uses a product-image placeholder.
 
 ## Intended workflow
 
 1. Add an `LCSC` custom field to a symbol and set it to an LCSC code (for example `C123456`) or a URL containing that code.
 2. Launch **JLCPCB Component Browser** from the Schematic Editor toolbar or Plugins menu.
 3. Search the project component list by reference, value, LCSC code or footprint.
-4. Select the schematic symbol from the browser, or select matching instances of the same part on the same sheet.
-5. Copy the part identifier or open the symbol's datasheet.
+4. Select the schematic symbol from the browser, or select matching instances of the same part on the same sheet. KiCad's selection API only selects objects on the currently displayed sheet, so cross-sheet navigation is not implemented yet.
+5. Copy the part identifier, search LCSC, or open the symbol's datasheet.
 
 The part-link field name is editable in the browser, so projects using another property name (for example `JLCPCB` or `LCSC Part Number`) do not need to rename their fields.
 
@@ -72,8 +72,10 @@ Unit tests use fake schematic objects. A live integration test against the targe
 ## Planned milestones
 
 - [x] IPC plugin scaffold, action manifest and installer.
-- [x] Scan symbol custom fields and list linked project components.
-- [x] Filter/search and select schematic symbols.
+- [x] Scan symbol custom fields and list matching schematic symbols.
+- [x] Filter/search by reference, value, part ID and footprint.
+- [x] Select a symbol or same-part instances on the current sheet.
+- [ ] Verify registration and selection against a live KiCad 10.99 nightly GUI.
 - [ ] JLCPCB/LCSC data-provider abstraction and cached metadata.
 - [ ] Product-image card, manufacturer/package/specification summary.
 - [ ] Footprint and 3D model previews.
