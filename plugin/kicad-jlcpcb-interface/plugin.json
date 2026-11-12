@@ -8,9 +8,17 @@
   },
   "actions": [
     {
-      "identifier": "component-browser",
-      "name": "JLCPCB Component Browser",
-      "description": "Search components linked to JLCPCB/LCSC and select their schematic symbols.",
+      "identifier": "component-properties",
+      "name": "JLCPCB Component Properties",
+      "description": "Open catalogue details for the one selected symbol carrying an LCSC custom property.",
+      "show-button": true,
+      "scopes": ["schematic"],
+      "entrypoint": "component_properties.py"
+    },
+    {
+      "identifier": "component-overview",
+      "name": "JLCPCB Component Overview",
+      "description": "Browse all linked schematic components and estimate total cost and stock coverage.",
       "show-button": true,
       "scopes": ["schematic"],
       "entrypoint": "main.py"

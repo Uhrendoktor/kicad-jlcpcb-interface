@@ -1,23 +1,44 @@
 # KiCad JLCPCB Interface
 
-A KiCad 11 Schematic Editor IPC add-on for browsing components already placed in a schematic and navigating back to their symbol instances.
+A KiCad 11 Schematic Editor IPC add-on for reviewing JLCPCB/LCSC catalogue information for a selected symbol or an entire schematic.
 
-**Status: early prototype.** The current implementation walks the full schematic sheet hierarchy and discovers symbols carrying a configurable custom field (default: `LCSC`), provides local search, navigates to and selects matching symbols in Eeschema, and loads catalogue metadata and product images on demand. Live product details are retrieved from JLCPCB's public parts-page endpoint (an undocumented website endpoint, not its approved partner API), with a community catalogue fallback. Stock/prices are indicative catalogue snapshots, not guaranteed real-time quotes. Footprint/3D previews and continuous editor synchronization remain future work; cross-sheet navigation uses the KiCad 11 Schematic IPC `FocusOnItems` command.
+## Motivation and current scope
+
+The long-term goal is to make common catalogue parts almost as quick to add as entering an LCSC part number. For a basic part such as a cheap 10 kΩ resistor, the LCSC record should eventually provide the symbol, footprint, value, description, manufacturer part number, datasheet and other useful properties with minimal manual work. For more complex devices, the tool should make conservative suggestions and leave uncertain pin mappings, footprints or properties for the user to complete.
+
+**PR3 implements the inspection and BOM groundwork, not full component generation or synchronization.** It works with symbols that are already placed in a schematic and linked by an LCSC custom field. It retrieves and presents supplier data, helps compare purchasable MPN matches, and summarizes catalogue cost and stock for the design. It does not yet create KiCad symbols or footprints, write catalogue values back into a symbol, or synchronize library files from an LCSC number. Automatic generation for simple components, with manual completion for uncertain fields, is a follow-up milestone.
+
+## Visual previews
+
+The previews are captured from a real KiCad Eeschema session. The demo schematic contains fixed example LCSC/MPN inputs, while catalogue facts, stock, price breaks and the product photograph are fetched live from JLCPCB during capture. The image is the supplier's own product photo; no package artwork or catalogue values are generated.
+
+<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-workflow.gif" alt="Live Eeschema workflow: a 10 kΩ resistor before selection, after selection, and with its JLCPCB properties window open" width="900"></p>
+
+<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-initial.png" alt="Full-width schematic overview with linked parts, design cost, stock coverage and selected resistor catalogue details" width="49%"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-selected.png" alt="JLCPCB catalogue properties for the selected 10 kΩ YAGEO resistor (LCSC C60489)" width="49%"></p>
+
+<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/jlcpcb-resistor-symbol.svg" alt="KiCad-native resistor symbol preview" width="230"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/jlcpcb-capacitor-symbol.svg" alt="KiCad-native capacitor symbol preview" width="230"></p>
+
+See [Visual evidence and generated previews](docs/visual-evidence.md) for the capture fixture, reproduction command and provenance checks.
+
+
+**Status: early prototype.** The add-on provides two schematic actions. **JLCPCB Component Properties** opens a focused window for exactly one selected symbol carrying the configurable `LCSC` custom property. **JLCPCB Component Overview** lists all linked symbols, supports local search, and summarizes estimated design cost and catalogue stock coverage. The properties action is a separate window; KiCad's documented IPC plugin API does not expose extension tabs inside the built-in Symbol Properties dialog. Catalogue facts are queried from JLCPCB's own parts-page detail endpoint; MPN alternatives are queried from JLCPCB's own parts-search endpoint. These are undocumented website endpoints rather than a supported public components API, and may change. The source/freshness line distinguishes JLCPCB, community fallback and cached data. MPN search displays all purchasable keyword results returned within the paginated search limit, sorting exact normalized-MPN matches first and marking related results separately. The table compares candidate MPN, stock, minimum order quantity, library class and price breaks. Related results are not guaranteed drop-in replacements; compare package and attributes before substituting. Images are downloaded only from supplier-provided HTTPS URLs. Stock/prices remain snapshots, not a guaranteed quote or reservation. Footprint/3D previews and continuous editor synchronization remain future work; cross-sheet navigation uses the KiCad 11 Schematic IPC `FocusOnItems` command.
 
 ## Intended workflow
 
 1. Add an `LCSC` custom field to a symbol and set it to an LCSC code (for example `C123456`) or a URL containing that code.
-2. Launch **JLCPCB Component Browser** from the Schematic Editor toolbar or Plugins menu.
-3. Search the project component list by reference, value, LCSC code or footprint.
-4. Select the schematic symbol from the browser, or select matching instances of the same part on that symbol's sheet. The result list includes the sheet name so similarly named references remain easy to distinguish. The browser uses KiCad's `FocusOnItems` command to navigate to the correct sheet, zoom to the symbol(s), and then apply the editor selection.
-5. Review the product image, manufacturer, MPN, package, selected technical attributes, catalogue stock/price and source freshness; copy the part ID or open the product page/datasheet.
+2. To inspect one part, select exactly one linked symbol in Eeschema and launch **JLCPCB Component Properties**. The action opens a focused, property-window-style details view for that symbol.
+3. To inspect the design, launch **JLCPCB Component Overview**. Search by reference, value, LCSC code or footprint; the overview groups repeated LCSC codes, estimates component cost from live catalogue unit price × placed quantity, and reports which catalogue stock levels cover the schematic quantity.
+4. In the properties view, the supplier image is placed beside the catalogue facts. If the symbol has an MPN custom field (for example `MPN` or `Manufacturer Part Number`), the alternatives table shows all purchasable JLCPCB keyword-search results returned for that MPN. Exact results are marked and shown first; related candidates follow, each with MPN, LCSC code, package, Basic/Extended class, stock or pre-order status, minimum quantity and lowest price break. Double-click a row to open its supplier page. Related candidates must be checked for package and electrical compatibility before substituting.
+5. In either view, review manufacturer, MPN, package, attributes, stock, full price breaks and source/freshness. Copy the part ID or open the product page/datasheet.
+6. From the overview, select a schematic symbol or all matching instances of the same part on its sheet. KiCad's `FocusOnItems` command navigates to the correct sheet, zooms to the symbol(s), and applies the editor selection.
 
 The part-link field name is editable in the browser, so projects using another property name (for example `JLCPCB` or `LCSC Part Number`) do not need to rename their fields.
 
 ## Architecture
 
 - `plugin/kicad-jlcpcb-interface/plugin.json`: KiCad IPC plugin manifest and schematic action registration.
-- `plugin/kicad-jlcpcb-interface/main.py`: thin IPC action entrypoint.
+- `plugin/kicad-jlcpcb-interface/main.py`: full-schematic overview action entrypoint.
+- `plugin/kicad-jlcpcb-interface/component_properties.py`: selected-symbol properties action entrypoint.
 - `plugin/kicad-jlcpcb-interface/kicad_jlcpcb/`: schematic scanning, component model, browser UI and cached catalogue provider.
 - `plugin/kicad-jlcpcb-interface/requirements.txt`: ABI-specific binary wheels for the official `kicad-python` IPC bindings.
 - `scripts/install_plugin.py`: validates and atomically installs the package into a KiCad version's user plugin directory.
@@ -27,9 +48,9 @@ The IPC bootstrap follows the working pattern in [kicad-blocks](https://github.c
 
 ## Current target
 
-The component cache is stored below the plugin-specific directory returned by KiCad's `get_plugin_settings_path()` API. Product-image downloads are HTTPS-only and capped at 5 MiB; catalogue HTTP calls and image loading run outside the Tk UI thread. The `JlcSearchProvider` prefers the public JLCPCB parts-page detail endpoint, then falls back to the community [jlcsearch](https://jlcsearch.tscircuit.com) JSON API, and marks old cached records as stale. The JLCPCB endpoint is undocumented and may change; it is not the official partner API. No credentials are embedded.
+The component cache is stored below the plugin-specific directory returned by KiCad's `get_plugin_settings_path()` API. Catalogue-image downloads are HTTPS-only and capped at 5 MiB; catalogue HTTP calls, image loading, exact-MPN alternative searches and schematic-wide summary lookups run outside the Tk UI thread. The provider forces a current lookup when a component is opened, prefers JLCPCB's own detail endpoint, and labels community-search or cached fallbacks explicitly. The MPN alternative table uses JLCPCB's own paginated parts search and filters results by normalized exact MPN. These public website endpoints are undocumented and may change; they are not the official partner API. Signed image URLs are retained only in memory and removed from persistent cache. No credentials are embedded.
 
-The dependency wheels are pinned to the KiCad Python bindings commit recorded in `plugin/kicad-jlcpcb-interface/kicad-python.lock`. For the initial Linux x86_64 target, the requirements reuse the immutable CPython 3.12/3.13/3.14 wheels published by the kicad-blocks project. The plugin manager installs binary wheels; it will not build the GitLab source dependency itself. Pillow is included for decoding the product images shown in the browser.
+The dependency wheels are pinned to the KiCad Python bindings commit recorded in `plugin/kicad-jlcpcb-interface/kicad-python.lock`. For the initial Linux x86_64 target, the requirements reuse the immutable CPython 3.12/3.13/3.14 wheels published by the kicad-blocks project. The plugin manager installs binary wheels; it will not build the GitLab source dependency itself. Pillow is included for decoding catalogue-supplied images shown in the browser.
 
 The initial installer supports:
 - KiCad 10.99 development nightly (the KiCad 11 pre-release directory), or KiCad 11.0+.
@@ -49,7 +70,7 @@ Other operating systems and architectures need matching `kicad-python` wheels an
    ```
 
    The installer defaults to `KICAD_DOCUMENTS_HOME`, or `~/.local/share` on Linux. Override the root with `--documents-home PATH`. Use `--dry-run` to validate the package and print the destination without installing it.
-4. Restart KiCad and launch **JLCPCB Component Browser** from Eeschema.
+4. Restart KiCad and launch **JLCPCB Component Properties** or **JLCPCB Component Overview** from Eeschema.
 
 The plugin directory is installed to:
 
@@ -69,7 +90,7 @@ python -m compileall -q plugin tests scripts
 ruff check plugin tests scripts
 ```
 
-Unit tests use fake schematic objects. A live integration test against the targeted KiCad nightly is still required before calling the UI/selection behavior release-ready.
+Unit tests use fake schematic objects. The CI visual job also launches KiCad 10.99 Eeschema and verifies IPC symbol creation, LCSC/MPN field read-back, live selection, the properties window and live supplier data. Full plugin registration/discovery and cross-sheet GUI navigation still need separate validation before release.
 
 ## Planned milestones
 
@@ -77,14 +98,19 @@ Unit tests use fake schematic objects. A live integration test against the targe
 - [x] Scan symbol custom fields and list matching schematic symbols.
 - [x] Filter/search by reference, value, part ID and footprint.
 - [x] Select a symbol or same-part instances on the target sheet, including child sheets.
-- [ ] Verify registration, full-hierarchy scanning and cross-sheet selection against a live KiCad 10.99 nightly GUI.
+- [ ] Verify native plugin discovery/registration, full-hierarchy scanning and cross-sheet GUI selection against a live KiCad 10.99 nightly.
 - [x] JLCPCB data-provider abstraction, exact lookup and SQLite cache/offline fallback.
-- [x] Product-image card, manufacturer/package/attribute summary, stock/price and source freshness.
+- [x] Compact supplier-photo/catalogue detail layout, manufacturer/package/attribute summary, stock and full price breaks.
+- [x] JLCPCB MPN-keyword alternatives with exact/related match labels, stock, minimum order and price comparisons.
+- [x] Selected-symbol properties action and schematic-wide estimated-cost/stock-coverage summary.
+- [x] End-to-end live Eeschema selection-to-properties GIF and supplier-data visual evidence, captured from real KiCad 10.99 IPC and live JLCPCB responses.
+- [x] Live fixture verifies IPC-created LCSC/MPN fields remain readable after their display annotations are hidden.
+- [ ] Generate/synchronize complete KiCad components from an LCSC number for supported simple parts, with explicit manual completion for uncertain/complex fields.
 - [ ] Footprint and 3D model previews.
 - [x] Catalogue stock/pricing display, clearly labelled as indicative and source-dated.
 - [x] Cross-sheet navigation and selection through KiCad's `FocusOnItems` command.
 - [ ] Continuous synchronization when the user changes sheets or selection while the browser remains open.
-- [ ] Live KiCad nightly GUI integration test and reproducible release package.
+- [ ] Reproducible release package and broader platform/KiCad-version validation.
 
 ## License
 

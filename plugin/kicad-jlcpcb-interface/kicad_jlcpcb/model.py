@@ -36,6 +36,7 @@ class SchematicComponent:
     datasheet: str
     sheet_path: str
     symbol: Any
+    manufacturer_part_number: str = ""
 
     @property
     def part_code(self) -> str:
@@ -50,6 +51,7 @@ class SchematicComponent:
                 self.value,
                 self.part_reference,
                 self.part_code,
+                self.manufacturer_part_number,
                 self.footprint,
                 self.sheet_path,
             )
@@ -87,6 +89,23 @@ def component_from_symbol(
 
     footprint = read_field_text(getattr(symbol, "footprint_field", None))
     datasheet = read_field_text(getattr(symbol, "datasheet_field", None))
+    mpn_aliases = {
+        "mpn",
+        "manufacturer part number",
+        "manufacturer part no.",
+        "manufacturer part no",
+        "mfr pn",
+        "mfr_pn",
+    }
+    manufacturer_part_number = next(
+        (
+            read_field_text(field)
+            for field in getattr(symbol, "user_fields", ()) or ()
+            if str(getattr(field, "name", "")).strip().casefold() in mpn_aliases
+            and read_field_text(field)
+        ),
+        "",
+    )
     return SchematicComponent(
         reference=str(getattr(symbol, "reference", "") or "").strip(),
         value=str(getattr(symbol, "value", "") or "").strip(),
@@ -95,6 +114,7 @@ def component_from_symbol(
         datasheet=datasheet,
         sheet_path=_human_sheet_path(getattr(symbol, "path", None)),
         symbol=symbol,
+        manufacturer_part_number=manufacturer_part_number,
     )
 
 
@@ -139,3 +159,28 @@ def search_components(
     if not needle:
         return list(components)
     return [component for component in components if needle in component.search_text]
+
+
+def find_selected_component(
+    schematic: Any, property_name: str = DEFAULT_PART_FIELD
+) -> SchematicComponent:
+    """Return the one selected symbol carrying the configured supplier part field."""
+    get_selection = getattr(schematic, "get_selection", None)
+    if not callable(get_selection):
+        raise RuntimeError(
+            "This KiCad build does not expose schematic selection through the IPC API."
+        )
+
+    selection = list(get_selection())
+    if len(selection) != 1:
+        raise ValueError(
+            "Select exactly one schematic symbol before opening JLCPCB Component Properties."
+        )
+
+    component = component_from_symbol(selection[0], property_name)
+    if component is None:
+        field = str(property_name or DEFAULT_PART_FIELD).strip() or DEFAULT_PART_FIELD
+        raise ValueError(
+            f"The selected symbol has no non-empty '{field}' custom property."
+        )
+    return component

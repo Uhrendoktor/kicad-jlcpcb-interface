@@ -229,6 +229,10 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(len(requests), 1)
         self.assertEqual(first.stock, 250000)
         self.assertEqual(second.stock, 250000)
+        self.assertFalse(first.is_cached)
+        self.assertTrue(second.is_cached)
+        self.assertIn("live response", first.source_label)
+        self.assertIn("cached snapshot", second.source_label)
         self.assertFalse(second.stale)
 
     def test_returns_stale_cache_when_both_sources_are_unavailable(self):
@@ -279,6 +283,87 @@ class ProviderTests(unittest.TestCase):
         self.assertFalse(fresh.stale)
         self.assertFalse(cached.stale)
         self.assertEqual(cached.stock, 250000)
+
+
+    def test_live_mpn_search_returns_exact_orderable_options_and_price_breaks(self):
+        requests = []
+
+        def row(code: str, mpn: str, price: float, buyable: int = 1):
+            return {
+                "componentCode": code,
+                "componentModelEn": mpn,
+                "componentBrandEn": "YAGEO",
+                "componentSpecificationEn": "0402",
+                "componentLibraryType": "extend",
+                "stockCount": 12000,
+                "initialPrice": price,
+                "componentPrices": [
+                    {"startNumber": 1, "price": price},
+                    {"startNumber": 1000, "price": price / 1.2},
+                ],
+                "buyComponentPrices": [
+                    {"startNumber": 1, "productPrice": price + 0.0003},
+                    {"startNumber": 1000, "productPrice": price / 1.2},
+                ],
+                "isBuyComponent": buyable,
+                "minPurchaseNum": 1,
+                "urlSuffix": f"YAGEO-{mpn.replace('-', '')}/{code}",
+            }
+
+        def opener(request, timeout):
+            requests.append((request, timeout))
+            payload = json.loads(request.data.decode("utf-8"))
+            self.assertEqual(payload["keyword"], "RC0402JR-0710KL")
+            self.assertEqual(payload["currentPage"], 1)
+            self.assertEqual(payload["pageSize"], 100)
+            self.assertEqual(payload["searchType"], 2)
+            self.assertFalse(payload["stockFlag"])
+            return FakeResponse(
+                {
+                    "code": 200,
+                    "data": {
+                        "componentPageInfo": {
+                            "list": [
+                                row("C60489", "RC0402JR-0710KL", 0.0027),
+                                row("C60490", "RC0402JR0710KL", 0.0025),
+                                row("C60491", "RC0402JR-0710KL", 0.0019, buyable=0),
+                                row("C60492", "RC0402JR-0710K", 0.0010),
+                            ],
+                            "pages": 1,
+                            "total": 4,
+                        }
+                    },
+                }
+            )
+
+        with TemporaryDirectory() as temp:
+            provider = JlcSearchProvider(Path(temp) / "parts.sqlite3", opener=opener)
+            matches = provider.search_by_mpn("RC0402JR-0710KL")
+
+        self.assertEqual(len(requests), 1)
+        request, _timeout = requests[0]
+        self.assertEqual(request.get_method(), "POST")
+        self.assertIn("/selectSmtComponentList/v2", request.full_url)
+        self.assertEqual(
+            [item.lcsc for item in matches],
+            ["C60490", "C60489", "C60492"],
+        )
+        self.assertTrue(matches[0].mpn_match)
+        self.assertFalse(matches[-1].mpn_match)
+        self.assertEqual(matches[0].manufacturer_part_number, "RC0402JR0710KL")
+        self.assertEqual(matches[-1].manufacturer_part_number, "RC0402JR-0710K")
+        self.assertEqual(matches[0].unit_price_usd, 0.0028)
+        self.assertEqual(
+            [(tier.quantity, tier.unit_price_usd) for tier in matches[0].buy_price_tiers],
+            [(1, 0.0028), (1000, 0.0025 / 1.2)],
+        )
+        self.assertTrue(matches[0].is_buyable)
+        self.assertEqual(matches[0].min_purchase_num, 1)
+        self.assertEqual(
+            matches[0].product_url,
+            "https://jlcpcb.com/partdetail/YAGEO-RC0402JR0710KL/C60490",
+        )
+        self.assertIn("live response", matches[0].source_label)
 
     def test_returns_none_when_no_match_and_no_cache(self):
         def opener(request, timeout):
