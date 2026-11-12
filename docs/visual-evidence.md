@@ -20,7 +20,7 @@ The generated bundle contains an exact asset inventory and SHA-256 hashes tied t
 
 To reproduce the capture locally on Ubuntu:
 
-    sudo apt-get install kicad-nightly python3-tk python3-pil xvfb
+    sudo apt-get install kicad-nightly kicad-nightly-symbols python3-tk python3-pil python3-pil.imagetk xvfb xauth
     xvfb-run -a -s "-screen 0 1920x1500x24" \
       python3 tests/capture_visual_docs.py --output-dir artifacts/visual-docs
 
