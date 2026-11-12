@@ -3,7 +3,8 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
@@ -85,6 +86,14 @@ class FakeSheetSchematic:
     def __init__(self):
         self.document = FakeDocument("Root/Power")
         self.client = FakeSheetClient()
+        self.cleared = False
+        self.selected = []
+
+    def clear_selection(self):
+        self.cleared = True
+
+    def add_to_selection(self, items):
+        self.selected = list(items)
 
 
 class FakeHierarchicalSchematic:
@@ -116,7 +125,10 @@ class SelectionTests(unittest.TestCase):
 
         self.assertTrue(browser.schematic.cleared)
         self.assertEqual(browser.schematic.selected, [item.symbol])
-        self.assertEqual(browser.status_var.value, "Selected 1 symbol(s): U1")
+        self.assertEqual(
+            browser.status_var.value,
+            "Navigated to /Root; selected 1 symbol(s): U1",
+        )
 
     def test_selects_multiple_matching_instances_in_one_call(self):
         browser = self.make_browser()
@@ -128,7 +140,10 @@ class SelectionTests(unittest.TestCase):
             browser.schematic.selected,
             [items[0].symbol, items[1].symbol],
         )
-        self.assertEqual(browser.status_var.value, "Selected 2 symbol(s): C1, C2")
+        self.assertEqual(
+            browser.status_var.value,
+            "Navigated to /Root; selected 2 symbol(s): C1, C2",
+        )
 
     def test_empty_selection_does_not_clear_existing_editor_selection(self):
         browser = self.make_browser()
@@ -165,6 +180,84 @@ class SelectionTests(unittest.TestCase):
         self.assertIs(command.document.sheet_path.copied_from, path_proto)
         self.assertEqual([item.value for item in command.items], ["uuid-1", "uuid-2"])
         self.assertIs(response, response_type)
+
+    def test_browser_selection_navigates_to_sheet_then_selects_instances(self):
+        browser = self.make_browser()
+        schematic = FakeHierarchicalSchematic()
+        browser.schematic = schematic
+        path_proto = SimpleNamespace(path=["sheet-uuid"])
+        path = SimpleNamespace(path_human_readable="/Root/Power", proto=path_proto)
+        symbol_a = SimpleNamespace(id=SimpleNamespace(value="uuid-1"), path=path)
+        symbol_b = SimpleNamespace(id=SimpleNamespace(value="uuid-2"), path=path)
+        items = [
+            SimpleNamespace(reference="U2", part_code="C123456", sheet_path="/Root/Power", symbol=symbol_a),
+            SimpleNamespace(reference="U3", part_code="C123456", sheet_path="/Root/Power", symbol=symbol_b),
+        ]
+
+        google_module = ModuleType("google")
+        google_module.__path__ = []
+        google_protobuf_module = ModuleType("google.protobuf")
+        google_protobuf_module.__path__ = []
+        empty_module = ModuleType("google.protobuf.empty_pb2")
+
+        class Empty:
+            pass
+
+        empty_module.Empty = Empty
+
+        kipy_module = ModuleType("kipy")
+        kipy_module.__path__ = []
+        kipy_proto_module = ModuleType("kipy.proto")
+        kipy_proto_module.__path__ = []
+        kipy_common_module = ModuleType("kipy.proto.common")
+        kipy_common_module.__path__ = []
+        commands_module = ModuleType("kipy.proto.common.commands")
+        commands_module.editor_commands_pb2 = SimpleNamespace(
+            FocusOnItems=FakeFocusCommand
+        )
+
+        fake_modules = {
+            "google": google_module,
+            "google.protobuf": google_protobuf_module,
+            "google.protobuf.empty_pb2": empty_module,
+            "kipy": kipy_module,
+            "kipy.proto": kipy_proto_module,
+            "kipy.proto.common": kipy_common_module,
+            "kipy.proto.common.commands": commands_module,
+        }
+        with patch.dict(sys.modules, fake_modules):
+            ComponentBrowser._select_symbols(browser, items)
+
+        self.assertTrue(schematic.sheet_view.cleared)
+        self.assertEqual(
+            schematic.sheet_view.selected,
+            [symbol_a, symbol_b],
+        )
+        command, response = schematic.sheet_view.client.sent[0]
+        self.assertIs(command.document.sheet_path.copied_from, path_proto)
+        self.assertEqual([item.value for item in command.items], ["uuid-1", "uuid-2"])
+        self.assertIs(response, Empty)
+        self.assertEqual(
+            browser.status_var.value,
+            "Navigated to /Root/Power; selected 2 symbol(s): U2, U3",
+        )
+
+    def test_browser_rejects_a_mixed_sheet_multi_selection(self):
+        browser = self.make_browser()
+        browser.messagebox = SimpleNamespace(
+            showerror=lambda title, message, **kwargs: self.assertIn(
+                "one sheet per operation", message
+            )
+        )
+        items = [
+            component("U1", "C123456", "/Root/Power"),
+            component("U2", "C123456", "/Root/Control"),
+        ]
+
+        ComponentBrowser._select_symbols(browser, items)
+
+        self.assertFalse(browser.schematic.cleared)
+        self.assertEqual(browser.status_var.value, "Selection failed: KiCad FocusOnItems can navigate only one sheet per operation.")
 
     def test_focus_helper_falls_back_for_current_sheet_only_objects(self):
         schematic = FakeSchematic()
