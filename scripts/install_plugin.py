@@ -6,8 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import platform
 from pathlib import Path
+import platform
 import re
 import shutil
 import sys
@@ -26,7 +26,11 @@ def validate_python_runtime(*, implementation=None, version_info=None) -> None:
     selected_implementation = implementation or sys.implementation.name
     selected_version = version_info or sys.version_info
     major, minor = int(selected_version[0]), int(selected_version[1])
-    if selected_implementation.casefold() != "cpython" or major != 3 or minor not in SUPPORTED_PYTHON_MINORS:
+    if (
+        selected_implementation.casefold() != "cpython"
+        or major != 3
+        or minor not in SUPPORTED_PYTHON_MINORS
+    ):
         version_text = ".".join(str(part) for part in selected_version[:3])
         raise ValueError(
             "The current IPC wheels support CPython 3.12, 3.13 and 3.14. "
