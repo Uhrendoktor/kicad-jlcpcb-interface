@@ -21,7 +21,7 @@ The generated bundle contains an exact asset inventory and SHA-256 hashes tied t
 To reproduce the capture locally on Ubuntu:
 
     sudo apt-get install kicad-nightly python3-tk python3-pil xvfb
-    xvfb-run -a -s "-screen 0 1920x1400x24" \
+    xvfb-run -a -s "-screen 0 1920x1500x24" \
       python3 tests/capture_visual_docs.py --output-dir artifacts/visual-docs
 
 The script also accepts KICAD_CLI and KICAD_SYMBOL_DIR to select explicit KiCad executable/library paths. Generated files are disposable outputs; change the fixture or capture generator and regenerate them instead of editing preview images by hand.
