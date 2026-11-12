@@ -1,0 +1,19 @@
+{
+  "identifier": "org.uhrendoktor.kicadjlcpcb",
+  "name": "KiCad JLCPCB Interface",
+  "description": "Browse JLCPCB/LCSC-linked schematic components and select them in Eeschema.",
+  "runtime": {
+    "type": "python",
+    "min_version": "3.12"
+  },
+  "actions": [
+    {
+      "identifier": "component-browser",
+      "name": "JLCPCB Component Browser",
+      "description": "Search components linked to JLCPCB/LCSC and select their schematic symbols.",
+      "show-button": true,
+      "scopes": ["schematic"],
+      "entrypoint": "main.py"
+    }
+  ]
+}
