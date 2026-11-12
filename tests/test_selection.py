@@ -204,6 +204,8 @@ class SelectionTests(unittest.TestCase):
             pass
 
         empty_module.Empty = Empty
+        google_module.protobuf = google_protobuf_module
+        google_protobuf_module.empty_pb2 = empty_module
 
         kipy_module = ModuleType("kipy")
         kipy_module.__path__ = []
@@ -211,10 +213,13 @@ class SelectionTests(unittest.TestCase):
         kipy_proto_module.__path__ = []
         kipy_common_module = ModuleType("kipy.proto.common")
         kipy_common_module.__path__ = []
+        kipy_module.proto = kipy_proto_module
+        kipy_proto_module.common = kipy_common_module
         commands_module = ModuleType("kipy.proto.common.commands")
         commands_module.editor_commands_pb2 = SimpleNamespace(
             FocusOnItems=FakeFocusCommand
         )
+        kipy_common_module.commands = commands_module
 
         fake_modules = {
             "google": google_module,
