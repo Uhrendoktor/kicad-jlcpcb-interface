@@ -483,8 +483,11 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
                 Vector2.from_xy_mm(x_mm, y_mm),
                 reference=record["reference"],
             )
-            symbol.proto.value_field.text.value = record["value"]
-            symbol.proto.footprint_field.text.value = record["footprint"]
+            # Set wrapper properties through their public API. The `.proto`
+            # view below is a raw protobuf, whose Text field stores its string
+            # in `.text` (the Python Text wrapper exposes this as `.value`).
+            symbol.value = record["value"]
+            symbol.footprint_field.text.value = record["footprint"]
 
             for field_name, field_value in (
                 ("LCSC", record["lcsc"]),
@@ -493,7 +496,7 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
                 field = symbol.proto.user_fields.add()
                 field.CopyFrom(symbol.proto.value_field)
                 field.name = field_name
-                field.text.value = field_value
+                field.text.text = field_value
 
             updated = schematic.update_items([symbol])
             if not updated:
