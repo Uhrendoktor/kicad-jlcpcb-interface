@@ -22,6 +22,33 @@ PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
+def focus_schematic_items(
+    schematic: Any,
+    symbols: list[Any],
+    focus_command_type: Any,
+    empty_response_type: Any,
+) -> Any:
+    """Navigate to the sheet holding these instances and focus their bounding box.
+
+    KiCad's selection command only selects instances on the currently displayed
+    sheet. FocusOnItems is the supported IPC command that changes to the target
+    sheet and zooms to the requested KIID set before selection is applied.
+    """
+    if not symbols:
+        return schematic
+    sheet_path = getattr(symbols[0], "path", None)
+    if sheet_path is None or not callable(getattr(schematic, "for_sheet", None)):
+        return schematic
+
+    target_schematic = schematic.for_sheet(sheet_path)
+    command = focus_command_type()
+    command.document.CopyFrom(target_schematic.document)
+    for symbol in symbols:
+        command.items.add().value = str(symbol.id)
+    target_schematic.client.send(command, empty_response_type)
+    return target_schematic
+
+
 def _download_product_image(url: str) -> bytes | None:
     """Fetch one bounded HTTPS product image; never block the Tk event loop."""
     parsed = urlparse(str(url or ""))
