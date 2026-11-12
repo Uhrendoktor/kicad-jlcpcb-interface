@@ -208,7 +208,7 @@ class JlcPartDetails:
         else:
             age_label = f"{age // 86400} d ago"
         freshness = "stale cache" if self.stale else "cached"
-        return f"Community JLC search · {freshness} · {age_label}"
+        return f"{self.source} · {freshness} · {age_label}"
 
 
 def normalize_component_payload(
@@ -218,12 +218,25 @@ def normalize_component_payload(
     fetched_at: float | None = None,
     stale: bool = False,
 ) -> JlcPartDetails:
-    """Map current compact API rows and older detailed payloads to one stable model."""
+    """Map current compact API rows and JLCPCB detail records to one stable model."""
     extra = _mapping(component.get("extra"))
-    raw_lcsc = _first(component, "lcsc", "lcsc_code", "part_number", "component_code")
-    normalized = normalize_lcsc_code(str(raw_lcsc)) if raw_lcsc not in (None, "") else lcsc
+    raw_lcsc = _first(
+        component,
+        "lcsc",
+        "lcsc_code",
+        "part_number",
+        "component_code",
+        "componentCode",
+    )
+    normalized = (
+        normalize_lcsc_code(str(raw_lcsc))
+        if raw_lcsc not in (None, "")
+        else normalize_lcsc_code(lcsc)
+    )
 
-    manufacturer_value = _first(component, "manufacturer", "manufacturer_name", "brand", "mfr_name")
+    manufacturer_value = _first(
+        component, "componentBrandEn", "manufacturer", "manufacturer_name", "brand", "mfr_name"
+    )
     if manufacturer_value is None:
         manufacturer_value = _first(extra, "manufacturer", "brand")
     if isinstance(manufacturer_value, dict):
@@ -232,71 +245,94 @@ def normalize_component_payload(
     raw_attributes = _first(component, "attributes")
     if raw_attributes is None:
         raw_attributes = extra.get("attributes", {})
-    attributes = _mapping(raw_attributes)
+    attributes = _attribute_mapping(raw_attributes)
 
-    raw_price = _first(component, "price1", "price", "unit_price", "unitPrice")
+    raw_price = _first(
+        component, "initialPrice", "initial_price", "price1", "price", "unit_price", "unitPrice"
+    )
     if raw_price is None:
         raw_price = _first(extra, "price", "prices", "productPriceList")
 
-    stock = _first(component, "stock", "stock_qty", "stock_count", "stockCount")
+    stock = _first(
+        component, "stockCount", "stock", "stock_qty", "stock_count"
+    )
     if stock is None:
         stock = _first(extra, "quantity", "stock", "stockNumber")
 
-    basic = _first(component, "is_basic", "basic", "isBasic")
-    preferred = _first(component, "is_preferred", "preferred", "isPreferred")
+    is_basic = _boolean(_first(component, "is_basic", "basic", "isBasic"))
+    library_type = str(
+        _first(component, "componentLibraryType", "component_library_type") or ""
+    ).strip().casefold()
+    if is_basic is None and library_type:
+        is_basic = library_type == "base"
+
+    is_preferred = _boolean(
+        _first(component, "is_preferred", "preferred", "isPreferred", "preferredComponentFlag")
+    )
+
+    image = _image_url(component, extra)
+    if not image:
+        image = str(
+            _first(
+                component,
+                "productBigImageAccessIdUrl",
+                "minImageAccessIdUrl",
+                "componentImageUrl",
+                "minImage",
+            )
+            or ""
+        )
+    datasheet = _datasheet_url(component, extra)
+    if not datasheet:
+        datasheet = str(
+            _first(
+                component,
+                "dataManualFileAccessIdUrl",
+                "dataManualOfficialLink",
+                "dataManualUrl",
+            )
+            or ""
+        )
+
+    description = _first(
+        component, "description", "desc", "title", "describe", "componentName"
+    ) or _first(extra, "description", "desc")
+    mpn = _first(
+        component,
+        "componentModelEn",
+        "mfr",
+        "mpn",
+        "manufacturer_part_number",
+        "mfr_part",
+    ) or _first(extra, "mpn", "productModel")
+    package = _first(
+        component,
+        "componentSpecificationEn",
+        "package",
+        "package_name",
+        "footprint",
+    ) or _first(extra, "package", "encapStandard")
+    category = _first(
+        component,
+        "firstSortName",
+        "secondSortName",
+        "category",
+        "subcategory",
+    ) or _first(extra, "category", "catalogName")
 
     return JlcPartDetails(
         lcsc=normalized,
-        description=str(
-            _first(component, "description", "desc", "title", "describe", "componentName")
-            or _first(extra, "description", "desc")
-            or ""
-        ),
-        manufacturer=str(
-            _first(component, "componentBrandEn", "manufacturer", "manufacturer_name", "brand", "mfr_name")
-            or manufacturer_value
-            or ""
-        ),
-        manufacturer_part_number=str(
-            _first(
-                component,
-                "componentModelEn",
-                "mfr",
-                "mpn",
-                "manufacturer_part_number",
-                "mfr_part",
-            )
-            or _first(extra, "mpn", "productModel")
-            or ""
-        ),
-        package=str(
-            _first(
-                component,
-                "componentSpecificationEn",
-                "package",
-                "package_name",
-                "footprint",
-            )
-            or _first(extra, "package", "encapStandard")
-            or ""
-        ),
-        stock=_integer(_first(component, "stockCount") or stock),
+        description=str(description or ""),
+        manufacturer=str(manufacturer_value or ""),
+        manufacturer_part_number=str(mpn or ""),
+        package=str(package or ""),
+        stock=_integer(stock),
         unit_price_usd=_numeric(raw_price),
         datasheet_url=datasheet,
         image_url=image,
         is_basic=is_basic,
-        is_preferred=_boolean(preferred),
-        category=str(
-            _first(
-                component,
-                "firstSortName",
-                "secondSortName",
-                "category",
-                "subcategory",
-            )
-            or _first(extra, "category", "catalogName")
-            or ""
-        ),
+        is_preferred=is_preferred,
+        category=str(category or ""),
         attributes=attributes,
         product_url=str(
             _first(component, "lcscGoodsUrl", "url")
@@ -306,7 +342,6 @@ def normalize_component_payload(
         fetched_at=float(fetched_at if fetched_at is not None else time.time()),
         stale=stale,
     )
-
 
 class JlcSearchProvider:
     """Exact LCSC lookup with SQLite TTL cache and graceful offline fallback."""
