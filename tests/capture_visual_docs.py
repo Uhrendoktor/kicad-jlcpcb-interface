@@ -538,6 +538,21 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
                 field.CopyFrom(symbol.proto.value_field)
                 field.name = field_name
                 field.text.text = field_value
+                user_field = next(
+                    (
+                        item
+                        for item in symbol.user_fields
+                        if item.name == field_name
+                    ),
+                    None,
+                )
+                if user_field is None:
+                    raise RuntimeError(
+                        f"KiCad did not expose the new {field_name} fixture field."
+                    )
+                # Keep metadata available to the plugin without printing it on
+                # top of the symbol's value field in the live-editor GIF.
+                user_field.visible = False
 
             _update_schematic_item_checked(schematic, symbol)
             created[record["reference"]] = symbol
@@ -550,6 +565,13 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             raise RuntimeError(
                 f"IPC-created demo fields were not readable. expected={expected}, actual={actual}"
             )
+        discovered_by_code = {item.part_code: item for item in discovered}
+        for record in DEMO_PARTS:
+            component = discovered_by_code[record["lcsc"]]
+            if component.manufacturer_part_number != record["mpn"]:
+                raise RuntimeError(
+                    f"IPC-created MPN field was not readable for {record['reference']}."
+                )
         return process, log_file, kicad, schematic, created, socket_path
     except Exception:
         if kicad is not None:
