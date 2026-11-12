@@ -12,9 +12,9 @@ The long-term goal is to make common catalogue parts almost as quick to add as e
 
 The previews are captured from a real KiCad Eeschema session. The demo schematic contains fixed example LCSC/MPN inputs, while catalogue facts, stock, price breaks and the product photograph are fetched live from JLCPCB during capture. The image is the supplier's own product photo; no package artwork or catalogue values are generated.
 
-<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-workflow.gif" alt="The schematic component overview with part search, cost estimate and stock coverage" width="900"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-workflow.gif" alt="Live Eeschema workflow: a 10 kΩ resistor before selection, after selection, and with its JLCPCB properties window open" width="900"></p>
 
-<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-selected.png" alt="JLCPCB catalogue properties for the selected 10 kΩ YAGEO resistor (LCSC C60489)" width="720"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-initial.png" alt="Full-width schematic overview with linked parts, design cost, stock coverage and selected resistor catalogue details" width="49%"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-selected.png" alt="JLCPCB catalogue properties for the selected 10 kΩ YAGEO resistor (LCSC C60489)" width="49%"></p>
 
 <p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/jlcpcb-resistor-symbol.svg" alt="KiCad-native resistor symbol preview" width="230"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/jlcpcb-capacitor-symbol.svg" alt="KiCad-native capacitor symbol preview" width="230"></p>
 
@@ -98,14 +98,13 @@ Unit tests use fake schematic objects. The CI visual job also launches KiCad 10.
 - [x] Scan symbol custom fields and list matching schematic symbols.
 - [x] Filter/search by reference, value, part ID and footprint.
 - [x] Select a symbol or same-part instances on the target sheet, including child sheets.
-- [ ] Verify registration, full-hierarchy scanning and cross-sheet selection against a live KiCad 10.99 nightly GUI.
+- [ ] Verify native plugin discovery/registration, full-hierarchy scanning and cross-sheet GUI selection against a live KiCad 10.99 nightly.
 - [x] JLCPCB data-provider abstraction, exact lookup and SQLite cache/offline fallback.
 - [x] Compact supplier-photo/catalogue detail layout, manufacturer/package/attribute summary, stock and full price breaks.
 - [x] JLCPCB MPN-keyword alternatives with exact/related match labels, stock, minimum order and price comparisons.
 - [x] Selected-symbol properties action and schematic-wide estimated-cost/stock-coverage summary.
 - [x] End-to-end live Eeschema selection-to-properties GIF and supplier-data visual evidence, captured from real KiCad 10.99 IPC and live JLCPCB responses.
 - [x] Live fixture verifies IPC-created LCSC/MPN fields remain readable after their display annotations are hidden.
-- [ ] Verify plugin discovery/registration, full-hierarchy scanning and cross-sheet GUI selection against a live KiCad 10.99 nightly.
 - [ ] Generate/synchronize complete KiCad components from an LCSC number for supported simple parts, with explicit manual completion for uncertain/complex fields.
 - [ ] Footprint and 3D model previews.
 - [x] Catalogue stock/pricing display, clearly labelled as indicative and source-dated.
