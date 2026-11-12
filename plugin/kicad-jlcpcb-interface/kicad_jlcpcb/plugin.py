@@ -22,6 +22,44 @@ PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
+def focus_schematic_items(
+    schematic: Any,
+    symbols: list[Any],
+    focus_command_type: Any,
+    empty_response_type: Any,
+) -> Any:
+    """Navigate to the sheet holding these instances and focus their bounding box.
+
+    KiCad's selection command only selects instances on the currently displayed
+    sheet. FocusOnItems is the supported IPC command that changes to the target
+    sheet and zooms to the requested KIID set before selection is applied.
+    """
+    if not symbols:
+        return schematic
+    sheet_path = getattr(symbols[0], "path", None)
+    if sheet_path is None or not callable(getattr(schematic, "for_sheet", None)):
+        return schematic
+
+    target_schematic = schematic.for_sheet(sheet_path)
+    path_proto = getattr(sheet_path, "proto", None)
+    if path_proto is None:
+        raise RuntimeError(
+            "The KiCad Python binding did not expose the target sheet path "
+            "protobuf required by FocusOnItems."
+        )
+
+    command = focus_command_type()
+    command.document.CopyFrom(target_schematic.document)
+    command.document.sheet_path.CopyFrom(path_proto)
+    for symbol in symbols:
+        raw_id = getattr(symbol.id, "value", None)
+        if not raw_id:
+            raw_id = str(symbol.id)
+        command.items.add().value = str(raw_id)
+    target_schematic.client.send(command, empty_response_type)
+    return target_schematic
+
+
 def _download_product_image(url: str) -> bytes | None:
     """Fetch one bounded HTTPS product image; never block the Tk event loop."""
     parsed = urlparse(str(url or ""))
@@ -152,7 +190,7 @@ class ComponentBrowser:
         ttk.Label(list_frame, text="LINKED SCHEMATIC COMPONENTS").grid(
             row=0, column=0, sticky="w", pady=(0, 8)
         )
-        columns = ("reference", "value", "part", "footprint")
+        columns = ("reference", "value", "part", "footprint", "sheet")
         self.tree = ttk.Treeview(
             list_frame, columns=columns, show="headings", selectmode="browse"
         )
@@ -160,7 +198,8 @@ class ComponentBrowser:
             "reference": ("Reference", 90),
             "value": ("Value", 220),
             "part": ("LCSC / JLCPCB", 150),
-            "footprint": ("Footprint", 220),
+            "footprint": ("Footprint", 190),
+            "sheet": ("Sheet", 150),
         }
         for key, (label, width) in headings.items():
             self.tree.heading(key, text=label)
@@ -168,7 +207,7 @@ class ComponentBrowser:
                 key,
                 width=width,
                 minwidth=65,
-                stretch=key in {"value", "footprint"},
+                stretch=key in {"value", "footprint", "sheet"},
             )
         self.tree.grid(row=1, column=0, sticky="nsew")
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
@@ -326,6 +365,7 @@ class ComponentBrowser:
                     component.value,
                     component.part_code,
                     component.footprint,
+                    component.sheet_path,
                 ),
             )
         if filtered:
@@ -524,17 +564,37 @@ class ComponentBrowser:
         if not components:
             return
         try:
-            self.schematic.clear_selection()
-            self.schematic.add_to_selection(
-                [component.symbol for component in components]
-            )
+            sheet_paths = {component.sheet_path for component in components}
+            if len(sheet_paths) != 1:
+                raise ValueError(
+                    "KiCad FocusOnItems can navigate only one sheet per operation."
+                )
+
+            symbols = [component.symbol for component in components]
+            target_schematic = self.schematic
+            if getattr(symbols[0], "path", None) is not None:
+                from google.protobuf.empty_pb2 import Empty
+                from kipy.proto.common.commands import editor_commands_pb2
+
+                target_schematic = focus_schematic_items(
+                    self.schematic,
+                    symbols,
+                    editor_commands_pb2.FocusOnItems,
+                    Empty,
+                )
+
+            target_schematic.clear_selection()
+            target_schematic.add_to_selection(symbols)
             references = ", ".join(component.reference for component in components)
-            self.status_var.set(f"Selected {len(components)} symbol(s): {references}")
+            self.status_var.set(
+                f"Navigated to {components[0].sheet_path}; selected "
+                f"{len(components)} symbol(s): {references}"
+            )
         except Exception as exc:
             self.messagebox.showerror(
                 "KiCad selection failed",
-                "KiCad can select items only on the current schematic sheet. "
-                "Cross-sheet navigation is not implemented yet.\n\n"
+                "KiCad could not navigate to and select these schematic symbols. "
+                "The active KiCad build must expose the FocusOnItems sheet-path API.\n\n"
                 f"{exc}",
                 parent=self.root,
             )

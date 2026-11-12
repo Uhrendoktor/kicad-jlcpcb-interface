@@ -55,6 +55,13 @@ def jlc_detail(lcsc: str = "C25804") -> dict:
             "minImageAccessIdUrl": "",
             "dataManualOfficialLink": "https://example.test/datasheet.pdf",
             "lcscGoodsUrl": "https://lcsc.com/product-detail/C25804.html",
+            "extra": {
+                "mediaMetadata": {
+                    "signedPreview": (
+                        "https://images.example.test/nested.jpg?signature=short-lived"
+                    )
+                }
+            },
         },
     }
 
@@ -176,7 +183,8 @@ class ProviderTests(unittest.TestCase):
                 ).fetchone()
             persisted = json.loads(row["payload_json"])
             self.assertEqual(persisted["productBigImageAccessIdUrl"], "")
-            self.assertNotIn("x-oss-signature", json.dumps(persisted))
+            self.assertEqual(persisted["extra"]["mediaMetadata"]["signedPreview"], "")
+            self.assertNotIn("signature=", json.dumps(persisted))
 
     def test_community_fallback_filters_false_positive_search_results(self):
         requests = []
@@ -248,6 +256,29 @@ class ProviderTests(unittest.TestCase):
         self.assertTrue(stale.stale)
         self.assertEqual(stale.stock, 250000)
         self.assertEqual(len(calls), 3)
+
+    def test_recent_disk_cache_is_not_marked_stale_when_provider_is_offline(self):
+        calls = []
+
+        def opener(request, timeout):
+            calls.append(request.full_url)
+            if len(calls) == 1:
+                return FakeResponse(jlc_detail())
+            raise OSError("offline")
+
+        with TemporaryDirectory() as temp:
+            provider = JlcSearchProvider(
+                Path(temp) / "parts.sqlite3",
+                opener=opener,
+                cache_ttl_seconds=3600,
+            )
+            fresh = provider.lookup("C25804")
+            provider._memory_cache.clear()
+            cached = provider.lookup("C25804")
+
+        self.assertFalse(fresh.stale)
+        self.assertFalse(cached.stale)
+        self.assertEqual(cached.stock, 250000)
 
     def test_returns_none_when_no_match_and_no_cache(self):
         def opener(request, timeout):

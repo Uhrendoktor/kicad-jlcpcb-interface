@@ -51,6 +51,7 @@ class SchematicComponent:
                 self.part_reference,
                 self.part_code,
                 self.footprint,
+                self.sheet_path,
             )
         ).casefold()
 
@@ -97,13 +98,34 @@ def component_from_symbol(
     )
 
 
+def iter_schematic_symbols(schematic: Any) -> Iterable[Any]:
+    """Yield symbols from every sheet when the project hierarchy API is available."""
+    iter_sheets = getattr(schematic, "iter_sheets", None)
+    for_sheet = getattr(schematic, "for_sheet", None)
+    if not callable(iter_sheets) or not callable(for_sheet):
+        yield from schematic.get_symbols()
+        return
+
+    seen: set[str] = set()
+    sheets = iter_sheets()
+    for sheet in sheets:
+        sheet_view = for_sheet(sheet)
+        for symbol in sheet_view.get_symbols():
+            symbol_id = str(getattr(symbol, "id", "") or "")
+            identity = symbol_id or f"object:{id(symbol)}"
+            if identity in seen:
+                continue
+            seen.add(identity)
+            yield symbol
+
+
 def find_linked_components(
     schematic: Any, property_name: str = DEFAULT_PART_FIELD
 ) -> list[SchematicComponent]:
-    """Return all symbols with the requested custom field, sorted by reference."""
+    """Return linked symbols across the project hierarchy, sorted by reference."""
     components = (
         component
-        for symbol in schematic.get_symbols()
+        for symbol in iter_schematic_symbols(schematic)
         if (component := component_from_symbol(symbol, property_name)) is not None
     )
     return sorted(components, key=lambda item: (item.reference.casefold(), item.value.casefold()))
