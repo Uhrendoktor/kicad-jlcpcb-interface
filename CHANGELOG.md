@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Scan LCSC-linked symbols across the complete schematic hierarchy.
+- Navigate to a symbol's sheet, zoom to it and select it through KiCad's `FocusOnItems` IPC command.
+- Use the configured cache TTL to distinguish recent offline cache results from stale catalogue data.
+- Recursively remove expiring signed URLs from persisted catalogue records.
+
 ## 0.1.0 — 2026-11-12
 
 - Establish the KiCad 11 Schematic Editor IPC plugin scaffold.
