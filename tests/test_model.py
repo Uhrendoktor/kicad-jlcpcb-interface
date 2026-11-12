@@ -86,6 +86,30 @@ class ComponentModelTests(unittest.TestCase):
         self.assertIsNotNone(component)
         self.assertEqual(component.part_code, "C765432")
 
+    def test_discovers_linked_symbols_from_every_hierarchical_sheet(self):
+        root_sheet = SimpleNamespace(path_human_readable="/Root")
+        child_sheet = SimpleNamespace(path_human_readable="/Root/Power")
+        root_symbol = symbol("U1", "Controller", "C111111", sheet_path="/Root")
+        child_symbol = symbol("U2", "Regulator", "C222222", sheet_path="/Root/Power")
+
+        class HierarchicalSchematic(FakeSchematic):
+            def iter_sheets(self):
+                return iter((root_sheet, child_sheet))
+
+            def for_sheet(self, sheet):
+                return SimpleNamespace(
+                    get_symbols=lambda: (
+                        [root_symbol] if sheet is root_sheet else [child_symbol]
+                    )
+                )
+
+        components = find_linked_components(HierarchicalSchematic([root_symbol]))
+
+        self.assertEqual(
+            [(item.reference, item.sheet_path) for item in components],
+            [("U1", "/Root"), ("U2", "/Root/Power")],
+        )
+
     def test_search_matches_reference_value_part_and_footprint(self):
         components = find_linked_components(
             FakeSchematic(
