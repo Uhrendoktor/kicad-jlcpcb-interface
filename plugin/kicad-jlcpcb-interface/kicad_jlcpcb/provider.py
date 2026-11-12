@@ -20,7 +20,7 @@ from urllib.request import Request, urlopen
 DEFAULT_BASE_URL = "https://jlcsearch.tscircuit.com"
 DEFAULT_CACHE_TTL_SECONDS = 6 * 60 * 60
 _LCSC_RE = re.compile(r"(?<![A-Z0-9])C?(\d{3,})(?![A-Z0-9])", re.IGNORECASE)
-_PRICE_TIER_RE = re.compile(r"(?:^|[,;]\s*)\d+\s*[-:]\s*([0-9]+(?:\.[0-9]+)?)")
+_PRICE_TIER_RE = re.compile(r"(?:^|[,;]\s*)\d+\s*-?:\s*([0-9]+(?:\.[0-9]+)?)")
 
 
 def normalize_lcsc_code(raw: str) -> str:
@@ -97,6 +97,51 @@ def _integer(value: Any) -> int | None:
         return None
 
 
+def _boolean(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"1", "true", "yes", "y"}:
+            return True
+        if normalized in {"0", "false", "no", "n"}:
+            return False
+    return None
+
+
+def _attribute_mapping(value: Any) -> dict[str, Any]:
+    mapping = _mapping(value)
+    if mapping:
+        return mapping
+    if not isinstance(value, list):
+        return {}
+    result: dict[str, Any] = {}
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        name = _first(
+            entry, "attributeNameEn", "attribute_name_en", "name", "attributeName"
+        )
+        item_value = _first(
+            entry, "attributeValueEn", "attribute_value_en", "value", "attributeValue"
+        )
+        if name not in (None, "") and item_value not in (None, ""):
+            result[str(name)] = item_value
+    return result
+
+
+def _is_signed_url(url: str) -> bool:
+    lowered = str(url or "").casefold()
+    return any(
+        marker in lowered
+        for marker in ("x-oss-signature=", "x-amz-signature=", "signature=")
+    )
+
+
 def _image_url(component: dict[str, Any], extra: dict[str, Any]) -> str:
     direct = _first(component, "image_url", "imageUrl", "img_url", "imgUrl")
     if isinstance(direct, str) and direct.startswith("https://"):
@@ -146,6 +191,8 @@ class JlcPartDetails:
     is_preferred: bool | None = None
     category: str = ""
     attributes: dict[str, Any] = field(default_factory=dict)
+    product_url: str = ""
+    source: str = "Community JLC search"
     fetched_at: float = 0.0
     stale: bool = False
 
@@ -201,33 +248,61 @@ def normalize_component_payload(
     return JlcPartDetails(
         lcsc=normalized,
         description=str(
-            _first(component, "description", "desc", "title")
+            _first(component, "description", "desc", "title", "describe", "componentName")
             or _first(extra, "description", "desc")
             or ""
         ),
-        manufacturer=str(manufacturer_value or ""),
+        manufacturer=str(
+            _first(component, "componentBrandEn", "manufacturer", "manufacturer_name", "brand", "mfr_name")
+            or manufacturer_value
+            or ""
+        ),
         manufacturer_part_number=str(
-            _first(component, "mfr", "mpn", "manufacturer_part_number", "mfr_part")
+            _first(
+                component,
+                "componentModelEn",
+                "mfr",
+                "mpn",
+                "manufacturer_part_number",
+                "mfr_part",
+            )
             or _first(extra, "mpn", "productModel")
             or ""
         ),
         package=str(
-            _first(component, "package", "package_name", "footprint")
+            _first(
+                component,
+                "componentSpecificationEn",
+                "package",
+                "package_name",
+                "footprint",
+            )
             or _first(extra, "package", "encapStandard")
             or ""
         ),
-        stock=_integer(stock),
+        stock=_integer(_first(component, "stockCount") or stock),
         unit_price_usd=_numeric(raw_price),
-        datasheet_url=_datasheet_url(component, extra),
-        image_url=_image_url(component, extra),
-        is_basic=bool(basic) if basic is not None else None,
-        is_preferred=bool(preferred) if preferred is not None else None,
+        datasheet_url=datasheet,
+        image_url=image,
+        is_basic=is_basic,
+        is_preferred=_boolean(preferred),
         category=str(
-            _first(component, "category", "subcategory")
+            _first(
+                component,
+                "firstSortName",
+                "secondSortName",
+                "category",
+                "subcategory",
+            )
             or _first(extra, "category", "catalogName")
             or ""
         ),
         attributes=attributes,
+        product_url=str(
+            _first(component, "lcscGoodsUrl", "url")
+            or f"https://jlcpcb.com/partdetail/{normalized}"
+        ),
+        source=str(component.get("_provider_label") or "Community JLC search"),
         fetched_at=float(fetched_at if fetched_at is not None else time.time()),
         stale=stale,
     )
@@ -244,12 +319,15 @@ class JlcSearchProvider:
         cache_ttl_seconds: int = DEFAULT_CACHE_TTL_SECONDS,
         timeout_seconds: float = 8.0,
         opener=urlopen,
+        memory_ttl_seconds: int = 10 * 60,
     ):
         self.cache_path = Path(cache_path).expanduser()
         self.base_url = base_url.rstrip("/")
         self.cache_ttl_seconds = int(cache_ttl_seconds)
         self.timeout_seconds = float(timeout_seconds)
         self.opener = opener
+        self.memory_ttl_seconds = int(memory_ttl_seconds)
+        self._memory_cache: dict[str, tuple[JlcPartDetails, float]] = {}
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize_cache()
 
@@ -299,6 +377,90 @@ class JlcSearchProvider:
                 """,
                 (lcsc, fetched_at, encoded),
             )
+
+    def _fetch_jlcpcb_detail(self, lcsc: str) -> dict[str, Any] | None:
+        """Fetch exact details from the public JLCPCB parts-page backend.
+
+        This is an undocumented web endpoint used by JLCPCB's own parts page,
+        not the approved partner Components API. It may change independently.
+        Signed media URLs are held only in memory and never written to SQLite.
+        """
+        url = (
+            "https://jlcpcb.com/api/overseas-pcb-order/v1/"
+            "smtComponentShopCart/getComponentDetail?"
+            + urlencode({"componentCode": lcsc})
+        )
+        request = Request(
+            url,
+            headers={
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Encoding": "gzip",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Origin": "https://jlcpcb.com",
+                "Referer": "https://jlcpcb.com/parts",
+                "User-Agent": (
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                ),
+            },
+        )
+        try:
+            with self.opener(request, timeout=self.timeout_seconds) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (
+            HTTPError,
+            URLError,
+            TimeoutError,
+            OSError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ):
+            return None
+
+        if not isinstance(payload, dict) or payload.get("code") != 200:
+            return None
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return None
+        raw_code = _first(data, "componentCode", "lcsc")
+        if raw_code in (None, ""):
+            return None
+        try:
+            if normalize_lcsc_code(str(raw_code)) != normalize_lcsc_code(lcsc):
+                return None
+        except ValueError:
+            return None
+        data["_provider_label"] = "JLCPCB parts-page endpoint (unofficial)"
+        return data
+
+    @staticmethod
+    def _strip_signed_media(payload: dict[str, Any]) -> dict[str, Any]:
+        """Copy a record without expiring signed URLs before persistent caching."""
+        safe = dict(payload)
+        for key in (
+            "productBigImageAccessIdUrl",
+            "minImageAccessIdUrl",
+            "dataManualFileAccessIdUrl",
+        ):
+            if _is_signed_url(str(safe.get(key) or "")):
+                safe[key] = ""
+        extra = _mapping(safe.get("extra"))
+        if extra:
+            images = extra.get("images")
+            if isinstance(images, list):
+                sanitized = []
+                for image in images:
+                    if isinstance(image, dict):
+                        sanitized.append({
+                            key: value
+                            for key, value in image.items()
+                            if not _is_signed_url(str(value or ""))
+                        })
+                    else:
+                        sanitized.append(image)
+                extra["images"] = sanitized
+            safe["extra"] = extra
+        return safe
 
     def _fetch_exact_component(self, lcsc: str) -> dict[str, Any] | None:
         query = urlencode({"q": lcsc, "limit": 10, "full": "true"})
@@ -350,29 +512,55 @@ class JlcSearchProvider:
         return None
 
     def lookup(self, raw_lcsc: str, *, force_refresh: bool = False) -> JlcPartDetails | None:
-        """Look up one exact LCSC code; return cached data when fresh or offline."""
+        """Look up an exact part; prefer JLCPCB detail data, then community search.
+
+        The live result is memoized only in process memory for at most ten
+        minutes, keeping its signed product image URL inside the documented
+        30-minute validity window. Persistent SQLite records have signed media
+        URLs removed before storage.
+        """
         lcsc = normalize_lcsc_code(raw_lcsc)
         now = time.time()
+        memory = self._memory_cache.get(lcsc)
+        if (
+            memory is not None
+            and not force_refresh
+            and now - memory[1] < self.memory_ttl_seconds
+        ):
+            return memory[0]
+
         cached = self._read_cache(lcsc)
-
-        if cached is not None:
-            cache_payload, cached_at = cached
-            if not force_refresh and now - cached_at < self.cache_ttl_seconds:
-                return normalize_component_payload(
-                    cache_payload, lcsc=lcsc, fetched_at=cached_at
-                )
-
-        remote = self._fetch_exact_component(lcsc)
-        if remote is not None:
+        live = self._fetch_jlcpcb_detail(lcsc)
+        if live is not None:
             fetched_at = time.time()
-            self._write_cache(lcsc, remote, fetched_at)
-            return normalize_component_payload(remote, lcsc=lcsc, fetched_at=fetched_at)
+            details = normalize_component_payload(
+                live, lcsc=lcsc, fetched_at=fetched_at
+            )
+            # Signed URLs can be used by this in-memory result, but are not
+            # persisted to disk because they expire after roughly 30 minutes.
+            self._memory_cache[lcsc] = (details, fetched_at)
+            self._write_cache(
+                lcsc, self._strip_signed_media(live), fetched_at
+            )
+            return details
 
-        # Retain an older result if the community catalogue is offline or no
-        # longer contains the part. Its age is made explicit in the UI.
+        community = self._fetch_exact_component(lcsc)
+        if community is not None:
+            fetched_at = time.time()
+            community["_provider_label"] = "Community JLC search"
+            details = normalize_component_payload(
+                community, lcsc=lcsc, fetched_at=fetched_at
+            )
+            self._memory_cache[lcsc] = (details, fetched_at)
+            self._write_cache(lcsc, community, fetched_at)
+            return details
+
+        # Fall back to a previous record when both data sources are offline.
         if cached is not None:
             cache_payload, cached_at = cached
-            return normalize_component_payload(
+            details = normalize_component_payload(
                 cache_payload, lcsc=lcsc, fetched_at=cached_at, stale=True
             )
+            self._memory_cache[lcsc] = (details, now)
+            return details
         return None
