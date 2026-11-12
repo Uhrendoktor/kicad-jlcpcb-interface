@@ -68,9 +68,15 @@ def _numeric(value: Any) -> float | None:
             return _numeric(_first(first, "price", "unit_price", "price1", "discountPrice"))
         return _numeric(first)
     if isinstance(value, str):
-        cleaned = value.strip().replace(",", "")
+        cleaned = value.strip()
+        tier = _PRICE_TIER_RE.search(cleaned)
+        if tier:
+            try:
+                return float(tier.group(1))
+            except ValueError:
+                return None
         try:
-            return float(cleaned)
+            return float(cleaned.replace(",", ""))
         except ValueError:
             pass
         try:
@@ -78,15 +84,7 @@ def _numeric(value: Any) -> float | None:
         except (json.JSONDecodeError, TypeError):
             parsed = None
         if parsed is not None:
-            parsed_price = _numeric(parsed)
-            if parsed_price is not None:
-                return parsed_price
-        tier = _PRICE_TIER_RE.search(cleaned)
-        if tier:
-            try:
-                return float(tier.group(1))
-            except ValueError:
-                return None
+            return _numeric(parsed)
     return None
 
 
@@ -429,7 +427,6 @@ class JlcSearchProvider:
             url,
             headers={
                 "Accept": "application/json, text/plain, */*",
-                "Accept-Encoding": "gzip",
                 "Accept-Language": "en-US,en;q=0.9",
                 "Origin": "https://jlcpcb.com",
                 "Referer": "https://jlcpcb.com/parts",
