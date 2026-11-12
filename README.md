@@ -2,6 +2,17 @@
 
 A KiCad 11 Schematic Editor IPC add-on for browsing components already placed in a schematic and navigating back to their symbol instances.
 
+## Visual previews
+
+The previews below are captured from the real component-browser window and rendered by KiCad's own CLI. Catalogue values and the package illustration are deterministic documentation fixtures, not live supplier data.
+
+<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-workflow.gif" alt="The component browser showing linked schematic parts, an LCSC search and a selected catalogue summary" width="900"></p>
+
+<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/jlcpcb-resistor-symbol.svg" alt="KiCad-native resistor symbol preview" width="230"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/jlcpcb-capacitor-symbol.svg" alt="KiCad-native capacitor symbol preview" width="230"></p>
+
+See [Visual evidence and generated previews](docs/visual-evidence.md) for the capture fixture, reproduction command and provenance checks.
+
+
 **Status: early prototype.** The current implementation walks the full schematic sheet hierarchy and discovers symbols carrying a configurable custom field (default: `LCSC`), provides local search, navigates to and selects matching symbols in Eeschema, and loads catalogue metadata and product images on demand. Live product details are retrieved from JLCPCB's public parts-page endpoint (an undocumented website endpoint, not its approved partner API), with a community catalogue fallback. Stock/prices are indicative catalogue snapshots, not guaranteed real-time quotes. Footprint/3D previews and continuous editor synchronization remain future work; cross-sheet navigation uses the KiCad 11 Schematic IPC `FocusOnItems` command.
 
 ## Intended workflow
