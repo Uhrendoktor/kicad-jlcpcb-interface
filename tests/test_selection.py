@@ -10,7 +10,7 @@ PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.model import component_from_symbol  # noqa: E402
-from kicad_jlcpcb.plugin import ComponentBrowser  # noqa: E402
+from kicad_jlcpcb.plugin import ComponentBrowser, focus_schematic_items  # noqa: E402
 
 
 def component(reference: str, part_code: str, sheet_path: str = "/Root"):
@@ -40,6 +40,51 @@ class FakeVariable:
 
     def set(self, value):
         self.value = value
+
+
+class FakeRepeatedItems(list):
+    def add(self):
+        item = SimpleNamespace(value="")
+        self.append(item)
+        return item
+
+
+class FakeFocusCommand:
+    def __init__(self):
+        self.document = SimpleNamespace(copied_from=None)
+        self.items = FakeRepeatedItems()
+
+
+class FakeDocument:
+    def __init__(self, name):
+        self.name = name
+
+    def CopyFrom(self, other):
+        self.copied_from = other
+
+
+class FakeSheetClient:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, command, response_type):
+        self.sent.append((command, response_type))
+
+
+class FakeSheetSchematic:
+    def __init__(self):
+        self.document = FakeDocument("Root/Power")
+        self.client = FakeSheetClient()
+
+
+class FakeHierarchicalSchematic:
+    def __init__(self):
+        self.sheet_view = FakeSheetSchematic()
+        self.requested_sheet = None
+
+    def for_sheet(self, path):
+        self.requested_sheet = path
+        return self.sheet_view
 
 
 class SelectionTests(unittest.TestCase):
@@ -82,6 +127,39 @@ class SelectionTests(unittest.TestCase):
 
         self.assertFalse(browser.schematic.cleared)
         self.assertEqual(browser.schematic.selected, [])
+
+    def test_focuses_target_sheet_and_zooms_before_selection(self):
+        schematic = FakeHierarchicalSchematic()
+        path = SimpleNamespace(path_human_readable="/Root/Power")
+        symbols = [
+            SimpleNamespace(id="uuid-1", path=path),
+            SimpleNamespace(id="uuid-2", path=path),
+        ]
+        response_type = type("EmptyResponse", (), {})
+
+        target = focus_schematic_items(
+            schematic,
+            symbols,
+            FakeFocusCommand,
+            response_type,
+        )
+
+        self.assertIs(target, schematic.sheet_view)
+        self.assertIs(schematic.requested_sheet, path)
+        command, response = schematic.sheet_view.client.sent[0]
+        self.assertIs(command.document.copied_from, schematic.sheet_view.document)
+        self.assertEqual([item.value for item in command.items], ["uuid-1", "uuid-2"])
+        self.assertIs(response, response_type)
+
+    def test_focus_helper_falls_back_for_current_sheet_only_objects(self):
+        schematic = FakeSchematic()
+        target = focus_schematic_items(
+            schematic,
+            [SimpleNamespace(id="uuid-1")],
+            FakeFocusCommand,
+            object,
+        )
+        self.assertIs(target, schematic)
 
     def test_reads_kicad_human_readable_sheet_path(self):
         field = SimpleNamespace(name="LCSC", text=SimpleNamespace(value="C123456"))
