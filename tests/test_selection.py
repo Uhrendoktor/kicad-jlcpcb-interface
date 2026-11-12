@@ -302,6 +302,9 @@ class SelectionTests(unittest.TestCase):
 
     def test_reads_kicad_human_readable_sheet_path(self):
         field = SimpleNamespace(name="LCSC", text=SimpleNamespace(value="C123456"))
+        mpn_field = SimpleNamespace(
+            name="MPN", text=SimpleNamespace(value="RC0402JR-0710KL")
+        )
         sheet_path = SimpleNamespace(
             path=[],
             path_human_readable="/Root/Power",
@@ -309,7 +312,7 @@ class SelectionTests(unittest.TestCase):
         symbol = SimpleNamespace(
             reference="U1",
             value="MCU",
-            user_fields=[field],
+            user_fields=[field, mpn_field],
             footprint_field=None,
             datasheet_field=None,
             path=sheet_path,
@@ -319,6 +322,7 @@ class SelectionTests(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertEqual(result.sheet_path, "/Root/Power")
+        self.assertEqual(result.manufacturer_part_number, "RC0402JR-0710KL")
 
 
 if __name__ == "__main__":

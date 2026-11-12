@@ -21,7 +21,7 @@ def component(reference: str, part_code: str) -> SchematicComponent:
 
 
 class FakeProvider:
-    def lookup(self, part_code: str):
+    def lookup(self, part_code: str, *, force_refresh: bool = False):
         records = {
             "C123456": JlcPartDetails(lcsc="C123456", stock=50, unit_price_usd=0.25),
             "C654321": JlcPartDetails(lcsc="C654321", stock=0, unit_price_usd=0.75),

@@ -71,7 +71,7 @@ def _calculate_project_summary(components, provider) -> dict[str, int | float]:
     unknown_parts = 0
     for part_code, quantity in quantities.items():
         try:
-            details = provider.lookup(part_code)
+            details = provider.lookup(part_code, force_refresh=True)
         except Exception:
             details = None
         if details is None:
@@ -161,6 +161,8 @@ class ComponentBrowser:
         self._summary_future_token = 0
         self._image_ref = None
         self._catalogue_details: JlcPartDetails | None = None
+        self._alternatives: list[JlcPartDetails] = []
+        self._alternative_by_iid: dict[str, JlcPartDetails] = {}
         self._closed = False
 
         self.root = tk.Tk()
@@ -193,12 +195,14 @@ class ComponentBrowser:
             "footprint": tk.StringVar(value="—"),
             "datasheet": tk.StringVar(value="—"),
             "sheet": tk.StringVar(value="—"),
+            "schematic_mpn": tk.StringVar(value="—"),
             "manufacturer": tk.StringVar(value="—"),
             "mpn": tk.StringVar(value="—"),
             "package": tk.StringVar(value="—"),
             "description": tk.StringVar(value="—"),
             "stock": tk.StringVar(value="—"),
             "price": tk.StringVar(value="—"),
+            "price_breaks": tk.StringVar(value="—"),
             "category": tk.StringVar(value="—"),
             "basic": tk.StringVar(value="—"),
             "attributes": tk.StringVar(value="—"),
@@ -337,7 +341,7 @@ class ComponentBrowser:
         content_window = detail_canvas.create_window(
             (0, 0), window=content, anchor="nw"
         )
-        content.columnconfigure(0, weight=1)
+        content.columnconfigure(1, weight=1)
 
         def update_detail_scrollregion(_event=None) -> None:
             detail_canvas.configure(scrollregion=detail_canvas.bbox("all"))
@@ -360,27 +364,31 @@ class ComponentBrowser:
         detail_canvas.bind("<Button-4>", scroll_detail)
         detail_canvas.bind("<Button-5>", scroll_detail)
 
-        visual = ttk.LabelFrame(content, text="Catalogue image", padding=8)
-        visual.grid(row=0, column=0, sticky="ew")
+        catalogue = ttk.LabelFrame(content, text="JLCPCB catalogue", padding=10)
+        catalogue.grid(row=0, column=1, sticky="nsew")
+        catalogue.columnconfigure(1, weight=1)
+
+        visual = ttk.LabelFrame(content, text="Product photo", padding=8)
+        visual.grid(row=0, column=0, sticky="nsw", padx=(0, 10))
         self.image_label = ttk.Label(
             visual,
-            text="No catalogue image supplied by the data source",
+            text="No catalogue image",
             anchor="center",
             justify="center",
-            padding=30,
+            width=22,
+            height=9,
+            padding=8,
         )
         self.image_label.pack(fill="both", expand=True)
 
-        catalogue = ttk.LabelFrame(content, text="JLCPCB catalogue", padding=10)
-        catalogue.grid(row=1, column=0, sticky="ew", pady=(10, 0))
-        catalogue.columnconfigure(1, weight=1)
         catalogue_fields = (
             ("Description", "description"),
             ("Manufacturer", "manufacturer"),
-            ("Manufacturer P/N", "mpn"),
+            ("MPN", "mpn"),
             ("Package", "package"),
-            ("Stock (catalogue)", "stock"),
-            ("Unit price (USD)", "price"),
+            ("Stock", "stock"),
+            ("Lowest listed unit price", "price"),
+            ("Price breaks (USD)", "price_breaks"),
             ("Category", "category"),
             ("Library class", "basic"),
             ("Attributes", "attributes"),
@@ -392,17 +400,60 @@ class ComponentBrowser:
             ttk.Label(
                 catalogue,
                 textvariable=self.detail_vars[key],
-                wraplength=365,
+                wraplength=430,
                 justify="left",
             ).grid(row=row, column=1, sticky="ew", pady=3)
 
+        alternatives = ttk.LabelFrame(
+            content, text="Other purchasable JLCPCB listings for this exact MPN", padding=8
+        )
+        alternatives.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        alternatives.columnconfigure(0, weight=1)
+        self.alternatives_status_var = self.tk.StringVar(
+            value="Add an MPN custom field to compare listings."
+        )
+        self.alternatives_tree = ttk.Treeview(
+            alternatives,
+            columns=("part", "package", "class", "stock", "minimum", "price"),
+            show="headings",
+            height=5,
+            selectmode="browse",
+        )
+        alt_headings = {
+            "part": ("JLCPCB part", 115),
+            "package": ("Package", 80),
+            "class": ("Library", 85),
+            "stock": ("Stock / status", 120),
+            "minimum": ("Minimum", 85),
+            "price": ("Lowest price break", 160),
+        }
+        for key, (label, width) in alt_headings.items():
+            self.alternatives_tree.heading(key, text=label)
+            self.alternatives_tree.column(key, width=width, minwidth=60, stretch=key == "price")
+        self.alternatives_tree.grid(row=0, column=0, sticky="ew")
+        alt_scroll = ttk.Scrollbar(
+            alternatives, orient="vertical", command=self.alternatives_tree.yview
+        )
+        alt_scroll.grid(row=0, column=1, sticky="ns")
+        self.alternatives_tree.configure(yscrollcommand=alt_scroll.set)
+        self.alternatives_tree.bind(
+            "<Double-1>", lambda _event: self.open_selected_alternative()
+        )
+        ttk.Label(
+            alternatives,
+            textvariable=self.alternatives_status_var,
+            foreground="#667085",
+            wraplength=850,
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
+
         schematic = ttk.LabelFrame(content, text="Schematic properties", padding=10)
-        schematic.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+        schematic.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         schematic.columnconfigure(1, weight=1)
         schematic_fields = (
             ("Reference", "reference"),
             ("Value", "value"),
             ("LCSC / JLCPCB", "part"),
+            ("MPN property", "schematic_mpn"),
             ("Footprint", "footprint"),
             ("Datasheet", "datasheet"),
             ("Sheet", "sheet"),
@@ -414,7 +465,7 @@ class ComponentBrowser:
             ttk.Label(
                 schematic,
                 textvariable=self.detail_vars[key],
-                wraplength=365,
+                wraplength=430,
                 justify="left",
             ).grid(row=row, column=1, sticky="ew", pady=3)
 
@@ -422,19 +473,19 @@ class ComponentBrowser:
             content,
             textvariable=self.detail_vars["source"],
             foreground="#667085",
-            wraplength=400,
+            wraplength=850,
             justify="left",
-        ).grid(row=3, column=0, sticky="w", pady=(8, 0))
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
         ttk.Label(
             content,
             textvariable=self.catalogue_status_var,
             foreground="#667085",
-            wraplength=400,
+            wraplength=850,
             justify="left",
-        ).grid(row=4, column=0, sticky="w", pady=(4, 0))
+        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
         actions = ttk.Frame(content)
-        actions.grid(row=5, column=0, sticky="ew", pady=(12, 0))
+        actions.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         ttk.Button(
             actions, text="Select in schematic", command=self.select_selected
         ).pack(side="left", padx=(0, 8))
@@ -445,7 +496,7 @@ class ComponentBrowser:
         ).pack(side="left")
 
         links = ttk.Frame(content)
-        links.grid(row=6, column=0, sticky="ew", pady=(8, 0))
+        links.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         links.columnconfigure((0, 1), weight=1)
         link_actions = (
             ("Copy part ID", self.copy_part_id),
@@ -552,6 +603,9 @@ class ComponentBrowser:
         self.detail_vars["footprint"].set(component.footprint or "—")
         self.detail_vars["datasheet"].set(self._format_datasheet_display(component.datasheet))
         self.detail_vars["sheet"].set(component.sheet_path or "—")
+        self.detail_vars["schematic_mpn"].set(
+            component.manufacturer_part_number or "—"
+        )
         self._clear_catalogue_detail()
         self.catalogue_status_var.set("Loading catalogue metadata…")
         self.image_label.configure(
@@ -566,7 +620,7 @@ class ComponentBrowser:
         try:
             part_code = component.part_code
             future = self._catalogue_executor.submit(
-                self._load_catalogue_details, part_code
+                self._load_catalogue_details, component
             )
             future.add_done_callback(
                 lambda completed: self._catalogue_queue.put(
@@ -579,15 +633,26 @@ class ComponentBrowser:
             )
 
     def _load_catalogue_details(
-        self, part_code: str
-    ) -> tuple[JlcPartDetails | None, bytes | None]:
-        details = self.provider.lookup(part_code)
+        self, component: SchematicComponent
+    ) -> tuple[JlcPartDetails | None, bytes | None, list[JlcPartDetails], str]:
+        """Fetch current supplier details, the supplier image, and exact MPN matches."""
+        details = self.provider.lookup(component.part_code, force_refresh=True)
         image_data = (
             _download_product_image(details.image_url)
             if details is not None and details.image_url
             else None
         )
-        return details, image_data
+        mpn = component.manufacturer_part_number or (
+            details.manufacturer_part_number if details is not None else ""
+        )
+        alternatives: list[JlcPartDetails] = []
+        alternative_error = ""
+        if mpn and details is not None:
+            try:
+                alternatives = self.provider.search_by_mpn(mpn)
+            except Exception as exc:
+                alternative_error = str(exc)
+        return details, image_data, alternatives, alternative_error
 
     def _drain_catalogue_queue(self) -> None:
         if self._closed:
@@ -600,7 +665,7 @@ class ComponentBrowser:
             if token != self._detail_token:
                 continue
             try:
-                details, image_data = future.result()
+                details, image_data, alternatives, alternative_error = future.result()
             except Exception as exc:
                 self.catalogue_status_var.set(f"Catalogue lookup failed: {exc}")
                 continue
@@ -609,7 +674,9 @@ class ComponentBrowser:
                     "No catalogue match was found. The part can still be opened in LCSC."
                 )
                 continue
-            self._show_catalogue_details(details, image_data)
+            self._show_catalogue_details(
+                details, image_data, alternatives, alternative_error
+            )
         summary_future = self._summary_future
         if summary_future is not None and summary_future.done():
             self._summary_future = None
@@ -675,6 +742,7 @@ class ComponentBrowser:
             "description",
             "stock",
             "price",
+            "price_breaks",
             "category",
             "basic",
             "attributes",
@@ -682,9 +750,18 @@ class ComponentBrowser:
         ):
             self.detail_vars[key].set("—")
         self.catalogue_status_var.set("")
+        self._alternatives.clear()
+        self._alternative_by_iid.clear()
+        if hasattr(self, "alternatives_tree"):
+            self.alternatives_tree.delete(*self.alternatives_tree.get_children())
+            self.alternatives_status_var.set("No MPN alternatives loaded.")
 
     def _show_catalogue_details(
-        self, details: JlcPartDetails, image_data: bytes | None
+        self,
+        details: JlcPartDetails,
+        image_data: bytes | None,
+        alternatives: list[JlcPartDetails],
+        alternative_error: str = "",
     ) -> None:
         self._catalogue_details = details
         self.detail_vars["manufacturer"].set(details.manufacturer or "—")
@@ -694,6 +771,14 @@ class ComponentBrowser:
         self.detail_vars["stock"].set(
             f"{details.stock:,}" if details.stock is not None else "Unknown"
         )
+        supplied_mpn = (
+            self.selected_component.manufacturer_part_number
+            if self.selected_component is not None
+            else ""
+        )
+        self.detail_vars["mpn"].set(
+            supplied_mpn or details.manufacturer_part_number or "—"
+        )
         if details.unit_price_usd is None:
             price = "Unknown"
         elif details.unit_price_usd < 0.01:
@@ -701,6 +786,14 @@ class ComponentBrowser:
         else:
             price = f"USD {details.unit_price_usd:.4f}"
         self.detail_vars["price"].set(price)
+        price_tiers = details.buy_price_tiers or details.price_tiers
+        self.detail_vars["price_breaks"].set(
+            "\n".join(
+                f"{tier.quantity:,}+ : USD {tier.unit_price_usd:.6f}"
+                for tier in price_tiers[:6]
+            )
+            or (price if price != "Unknown" else "Unknown")
+        )
         self.detail_vars["category"].set(details.category or "—")
         if details.is_basic is True:
             library_class = "Basic"
@@ -720,19 +813,16 @@ class ComponentBrowser:
         self.detail_vars["source"].set(
             f"Source: {details.source_label}. Catalogue stock and prices are indicative."
         )
-        self.catalogue_status_var.set(
-            "Catalogue details loaded."
-            if not details.stale
-            else "Showing older cached catalogue data because the provider did not respond."
-        )
+        self.catalogue_status_var.set("Catalogue details loaded.")
         self._show_product_image(image_data)
+        self._show_alternatives(alternatives, details.lcsc, alternative_error)
 
     def _show_product_image(self, image_data: bytes | None) -> None:
         if not image_data:
             self.image_label.configure(
                 image="",
-                text="No catalogue image supplied by the data source",
-                padding=30,
+                text="No catalogue image",
+                padding=8,
             )
             self._image_ref = None
             return
@@ -743,13 +833,13 @@ class ComponentBrowser:
 
             with Image.open(BytesIO(image_data)) as source:
                 image = source.convert("RGB")
-                image.thumbnail((420, 230), Image.Resampling.LANCZOS)
+                image.thumbnail((180, 150), Image.Resampling.LANCZOS)
             photo = ImageTk.PhotoImage(image, master=self.root)
         except Exception:
             self.image_label.configure(
                 image="",
                 text="Catalogue image could not be decoded",
-                padding=30,
+                padding=8,
             )
             self._image_ref = None
             return
@@ -761,12 +851,99 @@ class ComponentBrowser:
             variable.set("—")
         self._catalogue_details = None
         self._image_ref = None
+        self._alternatives.clear()
+        self._alternative_by_iid.clear()
+        if hasattr(self, "alternatives_tree"):
+            self.alternatives_tree.delete(*self.alternatives_tree.get_children())
+            self.alternatives_status_var.set("No linked component selected.")
         self.image_label.configure(
             image="",
             text="No linked schematic components match the search",
             padding=30,
         )
         self.catalogue_status_var.set("")
+
+
+    @staticmethod
+    def _alternative_price(details: JlcPartDetails) -> str:
+        tiers = details.buy_price_tiers or details.price_tiers
+        if tiers:
+            tier = tiers[0]
+            return f"USD {tier.unit_price_usd:.6f} @ {tier.quantity:,}+"
+        if details.unit_price_usd is not None:
+            return f"USD {details.unit_price_usd:.6f}"
+        return "Unknown"
+
+    @staticmethod
+    def _alternative_minimum(details: JlcPartDetails) -> str:
+        minimum = details.min_purchase_num
+        if minimum is None:
+            minimum = details.pre_min_purchase_num
+        return f"{minimum:,}" if minimum else "—"
+
+    @staticmethod
+    def _alternative_stock(details: JlcPartDetails) -> str:
+        if details.stock is None:
+            return "Unknown"
+        if details.stock > 0:
+            return f"{details.stock:,} in stock"
+        if details.is_buyable is True and (details.can_presale_number or 0) > 0:
+            return "Pre-order"
+        return "Out of stock"
+
+    def _show_alternatives(
+        self,
+        alternatives: list[JlcPartDetails],
+        selected_lcsc: str,
+        search_error: str = "",
+    ) -> None:
+        self._alternatives = list(alternatives)
+        self._alternative_by_iid.clear()
+        self.alternatives_tree.delete(*self.alternatives_tree.get_children())
+        if not alternatives:
+            self.alternatives_status_var.set(
+                f"MPN search failed: {search_error}"
+                if search_error
+                else "No purchasable exact-MPN listings were returned by JLCPCB."
+            )
+            return
+
+        for index, details in enumerate(alternatives):
+            iid = f"alternative-{index}"
+            self._alternative_by_iid[iid] = details
+            library = (
+                "Basic" if details.is_basic is True
+                else "Extended" if details.is_basic is False
+                else "Unknown"
+            )
+            if details.is_preferred:
+                library += " · Preferred"
+            self.alternatives_tree.insert(
+                "",
+                "end",
+                iid=iid,
+                values=(
+                    details.lcsc + ("  ✓" if details.lcsc == selected_lcsc else ""),
+                    details.package or "—",
+                    library,
+                    self._alternative_stock(details),
+                    self._alternative_minimum(details),
+                    self._alternative_price(details),
+                ),
+            )
+        self.alternatives_status_var.set(
+            f"Showing all {len(alternatives)} purchasable JLCPCB listing(s) returned "
+            "with this exact MPN, sorted by lowest listed unit price. Double-click a row "
+            "to open its JLCPCB product page."
+        )
+
+    def open_selected_alternative(self) -> None:
+        selected = self.alternatives_tree.selection()
+        if not selected:
+            return
+        details = self._alternative_by_iid.get(selected[0])
+        if details is not None:
+            self._open_url(details.product_url)
 
     def _select_symbols(self, components: list[SchematicComponent]) -> None:
         if not components:

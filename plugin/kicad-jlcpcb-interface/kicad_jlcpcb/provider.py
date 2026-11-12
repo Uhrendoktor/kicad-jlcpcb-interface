@@ -10,7 +10,7 @@ import json
 import re
 import sqlite3
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -86,6 +86,31 @@ def _numeric(value: Any) -> float | None:
         if parsed is not None:
             return _numeric(parsed)
     return None
+
+
+def _price_tiers(component: dict[str, Any], *keys: str) -> tuple["PriceTier", ...]:
+    """Read JLCPCB's quantity price ladder without inventing missing price breaks."""
+    raw = _first(component, *keys)
+    if not isinstance(raw, list):
+        return ()
+    tiers = []
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        quantity = _integer(
+            _first(row, "startNumber", "start_number", "startQty", "minQuantity")
+        )
+        price = _numeric(
+            _first(row, "productPrice", "price", "unitPrice", "unit_price")
+        )
+        if quantity is not None and quantity > 0 and price is not None:
+            tiers.append(PriceTier(quantity, price))
+    return tuple(sorted(tiers, key=lambda item: item.quantity))
+
+
+def _normalize_mpn(value: str) -> str:
+    """Compare MPNs ignoring only spaces and punctuation, not alphanumeric suffixes."""
+    return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
 
 
 def _integer(value: Any) -> int | None:
@@ -173,6 +198,14 @@ def _datasheet_url(component: dict[str, Any], extra: dict[str, Any]) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class PriceTier:
+    """A supplier price break at or above a minimum purchased quantity."""
+
+    quantity: int
+    unit_price_usd: float
+
+
+@dataclass(frozen=True, slots=True)
 class JlcPartDetails:
     """Normalized fields useful for a schematic component card."""
 
@@ -193,6 +226,14 @@ class JlcPartDetails:
     source: str = "Community JLC search"
     fetched_at: float = 0.0
     stale: bool = False
+    is_cached: bool = False
+    price_tiers: tuple[PriceTier, ...] = ()
+    buy_price_tiers: tuple[PriceTier, ...] = ()
+    is_buyable: bool | None = None
+    can_presale_number: int | None = None
+    min_purchase_num: int | None = None
+    pre_min_purchase_num: int | None = None
+    no_buy_reason: str = ""
 
     @property
     def source_label(self) -> str:
@@ -205,7 +246,12 @@ class JlcPartDetails:
             age_label = f"{age // 3600} h ago"
         else:
             age_label = f"{age // 86400} d ago"
-        freshness = "stale cache" if self.stale else "cached"
+        if self.stale:
+            freshness = "stale cached snapshot"
+        elif self.is_cached:
+            freshness = "cached snapshot"
+        else:
+            freshness = "live response"
         return f"{self.source} · {freshness} · {age_label}"
 
 
@@ -245,8 +291,21 @@ def normalize_component_payload(
         raw_attributes = extra.get("attributes", {})
     attributes = _attribute_mapping(raw_attributes)
 
-    raw_price = _first(
-        component, "initialPrice", "initial_price", "price1", "price", "unit_price", "unitPrice"
+    price_tiers = _price_tiers(
+        component, "componentPrices", "prices", "component_prices"
+    )
+    buy_price_tiers = _price_tiers(
+        component, "buyComponentPrices", "buyPrices", "buy_component_prices"
+    )
+    raw_price = (
+        buy_price_tiers[0].unit_price_usd
+        if buy_price_tiers
+        else price_tiers[0].unit_price_usd
+        if price_tiers
+        else _first(
+            component, "initialPrice", "initial_price", "price1", "price",
+            "unit_price", "unitPrice"
+        )
     )
     if raw_price is None:
         raw_price = _first(extra, "price", "prices", "productPriceList")
@@ -333,16 +392,32 @@ def normalize_component_payload(
         category=str(category or ""),
         attributes=attributes,
         product_url=str(
-            _first(component, "lcscGoodsUrl", "url")
-            or f"https://jlcpcb.com/partdetail/{normalized}"
+            (
+                f"https://jlcpcb.com/partdetail/{_first(component, 'urlSuffix', 'url_suffix')}"
+                if _first(component, "urlSuffix", "url_suffix")
+                else _first(component, "lcscGoodsUrl", "url")
+                or f"https://jlcpcb.com/partdetail/{normalized}"
+            )
         ),
         source=str(component.get("_provider_label") or "Community JLC search"),
         fetched_at=float(fetched_at if fetched_at is not None else time.time()),
         stale=stale,
+        price_tiers=price_tiers,
+        buy_price_tiers=buy_price_tiers,
+        is_buyable=_boolean(_first(component, "isBuyComponent", "is_buyable", "buyable")),
+        can_presale_number=_integer(_first(component, "canPresaleNumber", "can_presale_number")),
+        min_purchase_num=_integer(_first(component, "minPurchaseNum", "min_purchase_num")),
+        pre_min_purchase_num=_integer(_first(component, "preMinPurchaseNum", "pre_min_purchase_num")),
+        no_buy_reason=str(_first(component, "noBuyReason", "no_buy_reason") or ""),
     )
 
 class JlcSearchProvider:
-    """Exact LCSC lookup with SQLite TTL cache and graceful offline fallback."""
+    """Live JLCPCB website lookup with explicit source-labelled offline fallbacks."""
+
+    SEARCH_URL = (
+        "https://jlcpcb.com/api/overseas-pcb-order/v1/"
+        "shoppingCart/smtGood/selectSmtComponentList/v2"
+    )
 
     def __init__(
         self,
@@ -544,7 +619,7 @@ class JlcSearchProvider:
             and not force_refresh
             and now - memory[1] < self.memory_ttl_seconds
         ):
-            return memory[0]
+            return replace(memory[0], is_cached=True)
 
         cached = self._read_cache(lcsc)
         live = self._fetch_jlcpcb_detail(lcsc)
@@ -583,5 +658,109 @@ class JlcSearchProvider:
                 stale=cache_age >= self.cache_ttl_seconds,
             )
             self._memory_cache[lcsc] = (details, now)
-            return details
+            return replace(details, is_cached=True)
         return None
+
+    def _fetch_mpn_page(self, mpn: str, page: int, page_size: int) -> dict[str, Any]:
+        """Call the same undocumented JLCPCB parts-search endpoint used by /parts."""
+        payload = {
+            "keyword": mpn,
+            "currentPage": page,
+            "pageSize": page_size,
+            "presaleType": "",
+            "searchType": 2,
+            "componentLibraryType": None,
+            "componentAttributeList": [],
+            "componentBrandList": [],
+            "componentSpecificationList": [],
+            "paramList": [],
+            "firstSortName": None,
+            "secondSortName": None,
+            "searchSource": "search",
+            "stockFlag": False,
+        }
+        request = Request(
+            self.SEARCH_URL,
+            data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+            headers={
+                "Accept": "application/json, text/plain, */*",
+                "Content-Type": "application/json;charset=UTF-8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Origin": "https://jlcpcb.com",
+                "Referer": "https://jlcpcb.com/parts",
+                "User-Agent": (
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                ),
+            },
+            method="POST",
+        )
+        with self.opener(request, timeout=self.timeout_seconds) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        if not isinstance(result, dict) or result.get("code") not in (None, 200):
+            raise RuntimeError(
+                f"JLCPCB MPN search rejected the request: {result.get('message', 'unknown error') if isinstance(result, dict) else 'invalid response'}"
+            )
+        data = result.get("data")
+        page_info = data.get("componentPageInfo") if isinstance(data, dict) else None
+        if not isinstance(page_info, dict):
+            raise RuntimeError("JLCPCB MPN search response has no componentPageInfo.")
+        return page_info
+
+    def search_by_mpn(
+        self, manufacturer_part_number: str, *, page_size: int = 100, max_pages: int = 25
+    ) -> list[JlcPartDetails]:
+        """Return all purchasable JLCPCB listings with an exact normalized MPN.
+
+        Results are fetched live from JLCPCB (not the community index). Exact
+        alphanumeric MPN equality prevents similar but incompatible parts from
+        being presented as substitutions. In-stock and orderable pre-order
+        listings are retained; rows explicitly marked non-purchasable are not.
+        """
+        mpn = str(manufacturer_part_number or "").strip()
+        wanted = _normalize_mpn(mpn)
+        if not wanted:
+            return []
+        page_size = max(1, min(int(page_size), 1000))
+        max_pages = max(1, min(int(max_pages), 25))
+        found: dict[str, JlcPartDetails] = {}
+        for page in range(1, max_pages + 1):
+            page_info = self._fetch_mpn_page(mpn, page, page_size)
+            rows = page_info.get("list", [])
+            if not isinstance(rows, list) or not rows:
+                break
+            fetched_at = time.time()
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                candidate_mpn = str(_first(row, "componentModelEn", "mpn") or "")
+                if _normalize_mpn(candidate_mpn) != wanted:
+                    continue
+                buyable = _boolean(_first(row, "isBuyComponent", "is_buyable", "buyable"))
+                if buyable is False:
+                    continue
+                raw_code = _first(row, "componentCode", "lcsc", "lcsc_code")
+                if raw_code in (None, ""):
+                    continue
+                try:
+                    code = normalize_lcsc_code(str(raw_code))
+                except ValueError:
+                    continue
+                row = dict(row)
+                row["_provider_label"] = "JLCPCB MPN search (unofficial)"
+                details = normalize_component_payload(
+                    row, lcsc=code, fetched_at=fetched_at
+                )
+                found[code] = details
+            pages = _integer(page_info.get("pages")) or 1
+            if page >= min(pages, max_pages):
+                break
+        return sorted(
+            found.values(),
+            key=lambda item: (
+                item.unit_price_usd is None,
+                item.unit_price_usd if item.unit_price_usd is not None else float("inf"),
+                -(item.stock if item.stock is not None else -1),
+                item.lcsc,
+            ),
+        )

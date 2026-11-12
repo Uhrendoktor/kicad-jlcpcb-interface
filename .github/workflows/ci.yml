@@ -57,7 +57,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends software-properties-common
           sudo add-apt-repository --yes ppa:kicad/kicad-dev-nightly
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends kicad-nightly python3-tk python3-pil python3-pil.imagetk kicad-nightly-symbols xvfb xauth
+          sudo apt-get install -y --no-install-recommends kicad-nightly python3.12-venv python3-tk python3-pil python3-pil.imagetk kicad-nightly-symbols xvfb xauth xdotool
           CLI="$(command -v kicad-cli-nightly || command -v kicad-cli || true)"
           if [[ -z "$CLI" ]]; then
             echo "::error::KiCad CLI was not installed"
@@ -66,6 +66,9 @@ jobs:
           echo "KICAD_CLI=$CLI" >> "$GITHUB_ENV"
           "$CLI" version
           python3 -c 'import tkinter; from PIL import Image, ImageGrab, ImageTk; print("Tk/Pillow capture runtime=ready")'
+          python3.12 -m venv --system-site-packages "${RUNNER_TEMP}/kicad-visual-venv"
+          "${RUNNER_TEMP}/kicad-visual-venv/bin/python" -m pip install --disable-pip-version-check -r plugin/kicad-jlcpcb-interface/requirements.txt
+          "${RUNNER_TEMP}/kicad-visual-venv/bin/python" -c 'import kipy; import tkinter; from PIL import Image, ImageGrab, ImageTk; print("kicad-python/Tk/Pillow capture runtime=ready")'
 
       - name: Generate browser screenshots, GIF and native symbol SVGs
         shell: bash
@@ -76,7 +79,7 @@ jobs:
           rm -rf "$OUTPUT_DIR"
           mkdir -p "$OUTPUT_DIR"
           xvfb-run -a -s "-screen 0 1920x1500x24" \
-            python3 tests/capture_visual_docs.py --output-dir "$OUTPUT_DIR"
+            "${RUNNER_TEMP}/kicad-visual-venv/bin/python" tests/capture_visual_docs.py --output-dir "$OUTPUT_DIR"
 
       - name: Upload generated visual documentation bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

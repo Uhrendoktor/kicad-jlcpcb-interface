@@ -36,6 +36,7 @@ class SchematicComponent:
     datasheet: str
     sheet_path: str
     symbol: Any
+    manufacturer_part_number: str = ""
 
     @property
     def part_code(self) -> str:
@@ -50,6 +51,7 @@ class SchematicComponent:
                 self.value,
                 self.part_reference,
                 self.part_code,
+                self.manufacturer_part_number,
                 self.footprint,
                 self.sheet_path,
             )
@@ -87,6 +89,23 @@ def component_from_symbol(
 
     footprint = read_field_text(getattr(symbol, "footprint_field", None))
     datasheet = read_field_text(getattr(symbol, "datasheet_field", None))
+    mpn_aliases = {
+        "mpn",
+        "manufacturer part number",
+        "manufacturer part no.",
+        "manufacturer part no",
+        "mfr pn",
+        "mfr_pn",
+    }
+    manufacturer_part_number = next(
+        (
+            read_field_text(field)
+            for field in getattr(symbol, "user_fields", ()) or ()
+            if str(getattr(field, "name", "")).strip().casefold() in mpn_aliases
+            and read_field_text(field)
+        ),
+        "",
+    )
     return SchematicComponent(
         reference=str(getattr(symbol, "reference", "") or "").strip(),
         value=str(getattr(symbol, "value", "") or "").strip(),
@@ -95,6 +114,7 @@ def component_from_symbol(
         datasheet=datasheet,
         sheet_path=_human_sheet_path(getattr(symbol, "path", None)),
         symbol=symbol,
+        manufacturer_part_number=manufacturer_part_number,
     )
 
 
