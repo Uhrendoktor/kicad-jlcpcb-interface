@@ -332,6 +332,47 @@ def _enable_ipc_server(home: Path, version: str, python: str) -> Path:
     return common_path
 
 
+def _update_schematic_item_checked(schematic: Any, symbol: Any) -> None:
+    """Update a placed symbol and inspect KiCad's per-item IPC status directly.
+
+    kicad-python's update_items() wrapper currently unwraps the optional result
+    Any unconditionally. KiCad may instead return an ItemUpdateResult carrying
+    only a status, so inspect the documented response rather than hiding a
+    rejected symbol behind an AttributeError in unpack_any().
+    """
+    from kipy.proto.common.commands import editor_commands_pb2
+    from kipy.util import pack_any
+
+    command = editor_commands_pb2.UpdateItems()
+    command.header.document.CopyFrom(schematic.document)
+    command.items.append(pack_any(symbol.proto))
+    response = schematic.client.send(
+        command, editor_commands_pb2.UpdateItemsResponse
+    )
+
+    if int(response.status) != 1:
+        raise RuntimeError(
+            "KiCad rejected the schematic symbol update request "
+            f"(request status {int(response.status)})."
+        )
+    if len(response.updated_items) != 1:
+        raise RuntimeError(
+            "KiCad returned an unexpected number of symbol update results: "
+            f"{len(response.updated_items)}."
+        )
+
+    item_status = response.updated_items[0].status
+    if int(item_status.code) != 1:
+        detail = str(getattr(item_status, "error_message", "") or "").strip()
+        message = (
+            "KiCad rejected the schematic symbol update "
+            f"(item status {int(item_status.code)})."
+        )
+        if detail:
+            message += f" {detail}"
+        raise RuntimeError(message)
+
+
 def _open_live_eeschema(output_dir: Path, work_dir: Path):
     """Launch Eeschema, connect with kicad-python, and create real linked symbols."""
     from kipy import KiCad
@@ -498,10 +539,8 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
                 field.name = field_name
                 field.text.text = field_value
 
-            updated = schematic.update_items([symbol])
-            if not updated:
-                raise RuntimeError(f"KiCad did not update {record['reference']}.")
-            created[record["reference"]] = updated[0]
+            _update_schematic_item_checked(schematic, symbol)
+            created[record["reference"]] = symbol
 
         schematic.save()
         discovered = find_linked_components(schematic)
