@@ -51,6 +51,7 @@ class SchematicComponent:
                 self.part_reference,
                 self.part_code,
                 self.footprint,
+                self.sheet_path,
             )
         ).casefold()
 
