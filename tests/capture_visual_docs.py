@@ -590,7 +590,14 @@ def _position_eeschema_window(width: int = 940, height: int = 1400) -> None:
         check=True,
         timeout=10,
     )
-    subprocess.run([xdotool, "windowactivate", window_id], check=True, timeout=10)
+    # Xvfb CI has no window manager, so EWMH windowactivate is unsupported.
+    subprocess.run(
+        [xdotool, "windowfocus", "--sync", window_id],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
 
 
 def _drive_overview(
