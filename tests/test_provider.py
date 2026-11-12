@@ -32,6 +32,33 @@ class FakeResponse:
         return self.body
 
 
+def jlc_detail(lcsc: str = "C25804") -> dict:
+    return {
+        "code": 200,
+        "data": {
+            "componentCode": lcsc,
+            "componentName": "100nF 50V X7R",
+            "componentBrandEn": "Samsung",
+            "componentModelEn": "CL10B104KB8NNNC",
+            "componentSpecificationEn": "0603",
+            "componentLibraryType": "base",
+            "stockCount": 250000,
+            "initialPrice": 0.0031,
+            "prices": [{"startNumber": 1, "price": 0.0031}],
+            "attributes": [
+                {"attributeNameEn": "Capacitance", "attributeValueEn": "100nF"},
+                {"attributeNameEn": "Tolerance", "attributeValueEn": "10%"},
+            ],
+            "productBigImageAccessIdUrl": (
+                "https://images.example.test/part.jpg?x-oss-signature=temporary"
+            ),
+            "minImageAccessIdUrl": "",
+            "dataManualOfficialLink": "https://example.test/datasheet.pdf",
+            "lcscGoodsUrl": "https://lcsc.com/product-detail/C25804.html",
+        },
+    }
+
+
 class ProviderTests(unittest.TestCase):
     def test_normalizes_numeric_and_prefixed_part_codes(self):
         self.assertEqual(normalize_lcsc_code("C25804"), "C25804")
@@ -66,7 +93,28 @@ class ProviderTests(unittest.TestCase):
         self.assertTrue(details.is_basic)
         self.assertFalse(details.is_preferred)
 
-    def test_maps_older_nested_details_when_provider_exposes_them(self):
+    def test_maps_jlcpcb_detail_fields_attributes_and_signed_image(self):
+        details = normalize_component_payload(
+            jlc_detail()["data"],
+            lcsc="C25804",
+            fetched_at=123.0,
+        )
+        self.assertEqual(details.lcsc, "C25804")
+        self.assertEqual(details.description, "100nF 50V X7R")
+        self.assertEqual(details.manufacturer, "Samsung")
+        self.assertEqual(details.manufacturer_part_number, "CL10B104KB8NNNC")
+        self.assertEqual(details.package, "0603")
+        self.assertEqual(details.stock, 250000)
+        self.assertEqual(details.unit_price_usd, 0.0031)
+        self.assertTrue(details.is_basic)
+        self.assertEqual(details.attributes["Capacitance"], "100nF")
+        self.assertEqual(
+            details.image_url,
+            "https://images.example.test/part.jpg?x-oss-signature=temporary",
+        )
+        self.assertEqual(details.source, "Community JLC search")
+
+    def test_maps_older_nested_details_and_price_tiers(self):
         details = normalize_component_payload(
             {
                 "lcsc": 25804,
@@ -86,7 +134,6 @@ class ProviderTests(unittest.TestCase):
                         }
                     ],
                     "attributes": {"Capacitance": "100nF", "Tolerance": "10%"},
-                    "url": "https://www.lcsc.com/product-detail/C25804.html",
                 },
             },
             lcsc="C25804",
@@ -99,11 +146,45 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(details.image_url, "https://example.test/large.png")
         self.assertEqual(details.attributes["Capacitance"], "100nF")
 
-    def test_exact_lookup_filters_false_positive_search_results(self):
+    def test_direct_jlcpcb_lookup_is_preferred_and_signed_urls_are_not_persisted(self):
         requests = []
 
         def opener(request, timeout):
             requests.append((request, timeout))
+            return FakeResponse(jlc_detail())
+
+        with TemporaryDirectory() as temp:
+            cache_path = Path(temp) / "parts.sqlite3"
+            provider = JlcSearchProvider(cache_path, opener=opener)
+            result = provider.lookup("C25804")
+
+            self.assertIsNotNone(result)
+            self.assertEqual(result.source, "JLCPCB parts-page endpoint (unofficial)")
+            self.assertIn("part.jpg", result.image_url)
+            self.assertEqual(len(requests), 1)
+            self.assertIn(
+                "/getComponentDetail?",
+                requests[0][0].full_url,
+            )
+            query = parse_qs(urlparse(requests[0][0].full_url).query)
+            self.assertEqual(query["componentCode"], ["C25804"])
+
+            with provider._connect() as connection:
+                row = connection.execute(
+                    "SELECT payload_json FROM jlc_part_cache WHERE lcsc = ?",
+                    ("C25804",),
+                ).fetchone()
+            persisted = json.loads(row["payload_json"])
+            self.assertEqual(persisted["productBigImageAccessIdUrl"], "")
+            self.assertNotIn("x-oss-signature", json.dumps(persisted))
+
+    def test_community_fallback_filters_false_positive_search_results(self):
+        requests = []
+
+        def opener(request, timeout):
+            requests.append(request)
+            if "getComponentDetail" in request.full_url:
+                return FakeResponse({"code": 500, "data": None})
             return FakeResponse(
                 {
                     "components": [
@@ -120,52 +201,58 @@ class ProviderTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result.lcsc, "C25804")
         self.assertEqual(result.description, "Target capacitor")
-        self.assertEqual(len(requests), 1)
-        query = parse_qs(urlparse(requests[0][0].full_url).query)
+        self.assertEqual(result.source, "Community JLC search")
+        self.assertEqual(len(requests), 2)
+        query = parse_qs(urlparse(requests[1].full_url).query)
         self.assertEqual(query["q"], ["C25804"])
 
-    def test_fresh_result_uses_cache_without_second_http_request(self):
-        request_count = []
+    def test_fresh_result_uses_memory_cache_without_second_http_request(self):
+        requests = []
 
-        def opener(_request, timeout):
-            request_count.append(timeout)
-            return FakeResponse({"components": [{"lcsc": 14663, "stock": 200}]})
+        def opener(request, timeout):
+            requests.append(request)
+            return FakeResponse(jlc_detail("C14663"))
 
         with TemporaryDirectory() as temp:
             provider = JlcSearchProvider(Path(temp) / "parts.sqlite3", opener=opener)
             first = provider.lookup("C14663")
             second = provider.lookup("14663")
 
-        self.assertEqual(request_count, [8.0])
-        self.assertEqual(first.stock, 200)
-        self.assertEqual(second.stock, 200)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(first.stock, 250000)
+        self.assertEqual(second.stock, 250000)
         self.assertFalse(second.stale)
 
-    def test_returns_stale_cache_when_provider_is_unavailable(self):
-        responses = [FakeResponse({"components": [{"lcsc": 25804, "stock": 500}]})]
+    def test_returns_stale_cache_when_both_sources_are_unavailable(self):
+        calls = []
 
-        def opener(_request, timeout):
-            if responses:
-                return responses.pop(0)
+        def opener(request, timeout):
+            calls.append(request.full_url)
+            if len(calls) == 1:
+                return FakeResponse(jlc_detail())
             raise OSError("offline")
 
         with TemporaryDirectory() as temp:
             provider = JlcSearchProvider(Path(temp) / "parts.sqlite3", opener=opener)
             fresh = provider.lookup("C25804")
-            # Expire the cached row deterministically without sleeping.
+            # Expire the cached row and in-memory result deterministically.
             with provider._connect() as connection:
                 connection.execute(
                     "UPDATE jlc_part_cache SET fetched_at = 1 WHERE lcsc = ?",
                     ("C25804",),
                 )
+            provider._memory_cache.clear()
             stale = provider.lookup("C25804", force_refresh=True)
 
-        self.assertEqual(fresh.stock, 500)
+        self.assertEqual(fresh.stock, 250000)
         self.assertTrue(stale.stale)
-        self.assertEqual(stale.stock, 500)
+        self.assertEqual(stale.stock, 250000)
+        self.assertEqual(len(calls), 3)
 
     def test_returns_none_when_no_match_and_no_cache(self):
-        def opener(_request, timeout):
+        def opener(request, timeout):
+            if "getComponentDetail" in request.full_url:
+                return FakeResponse({"code": 200, "data": None})
             return FakeResponse({"components": [{"lcsc": 99999}]})
 
         with TemporaryDirectory() as temp:
