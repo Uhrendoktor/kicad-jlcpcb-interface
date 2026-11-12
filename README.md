@@ -2,7 +2,7 @@
 
 A KiCad 11 Schematic Editor IPC add-on for browsing components already placed in a schematic and navigating back to their symbol instances.
 
-**Status: early prototype.** The current implementation discovers symbols exposed by the active schematic IPC handle when they have a configurable custom field (default: `LCSC`), provides local search, displays schematic properties, and selects symbols in Eeschema. Live JLCPCB metadata, product photographs, stock/pricing, footprint previews and continuous editor synchronization are not implemented yet. The UI currently uses a product-image placeholder.
+**Status: early prototype.** The current implementation discovers symbols exposed by the active schematic IPC view when they have a configurable custom field (default: `LCSC`), provides local search, selects symbols in Eeschema, and loads catalogue metadata and product images on demand. Live product details are retrieved from JLCPCB's public parts-page endpoint (an undocumented website endpoint, not its approved partner API), with a community catalogue fallback. Stock/prices are indicative catalogue snapshots, not guaranteed real-time quotes. Footprint/3D previews, continuous editor synchronization and cross-sheet navigation remain future work.
 
 ## Intended workflow
 
@@ -10,7 +10,7 @@ A KiCad 11 Schematic Editor IPC add-on for browsing components already placed in
 2. Launch **JLCPCB Component Browser** from the Schematic Editor toolbar or Plugins menu.
 3. Search the project component list by reference, value, LCSC code or footprint.
 4. Select the schematic symbol from the browser, or select matching instances of the same part on the same sheet. KiCad's selection API only selects objects on the currently displayed sheet, so cross-sheet navigation is not implemented yet.
-5. Copy the part identifier, search LCSC, or open the symbol's datasheet.
+5. Review the product image, manufacturer, MPN, package, selected technical attributes, catalogue stock/price and source freshness; copy the part ID or open the product page/datasheet.
 
 The part-link field name is editable in the browser, so projects using another property name (for example `JLCPCB` or `LCSC Part Number`) do not need to rename their fields.
 
@@ -18,7 +18,7 @@ The part-link field name is editable in the browser, so projects using another p
 
 - `plugin/kicad-jlcpcb-interface/plugin.json`: KiCad IPC plugin manifest and schematic action registration.
 - `plugin/kicad-jlcpcb-interface/main.py`: thin IPC action entrypoint.
-- `plugin/kicad-jlcpcb-interface/kicad_jlcpcb/`: schematic scanning, component model and browser UI.
+- `plugin/kicad-jlcpcb-interface/kicad_jlcpcb/`: schematic scanning, component model, browser UI and cached catalogue provider.
 - `plugin/kicad-jlcpcb-interface/requirements.txt`: ABI-specific binary wheels for the official `kicad-python` IPC bindings.
 - `scripts/install_plugin.py`: validates and atomically installs the package into a KiCad version's user plugin directory.
 - `tests/`: unit and package/installer tests that do not require a running KiCad process.
@@ -27,7 +27,9 @@ The IPC bootstrap follows the working pattern in [kicad-blocks](https://github.c
 
 ## Current target
 
-The dependency wheels are pinned to the KiCad Python bindings commit recorded in `plugin/kicad-jlcpcb-interface/kicad-python.lock`. For the initial Linux x86_64 target, the requirements reuse the immutable CPython 3.12/3.13/3.14 wheels published by the kicad-blocks project. The plugin manager installs binary wheels; it will not build the GitLab source dependency itself.
+The component cache is stored below the plugin-specific directory returned by KiCad's `get_plugin_settings_path()` API. Product-image downloads are HTTPS-only and capped at 5 MiB; catalogue HTTP calls and image loading run outside the Tk UI thread. The `JlcSearchProvider` prefers the public JLCPCB parts-page detail endpoint, then falls back to the community [jlcsearch](https://jlcsearch.tscircuit.com) JSON API, and marks old cached records as stale. The JLCPCB endpoint is undocumented and may change; it is not the official partner API. No credentials are embedded.
+
+The dependency wheels are pinned to the KiCad Python bindings commit recorded in `plugin/kicad-jlcpcb-interface/kicad-python.lock`. For the initial Linux x86_64 target, the requirements reuse the immutable CPython 3.12/3.13/3.14 wheels published by the kicad-blocks project. The plugin manager installs binary wheels; it will not build the GitLab source dependency itself. Pillow is included for decoding the product images shown in the browser.
 
 The initial installer supports:
 - KiCad 10.99 development nightly (the KiCad 11 pre-release directory), or KiCad 11.0+.
@@ -76,10 +78,10 @@ Unit tests use fake schematic objects. A live integration test against the targe
 - [x] Filter/search by reference, value, part ID and footprint.
 - [x] Select a symbol or same-part instances on the current sheet.
 - [ ] Verify registration and selection against a live KiCad 10.99 nightly GUI.
-- [ ] JLCPCB/LCSC data-provider abstraction and cached metadata.
-- [ ] Product-image card, manufacturer/package/specification summary.
+- [x] JLCPCB data-provider abstraction, exact lookup and SQLite cache/offline fallback.
+- [x] Product-image card, manufacturer/package/attribute summary, stock/price and source freshness.
 - [ ] Footprint and 3D model previews.
-- [ ] Inventory and pricing, clearly marked with source and retrieval time.
+- [x] Catalogue stock/pricing display, clearly labelled as indicative and source-dated.
 - [ ] Selection synchronization and robust cross-sheet navigation.
 - [ ] Live KiCad nightly GUI integration test and reproducible release package.
 
