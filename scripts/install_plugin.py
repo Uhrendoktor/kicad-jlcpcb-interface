@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """Install KiCad JLCPCB Interface into the current user's KiCad IPC plugin directory."""
+#!/usr/bin/env python3
+"""Install KiCad JLCPCB Interface into the current user's KiCad IPC plugin directory."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
-from pathlib import Path
 import platform
 import re
 import shutil
 import sys
 import tempfile
 import uuid
+from pathlib import Path
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 PLUGIN_DIRECTORY_NAME = "kicad-jlcpcb-interface"
