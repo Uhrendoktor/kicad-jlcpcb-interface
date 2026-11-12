@@ -150,17 +150,186 @@ def _validate_live_supplier_data(cache_dir: Path) -> None:
     )
 
 
-def _write_api_enabled_settings(home: Path, version: str, python: str) -> None:
-    """Enable the KiCad GUI IPC server in an isolated CI user profile."""
-    config_dir = home / ".config" / "kicad" / version
-    config_dir.mkdir(parents=True, exist_ok=True)
-    settings = {
-        "meta": {"filename": "kicad_common", "version": 3},
-        "api": {"enable_server": True},
-    }
-    (config_dir / "kicad_common.json").write_text(
-        json.dumps(settings, indent=2) + "\n", encoding="utf-8"
+def _visible_windows(xdotool: str) -> list[tuple[str, str, str]]:
+    """Return visible X11 windows with their title and class."""
+    result = subprocess.run(
+        [xdotool, "search", "--onlyvisible", "--name", ".*"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
     )
+    windows = []
+    for candidate in result.stdout.splitlines():
+        if not candidate.strip().isdigit():
+            continue
+        title = subprocess.run(
+            [xdotool, "getwindowname", candidate],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        ).stdout.strip()
+        window_class = subprocess.run(
+            [xdotool, "getwindowclassname", candidate],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        ).stdout.strip()
+        windows.append((candidate, title, window_class))
+    return windows
+
+
+def _wait_for_editor(
+    process: subprocess.Popen,
+    schematic_file: Path,
+    xdotool: str,
+    log_path: Path,
+    timeout_s: float = 60.0,
+) -> str:
+    """Accept KiCad's first-run setup wizard and wait for the schematic window."""
+    deadline = time.monotonic() + timeout_s
+    setup_steps = 0
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(
+                "Eeschema exited before opening the live demo schematic "
+                f"(exit {process.returncode}).\n"
+                + log_path.read_text(encoding="utf-8", errors="replace")[-8000:]
+            )
+        windows = _visible_windows(xdotool)
+        setup = next(
+            (
+                item
+                for item in windows
+                if "kicad setup" in (item[1] + " " + item[2]).casefold()
+            ),
+            None,
+        )
+        if setup is not None and setup_steps < 12:
+            subprocess.run(
+                [xdotool, "windowfocus", "--sync", setup[0]],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            subprocess.run(
+                [xdotool, "key", "--clearmodifiers", "Tab"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            subprocess.run(
+                [xdotool, "key", "--clearmodifiers", "Return"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            setup_steps += 1
+            time.sleep(0.75)
+            continue
+        editor = next(
+            (
+                item
+                for item in reversed(windows)
+                if schematic_file.stem.casefold() in item[1].casefold()
+                and (
+                    "schematic editor" in item[1].casefold()
+                    or "eeschema" in item[2].casefold()
+                )
+            ),
+            None,
+        )
+        if editor is not None:
+            return editor[0]
+        time.sleep(0.25)
+    raise TimeoutError(
+        "Eeschema did not open the live demo schematic; "
+        f"process_alive={process.poll() is None}; "
+        f"windows={_visible_windows(xdotool)!r}; "
+        f"log={log_path.read_text(encoding='utf-8', errors='replace')[-8000:]}"
+    )
+
+
+def _launch_eeschema(
+    eeschema: str,
+    schematic_file: Path,
+    env: dict[str, str],
+    xdotool: str,
+    log_path: Path,
+) -> tuple[subprocess.Popen, Any, str]:
+    """Launch Eeschema and wait for its actual editor window."""
+    log_file = log_path.open("w", encoding="utf-8")
+    process = subprocess.Popen(
+        [eeschema, str(schematic_file)],
+        cwd=schematic_file.parent,
+        env=env,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+    )
+    try:
+        window_id = _wait_for_editor(process, schematic_file, xdotool, log_path)
+        return process, log_file, window_id
+    except Exception:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5.0)
+        log_file.close()
+        raise
+
+
+def _close_first_run_eeschema(
+    process: subprocess.Popen, window_id: str, xdotool: str, log_file: Any
+) -> None:
+    """Close the clean first-run editor after it has initialized KiCad's profile."""
+    subprocess.run(
+        [xdotool, "windowclose", window_id],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    try:
+        process.wait(timeout=8.0)
+    except subprocess.TimeoutExpired:
+        process.terminate()
+        try:
+            process.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5.0)
+    log_file.close()
+
+
+def _enable_ipc_server(home: Path, version: str, python: str) -> Path:
+    """Enable KiCad IPC in the real first-run profile rather than a synthetic JSON stub."""
+    candidates = list(home.rglob("kicad_common.json"))
+    if not candidates:
+        raise FileNotFoundError(
+            "Eeschema did not create kicad_common.json during first launch. "
+            f"HOME contents: {[str(path.relative_to(home)) for path in home.rglob('*')]!r}"
+        )
+    common_path = next(
+        (path for path in candidates if path.parent.name == version),
+        candidates[0],
+    )
+    common = json.loads(common_path.read_text(encoding="utf-8"))
+    api_settings = common.setdefault("api", {})
+    api_settings["enable_server"] = True
+    api_settings["interpreter_path"] = python
+    common_path.write_text(
+        json.dumps(common, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return common_path
 
 
 def _open_live_eeschema(output_dir: Path, work_dir: Path):
@@ -174,8 +343,13 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         or shutil.which("kicad-cli")
     )
     eeschema = shutil.which("eeschema-nightly") or shutil.which("eeschema")
+    xdotool = shutil.which("xdotool")
     if not cli or not eeschema:
         raise FileNotFoundError("KiCad CLI and Eeschema are required for the live IPC capture.")
+    if not xdotool:
+        raise FileNotFoundError("xdotool is required to initialize KiCad's first-run profile.")
+    if not os.environ.get("DISPLAY"):
+        raise RuntimeError("Run the visual capture under xvfb-run; DISPLAY is not set.")
 
     version_text = subprocess.run(
         [cli, "version"], check=True, capture_output=True, text=True, timeout=15
@@ -184,8 +358,6 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
 
     home = work_dir / "home"
     home.mkdir(parents=True, exist_ok=True)
-    _write_api_enabled_settings(home, version, sys.executable)
-
     tmp_root = work_dir / "tmp"
     tmp_root.mkdir(parents=True, exist_ok=True)
     socket_path = tmp_root / "kicad" / "api.sock"
@@ -202,58 +374,89 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
     (work_dir / "jlcpcb-live-demo.kicad_pro").write_text("{}\n", encoding="utf-8")
 
     env = os.environ.copy()
+    for key in (
+        "PIP_FIND_LINKS",
+        "PIP_NO_INDEX",
+        "PIP_EXTRA_INDEX_URL",
+        "PIP_INDEX_URL",
+        "PIP_CONFIG_FILE",
+    ):
+        env.pop(key, None)
     env.update(
         {
             "HOME": str(home),
+            "GDK_BACKEND": "x11",
+            "DISPLAY": os.environ["DISPLAY"],
             "XDG_CONFIG_HOME": str(home / ".config"),
             "XDG_CACHE_HOME": str(home / ".cache"),
             "XDG_DATA_HOME": str(home / ".local" / "share"),
+            "KICAD_DOCUMENTS_HOME": str(home / ".local" / "share"),
+            "KICAD_CACHE_HOME": str(home / ".cache"),
             "TMPDIR": str(tmp_root),
+            "KICAD_ENABLE_WXTRACE": "1",
+            "WXTRACE": "KICAD_API",
+            "KICAD_ALLOC_CONSOLE": "1",
         }
     )
-    log_path = work_dir / "eeschema.log"
-    log_file = log_path.open("w", encoding="utf-8")
-    process = subprocess.Popen(
-        [eeschema, str(schematic_file)],
-        cwd=work_dir,
-        env=env,
-        stdout=log_file,
-        stderr=subprocess.STDOUT,
+
+    # KiCad must generate its complete first-run profile before api.enable_server
+    # is edited. Writing a tiny kicad_common.json before the first GUI launch leaves
+    # initialization state incomplete and can keep the IPC service unavailable.
+    first_log = work_dir / "eeschema-first-run.log"
+    first_process, first_log_file, first_window = _launch_eeschema(
+        eeschema, schematic_file, env, xdotool, first_log
+    )
+    _close_first_run_eeschema(
+        first_process, first_window, xdotool, first_log_file
+    )
+    common_path = _enable_ipc_server(home, version, sys.executable)
+    print(
+        f"eeschema-first-run=passed profile={common_path.relative_to(home)} "
+        "ipc_server=enabled",
+        flush=True,
     )
 
+    socket_path.unlink(missing_ok=True)
+    log_path = work_dir / "eeschema.log"
+    process = None
+    log_file = None
     kicad = None
-    deadline = time.monotonic() + 60.0
-    last_error = None
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            log_file.flush()
-            raise RuntimeError(
-                "Eeschema exited before its IPC server became ready:\n"
-                + log_path.read_text(encoding="utf-8", errors="replace")[-5000:]
-            )
-        if socket_path.exists():
-            try:
-                kicad = KiCad(
-                    socket_path=f"ipc://{socket_path}",
-                    timeout_ms=10000,
-                )
-                break
-            except Exception as exc:
-                last_error = exc
-        time.sleep(0.25)
-    if kicad is None:
-        log_file.flush()
-        raise RuntimeError(
-            "Could not connect to the Eeschema IPC server. "
-            f"Last connection error: {last_error!r}\n"
-            + log_path.read_text(encoding="utf-8", errors="replace")[-5000:]
+    try:
+        process, log_file, _window_id = _launch_eeschema(
+            eeschema, schematic_file, env, xdotool, log_path
         )
 
-    try:
+        deadline = time.monotonic() + 90.0
+        last_connection_error = None
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                log_file.flush()
+                raise RuntimeError(
+                    "Eeschema exited before its IPC server became ready:\n"
+                    + log_path.read_text(encoding="utf-8", errors="replace")[-8000:]
+                )
+            if socket_path.exists():
+                try:
+                    kicad = KiCad(
+                        socket_path=f"ipc://{socket_path}",
+                        timeout_ms=10000,
+                    )
+                    break
+                except Exception as exc:
+                    last_connection_error = exc
+            time.sleep(0.25)
+        if kicad is None:
+            raise RuntimeError(
+                "Could not connect to the Eeschema IPC server. "
+                f"Last connection error: {last_connection_error!r}; "
+                f"windows={_visible_windows(xdotool)!r}\n"
+                + log_path.read_text(encoding="utf-8", errors="replace")[-8000:]
+            )
+
         # The GUI creates its socket before the IPC server and symbol libraries
         # are ready. Retry the readiness probe instead of treating a busy editor
         # as an unavailable API service.
-        ready_deadline = time.monotonic() + 60.0
+        ready_deadline = time.monotonic() + 90.0
         last_ready_error = None
         while time.monotonic() < ready_deadline:
             try:
@@ -264,7 +467,9 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
                 time.sleep(0.5)
         else:
             raise RuntimeError(
-                f"KiCad IPC/library service did not become ready: {last_ready_error!r}"
+                "KiCad IPC/library service did not become ready: "
+                f"{last_ready_error!r}; windows={_visible_windows(xdotool)!r}\n"
+                + log_path.read_text(encoding="utf-8", errors="replace")[-8000:]
             )
         schematic = kicad.get_schematic()
         if schematic is None:
@@ -305,9 +510,20 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             )
         return process, log_file, kicad, schematic, created, socket_path
     except Exception:
-        kicad.close()
-        process.terminate()
-        log_file.close()
+        if kicad is not None:
+            try:
+                kicad.close()
+            except Exception:
+                pass
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        if log_file is not None:
+            log_file.close()
         raise
 
 
