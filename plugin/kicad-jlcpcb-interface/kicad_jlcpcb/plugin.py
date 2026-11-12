@@ -376,7 +376,6 @@ class ComponentBrowser:
             anchor="center",
             justify="center",
             width=22,
-            height=9,
             padding=8,
         )
         self.image_label.pack(fill="both", expand=True)
