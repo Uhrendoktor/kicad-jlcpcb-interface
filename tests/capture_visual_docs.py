@@ -221,7 +221,7 @@ def _drive_browser(output_dir: Path, cache_dir: Path, image_bytes: bytes) -> Non
         patch.object(browser_module, "_download_product_image", return_value=image_bytes),
     ):
         browser = browser_module.ComponentBrowser(schematic, cache_dir)
-        browser.root.geometry("1240x790+20+20")
+        browser.root.geometry("1240x900+20+20")
         root = browser.root
         failures: list[str] = []
         frames = [
