@@ -70,7 +70,7 @@ DEMO_PARTS = (
 
 def _capture_window(root: Any, destination: Path) -> None:
     """Capture a real Tk window and reject blank or undersized output."""
-    from PIL import Image, ImageGrab, ImageStat
+    from PIL import ImageGrab, ImageStat
 
     root.update_idletasks()
     root.update()

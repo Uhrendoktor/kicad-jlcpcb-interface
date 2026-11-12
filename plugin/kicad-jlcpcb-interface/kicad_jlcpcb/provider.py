@@ -88,7 +88,7 @@ def _numeric(value: Any) -> float | None:
     return None
 
 
-def _price_tiers(component: dict[str, Any], *keys: str) -> tuple["PriceTier", ...]:
+def _price_tiers(component: dict[str, Any], *keys: str) -> tuple[PriceTier, ...]:
     """Read JLCPCB's quantity price ladder without inventing missing price breaks."""
     raw = _first(component, *keys)
     if not isinstance(raw, list):
@@ -393,12 +393,10 @@ def normalize_component_payload(
         category=str(category or ""),
         attributes=attributes,
         product_url=str(
-            (
-                f"https://jlcpcb.com/partdetail/{_first(component, 'urlSuffix', 'url_suffix')}"
-                if _first(component, "urlSuffix", "url_suffix")
-                else _first(component, "lcscGoodsUrl", "url")
-                or f"https://jlcpcb.com/partdetail/{normalized}"
-            )
+            f"https://jlcpcb.com/partdetail/{_first(component, 'urlSuffix', 'url_suffix')}"
+            if _first(component, "urlSuffix", "url_suffix")
+            else _first(component, "lcscGoodsUrl", "url")
+            or f"https://jlcpcb.com/partdetail/{normalized}"
         ),
         source=str(component.get("_provider_label") or "Community JLC search"),
         fetched_at=float(fetched_at if fetched_at is not None else time.time()),
