@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 from .model import (
     DEFAULT_PART_FIELD,
     SchematicComponent,
-    find_linked_components,
+    find_linked_components_all_sheets,
     search_components,
 )
 from .provider import JlcPartDetails, JlcSearchProvider
@@ -84,7 +84,7 @@ class ComponentBrowser:
 
         self.search_var = tk.StringVar()
         self.field_var = tk.StringVar(value=DEFAULT_PART_FIELD)
-        self.status_var = tk.StringVar(value="Scanning the active schematic...")
+        self.status_var = tk.StringVar(value="Scanning the schematic hierarchy...")
         self.catalogue_status_var = tk.StringVar(value="Choose a linked component.")
         self.detail_vars = {
             "reference": tk.StringVar(value="—"),
@@ -152,7 +152,7 @@ class ComponentBrowser:
         ttk.Label(list_frame, text="LINKED SCHEMATIC COMPONENTS").grid(
             row=0, column=0, sticky="w", pady=(0, 8)
         )
-        columns = ("reference", "value", "part", "footprint")
+        columns = ("reference", "value", "part", "footprint", "sheet")
         self.tree = ttk.Treeview(
             list_frame, columns=columns, show="headings", selectmode="browse"
         )
@@ -160,7 +160,8 @@ class ComponentBrowser:
             "reference": ("Reference", 90),
             "value": ("Value", 220),
             "part": ("LCSC / JLCPCB", 150),
-            "footprint": ("Footprint", 220),
+            "footprint": ("Footprint", 190),
+            "sheet": ("Sheet", 150),
         }
         for key, (label, width) in headings.items():
             self.tree.heading(key, text=label)
@@ -168,7 +169,7 @@ class ComponentBrowser:
                 key,
                 width=width,
                 minwidth=65,
-                stretch=key in {"value", "footprint"},
+                stretch=key in {"value", "footprint", "sheet"},
             )
         self.tree.grid(row=1, column=0, sticky="nsew")
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
@@ -299,7 +300,9 @@ class ComponentBrowser:
         """Re-read symbols from the schematic view and apply the current search."""
         property_name = self.field_var.get().strip() or DEFAULT_PART_FIELD
         try:
-            self.components = find_linked_components(self.schematic, property_name)
+            self.components = find_linked_components_all_sheets(
+                self.schematic, property_name
+            )
             self._apply_filter()
             self.status_var.set(
                 f"Found {len(self.components)} symbol instance(s) with '{property_name}'."
@@ -326,6 +329,7 @@ class ComponentBrowser:
                     component.value,
                     component.part_code,
                     component.footprint,
+                    component.sheet_path,
                 ),
             )
         if filtered:
@@ -521,20 +525,56 @@ class ComponentBrowser:
         self.catalogue_status_var.set("")
 
     def _select_symbols(self, components: list[SchematicComponent]) -> None:
+        """Focus the matching sheet, then select the requested schematic symbol IDs."""
         if not components:
             return
         try:
-            self.schematic.clear_selection()
-            self.schematic.add_to_selection(
+            sheet_paths = {component.sheet_path for component in components}
+            if len(sheet_paths) != 1:
+                raise ValueError(
+                    "KiCad FocusOnItems can navigate only one sheet per operation."
+                )
+
+            sheet_view = self.schematic.for_sheet(components[0].symbol.path)
+            from google.protobuf.empty_pb2 import Empty
+            from kipy.proto.common.commands import editor_commands_pb2
+
+            focus = editor_commands_pb2.FocusOnItems()
+            focus.document.CopyFrom(sheet_view.document)
+
+            path_wrapper = components[0].symbol.path
+            path_proto = getattr(path_wrapper, "proto", None)
+            if path_proto is None:
+                raise RuntimeError(
+                    "The KiCad Python binding did not expose the target sheet path "
+                    "protobuf needed for cross-sheet focus."
+                )
+            focus.document.sheet_path.CopyFrom(path_proto)
+
+            for component in components:
+                raw_id = getattr(component.symbol.id, "value", None)
+                if not raw_id:
+                    raw_id = str(component.symbol.id)
+                focus.items.add().value = str(raw_id)
+
+            # FocusOnItems changes Eeschema's active sheet and zooms to the items.
+            # Selection is then issued through a sheet-bound Schematic view so the
+            # request header identifies the newly active sheet, not the old one.
+            sheet_view.client.send(focus, Empty)
+            sheet_view.clear_selection()
+            sheet_view.add_to_selection(
                 [component.symbol for component in components]
             )
             references = ", ".join(component.reference for component in components)
-            self.status_var.set(f"Selected {len(components)} symbol(s): {references}")
+            self.status_var.set(
+                f"Navigated to {components[0].sheet_path}; selected "
+                f"{len(components)} symbol(s): {references}"
+            )
         except Exception as exc:
             self.messagebox.showerror(
                 "KiCad selection failed",
-                "KiCad can select items only on the current schematic sheet. "
-                "Cross-sheet navigation is not implemented yet.\n\n"
+                "KiCad could not navigate to and select these schematic symbols. "
+                "The current KiCad nightly must support Schematic IPC FocusOnItems.\n\n"
                 f"{exc}",
                 parent=self.root,
             )
