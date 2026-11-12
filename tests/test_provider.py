@@ -56,11 +56,11 @@ def jlc_detail(lcsc: str = "C25804") -> dict:
             "dataManualOfficialLink": "https://example.test/datasheet.pdf",
             "lcscGoodsUrl": "https://lcsc.com/product-detail/C25804.html",
             "extra": {
-                "images": [
-                    {
-                        "url": "https://images.example.test/nested.jpg?signature=short-lived"
-                    }
-                ]
+                "mediaMetadata": {
+                    "signedPreview": (
+                        "https://images.example.test/nested.jpg?signature=short-lived"
+                    )
+                }
             },
         },
     }
@@ -183,7 +183,7 @@ class ProviderTests(unittest.TestCase):
                 ).fetchone()
             persisted = json.loads(row["payload_json"])
             self.assertEqual(persisted["productBigImageAccessIdUrl"], "")
-            self.assertEqual(persisted["extra"]["images"][0]["url"], "")
+            self.assertEqual(persisted["extra"]["mediaMetadata"]["signedPreview"], "")
             self.assertNotIn("signature=", json.dumps(persisted))
 
     def test_community_fallback_filters_false_positive_search_results(self):
