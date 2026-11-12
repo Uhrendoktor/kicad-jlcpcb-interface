@@ -37,7 +37,7 @@ def symbol(
         user_fields=fields,
         footprint_field=field("Footprint", footprint),
         datasheet_field=field("Datasheet", datasheet),
-        path=sheet_path,
+        path=SimpleNamespace(path_human_readable=sheet_path),
     )
 
 
