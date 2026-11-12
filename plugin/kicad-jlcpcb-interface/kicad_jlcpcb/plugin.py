@@ -227,7 +227,7 @@ class ComponentBrowser:
             font=("TkDefaultFont", 10, "bold"),
         ).grid(row=0, column=0, columnspan=2, sticky="w")
 
-        detail_canvas = tk.Canvas(detail_frame, highlightthickness=0, borderwidth=0)
+        detail_canvas = self.tk.Canvas(detail_frame, highlightthickness=0, borderwidth=0)
         detail_canvas.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
         detail_scrollbar = ttk.Scrollbar(
             detail_frame, orient="vertical", command=detail_canvas.yview
