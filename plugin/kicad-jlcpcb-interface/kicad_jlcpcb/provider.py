@@ -467,32 +467,17 @@ class JlcSearchProvider:
 
     @staticmethod
     def _strip_signed_media(payload: dict[str, Any]) -> dict[str, Any]:
-        """Copy a record without expiring signed URLs before persistent caching."""
-        safe = dict(payload)
-        for key in (
-            "productBigImageAccessIdUrl",
-            "minImageAccessIdUrl",
-            "dataManualFileAccessIdUrl",
-        ):
-            if _is_signed_url(str(safe.get(key) or "")):
-                safe[key] = ""
-        extra = _mapping(safe.get("extra"))
-        if extra:
-            images = extra.get("images")
-            if isinstance(images, list):
-                sanitized = []
-                for image in images:
-                    if isinstance(image, dict):
-                        sanitized.append({
-                            key: value
-                            for key, value in image.items()
-                            if not _is_signed_url(str(value or ""))
-                        })
-                    else:
-                        sanitized.append(image)
-                extra["images"] = sanitized
-            safe["extra"] = extra
-        return safe
+        """Recursively remove expiring signed URLs before persistent caching."""
+        def sanitize(value: Any) -> Any:
+            if isinstance(value, dict):
+                return {key: sanitize(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [sanitize(item) for item in value]
+            if isinstance(value, str) and _is_signed_url(value):
+                return ""
+            return value
+
+        return sanitize(payload)
 
     def _fetch_exact_component(self, lcsc: str) -> dict[str, Any] | None:
         query = urlencode({"q": lcsc, "limit": 10, "full": "true"})
@@ -590,8 +575,12 @@ class JlcSearchProvider:
         # Fall back to a previous record when both data sources are offline.
         if cached is not None:
             cache_payload, cached_at = cached
+            cache_age = max(0.0, now - cached_at)
             details = normalize_component_payload(
-                cache_payload, lcsc=lcsc, fetched_at=cached_at, stale=True
+                cache_payload,
+                lcsc=lcsc,
+                fetched_at=cached_at,
+                stale=cache_age >= self.cache_ttl_seconds,
             )
             self._memory_cache[lcsc] = (details, now)
             return details
