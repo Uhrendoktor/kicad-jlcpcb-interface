@@ -564,17 +564,37 @@ class ComponentBrowser:
         if not components:
             return
         try:
-            self.schematic.clear_selection()
-            self.schematic.add_to_selection(
-                [component.symbol for component in components]
-            )
+            sheet_paths = {component.sheet_path for component in components}
+            if len(sheet_paths) != 1:
+                raise ValueError(
+                    "KiCad FocusOnItems can navigate only one sheet per operation."
+                )
+
+            symbols = [component.symbol for component in components]
+            target_schematic = self.schematic
+            if getattr(symbols[0], "path", None) is not None:
+                from google.protobuf.empty_pb2 import Empty
+                from kipy.proto.common.commands import editor_commands_pb2
+
+                target_schematic = focus_schematic_items(
+                    self.schematic,
+                    symbols,
+                    editor_commands_pb2.FocusOnItems,
+                    Empty,
+                )
+
+            target_schematic.clear_selection()
+            target_schematic.add_to_selection(symbols)
             references = ", ".join(component.reference for component in components)
-            self.status_var.set(f"Selected {len(components)} symbol(s): {references}")
+            self.status_var.set(
+                f"Navigated to {components[0].sheet_path}; selected "
+                f"{len(components)} symbol(s): {references}"
+            )
         except Exception as exc:
             self.messagebox.showerror(
                 "KiCad selection failed",
-                "KiCad can select items only on the current schematic sheet. "
-                "Cross-sheet navigation is not implemented yet.\n\n"
+                "KiCad could not navigate to and select these schematic symbols. "
+                "The active KiCad build must expose the FocusOnItems sheet-path API.\n\n"
                 f"{exc}",
                 parent=self.root,
             )
