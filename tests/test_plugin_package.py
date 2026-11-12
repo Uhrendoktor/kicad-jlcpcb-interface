@@ -25,6 +25,7 @@ class PluginPackageTests(unittest.TestCase):
         lock = (PLUGIN / "kicad-python.lock").read_text(encoding="utf-8").strip()
         self.assertRegex(lock, r"^[0-9a-f]{40}$")
         requirements = (PLUGIN / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn("Pillow>=11.3.0", requirements)
         for abi in ("cp312", "cp313", "cp314"):
             self.assertIn(f"-{abi}-{abi}-linux_x86_64.whl", requirements)
         self.assertNotIn("git+", requirements)
