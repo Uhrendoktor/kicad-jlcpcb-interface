@@ -1,5 +1,4 @@
 """Tk-based JLCPCB component browser launched as a KiCad schematic IPC action."""
-"""Tk-based JLCPCB component browser launched as a KiCad schematic IPC action."""
 
 from __future__ import annotations
 
@@ -11,6 +10,7 @@ from typing import Any
 from urllib.parse import quote_plus, urlparse
 from urllib.request import Request, urlopen
 
+from .model import (
     DEFAULT_PART_FIELD,
     SchematicComponent,
     find_linked_components,
