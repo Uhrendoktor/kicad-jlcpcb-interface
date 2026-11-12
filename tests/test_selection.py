@@ -49,6 +49,14 @@ class FakeRepeatedItems(list):
         return item
 
 
+class FakeProtoField:
+    def __init__(self):
+        self.copied_from = None
+
+    def CopyFrom(self, other):
+        self.copied_from = other
+
+
 class FakeFocusCommand:
     def __init__(self):
         self.document = FakeDocument("command-document")
@@ -58,9 +66,11 @@ class FakeFocusCommand:
 class FakeDocument:
     def __init__(self, name):
         self.name = name
+        self.sheet_path = FakeProtoField()
 
     def CopyFrom(self, other):
         self.copied_from = other
+        self.sheet_path = FakeProtoField()
 
 
 class FakeSheetClient:
@@ -130,10 +140,14 @@ class SelectionTests(unittest.TestCase):
 
     def test_focuses_target_sheet_and_zooms_before_selection(self):
         schematic = FakeHierarchicalSchematic()
-        path = SimpleNamespace(path_human_readable="/Root/Power")
+        path_proto = SimpleNamespace(path=["sheet-uuid"])
+        path = SimpleNamespace(
+            path_human_readable="/Root/Power",
+            proto=path_proto,
+        )
         symbols = [
-            SimpleNamespace(id="uuid-1", path=path),
-            SimpleNamespace(id="uuid-2", path=path),
+            SimpleNamespace(id=SimpleNamespace(value="uuid-1"), path=path),
+            SimpleNamespace(id=SimpleNamespace(value="uuid-2"), path=path),
         ]
         response_type = type("EmptyResponse", (), {})
 
@@ -148,6 +162,7 @@ class SelectionTests(unittest.TestCase):
         self.assertIs(schematic.requested_sheet, path)
         command, response = schematic.sheet_view.client.sent[0]
         self.assertIs(command.document.copied_from, schematic.sheet_view.document)
+        self.assertIs(command.document.sheet_path.copied_from, path_proto)
         self.assertEqual([item.value for item in command.items], ["uuid-1", "uuid-2"])
         self.assertIs(response, response_type)
 
