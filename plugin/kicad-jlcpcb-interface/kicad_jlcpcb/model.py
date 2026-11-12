@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 DEFAULT_PART_FIELD = "LCSC"
 _PART_CODE_RE = re.compile(r"(?<![A-Z0-9])(C\d{3,})(?![A-Z0-9])", re.IGNORECASE)
