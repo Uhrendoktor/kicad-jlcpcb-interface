@@ -110,6 +110,7 @@ class SelectionTests(unittest.TestCase):
     def make_browser(self):
         browser = object.__new__(ComponentBrowser)
         browser.schematic = FakeSchematic()
+        browser.selected_component = None
         browser.status_var = FakeVariable()
         browser.root = object()
         browser.messagebox = SimpleNamespace(

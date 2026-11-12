@@ -15,7 +15,7 @@ ASSET_NAMES = {
     "component-browser-filtered.png",
     "component-browser-selected.png",
     "component-browser-workflow.gif",
-    "component-product-fixture.png",
+    "component-properties-selected.png",
     "jlcpcb-capacitor-symbol.svg",
     "jlcpcb-resistor-symbol.svg",
 }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import queue
 import webbrowser
+from collections import Counter
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from .model import (
     DEFAULT_PART_FIELD,
     SchematicComponent,
     find_linked_components,
+    find_selected_component,
     search_components,
 )
 from .provider import JlcPartDetails, JlcSearchProvider
@@ -59,6 +61,41 @@ def focus_schematic_items(
     target_schematic.client.send(command, empty_response_type)
     return target_schematic
 
+def _calculate_project_summary(components, provider) -> dict[str, int | float]:
+    """Estimate schematic cost and catalogue coverage grouped by LCSC part number."""
+    quantities = Counter(component.part_code for component in components)
+    total_usd = 0.0
+    priced_quantity = 0
+    available_parts = 0
+    short_parts = 0
+    unknown_parts = 0
+    for part_code, quantity in quantities.items():
+        try:
+            details = provider.lookup(part_code)
+        except Exception:
+            details = None
+        if details is None:
+            unknown_parts += 1
+            continue
+        if details.unit_price_usd is not None:
+            total_usd += details.unit_price_usd * quantity
+            priced_quantity += quantity
+        if details.stock is None:
+            unknown_parts += 1
+        elif details.stock >= quantity:
+            available_parts += 1
+        else:
+            short_parts += 1
+    return {
+        "component_count": len(components),
+        "unique_count": len(quantities),
+        "total_usd": total_usd,
+        "priced_quantity": priced_quantity,
+        "available_parts": available_parts,
+        "short_parts": short_parts,
+        "unknown_parts": unknown_parts,
+    }
+
 
 def _download_product_image(url: str) -> bytes | None:
     """Fetch one bounded HTTPS product image; never block the Tk event loop."""
@@ -88,7 +125,12 @@ def _download_product_image(url: str) -> bytes | None:
 class ComponentBrowser:
     """Search and inspect JLCPCB-linked symbols, then select them in Eeschema."""
 
-    def __init__(self, schematic: Any, settings_directory: str | Path):
+    def __init__(
+        self,
+        schematic: Any,
+        settings_directory: str | Path,
+        selected_component: SchematicComponent | None = None,
+    ):
         import tkinter as tk
         from tkinter import messagebox, ttk
 
@@ -96,6 +138,7 @@ class ComponentBrowser:
         self.ttk = ttk
         self.messagebox = messagebox
         self.schematic = schematic
+        self.selected_component = selected_component
         self.settings_directory = Path(settings_directory).expanduser()
         self.settings_directory.mkdir(parents=True, exist_ok=True)
         self.provider = JlcSearchProvider(
@@ -106,24 +149,43 @@ class ComponentBrowser:
         self._catalogue_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="jlcpcb-catalogue"
         )
+        self._summary_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="jlcpcb-overview"
+        )
         self._catalogue_queue: queue.Queue[tuple[int, SchematicComponent, Future]] = (
             queue.Queue()
         )
         self._detail_token = 0
+        self._summary_token = 0
+        self._summary_future: Future | None = None
+        self._summary_future_token = 0
         self._image_ref = None
         self._catalogue_details: JlcPartDetails | None = None
         self._closed = False
 
         self.root = tk.Tk()
-        self.root.title("KiCad JLCPCB Component Browser")
-        self.root.geometry("1360x900")
-        self.root.minsize(1040, 680)
+        self.root.title(
+            "JLCPCB Component Properties"
+            if selected_component is not None
+            else "JLCPCB Component Overview"
+        )
+        self.root.geometry("1260x1040" if selected_component is not None else "1480x1000")
+        self.root.minsize(980 if selected_component is not None else 1040, 680)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
 
         self.search_var = tk.StringVar()
         self.field_var = tk.StringVar(value=DEFAULT_PART_FIELD)
         self.status_var = tk.StringVar(value="Scanning the active schematic...")
         self.catalogue_status_var = tk.StringVar(value="Choose a linked component.")
+        self.summary_status_var = tk.StringVar(
+            value="Catalogue prices and stock are indicative snapshots."
+        )
+        self.summary_vars = {
+            "components": tk.StringVar(value="—"),
+            "parts": tk.StringVar(value="—"),
+            "total": tk.StringVar(value="Loading…"),
+            "availability": tk.StringVar(value="Loading…"),
+        }
         self.detail_vars = {
             "reference": tk.StringVar(value="—"),
             "value": tk.StringVar(value="—"),
@@ -156,70 +218,106 @@ class ComponentBrowser:
         header.columnconfigure(1, weight=1)
         ttk.Label(
             header,
-            text="JLCPCB Component Browser",
+            text=(
+                "JLCPCB Component Properties"
+                if self.selected_component is not None
+                else "JLCPCB Component Overview"
+            ),
             font=("TkDefaultFont", 16, "bold"),
         ).grid(row=0, column=0, columnspan=5, sticky="w")
         ttk.Label(
             header,
-            text="Search parts used in this schematic and select their symbol instances.",
+            text=(
+                "Catalogue information for the selected schematic symbol."
+                if self.selected_component is not None
+                else "Search linked parts, inspect catalogue details and estimate design cost."
+            ),
         ).grid(row=1, column=0, columnspan=5, sticky="w", pady=(3, 12))
 
-        ttk.Label(header, text="Search").grid(row=2, column=0, sticky="w", padx=(0, 8))
-        search = ttk.Entry(header, textvariable=self.search_var)
-        search.grid(row=2, column=1, sticky="ew", padx=(0, 12))
-        search.bind("<Return>", lambda _event: self._apply_filter())
-        self.search_var.trace_add("write", lambda *_args: self._apply_filter())
-
-        ttk.Label(header, text="Part-link field").grid(
-            row=2, column=2, sticky="e", padx=(0, 6)
-        )
-        field_entry = ttk.Entry(header, textvariable=self.field_var, width=20)
-        field_entry.grid(row=2, column=3, sticky="e", padx=(0, 8))
-        ttk.Button(header, text="Refresh", command=self.refresh).grid(
-            row=2, column=4, sticky="e"
-        )
-
+        if self.selected_component is None:
+            ttk.Label(header, text="Search").grid(
+                row=2, column=0, sticky="w", padx=(0, 8)
+            )
+            search = ttk.Entry(header, textvariable=self.search_var)
+            search.grid(row=2, column=1, sticky="ew", padx=(0, 12))
+            search.bind("<Return>", lambda _event: self._apply_filter())
+            self.search_var.trace_add("write", lambda *_args: self._apply_filter())
+            ttk.Label(header, text="Part-link field").grid(
+                row=2, column=2, sticky="e", padx=(0, 6)
+            )
+            field_entry = ttk.Entry(header, textvariable=self.field_var, width=20)
+            field_entry.grid(row=2, column=3, sticky="e", padx=(0, 8))
+            ttk.Button(header, text="Refresh", command=self.refresh).grid(
+                row=2, column=4, sticky="e"
+            )
+            overview = ttk.LabelFrame(header, text="DESIGN OVERVIEW", padding=(10, 6))
+            overview.grid(row=3, column=0, columnspan=5, sticky="ew", pady=(10, 0))
+            overview.columnconfigure((0, 1, 2, 3), weight=1)
+            for column, (label, key) in enumerate((
+                ("LINKED COMPONENTS", "components"),
+                ("UNIQUE PARTS", "parts"),
+                ("ESTIMATED TOTAL (USD)", "total"),
+                ("STOCK COVERAGE", "availability"),
+            )):
+                cell = ttk.Frame(overview, padding=(5, 2))
+                cell.grid(row=0, column=column, sticky="ew")
+                ttk.Label(cell, text=label, foreground="#667085").pack(anchor="w")
+                ttk.Label(
+                    cell, textvariable=self.summary_vars[key],
+                    font=("TkDefaultFont", 11, "bold")
+                ).pack(anchor="w", pady=(3, 0))
+            ttk.Label(
+                overview, textvariable=self.summary_status_var,
+                foreground="#667085", wraplength=1150
+            ).grid(row=1, column=0, columnspan=4, sticky="w", padx=5, pady=(5, 0))
+        else:
+            ttk.Label(header, text="Part-link field").grid(
+                row=2, column=0, sticky="w", padx=(0, 8)
+            )
+            field_entry = ttk.Entry(header, textvariable=self.field_var, width=24)
+            field_entry.grid(row=2, column=1, sticky="w", padx=(0, 12))
+            ttk.Button(header, text="Refresh", command=self.refresh).grid(
+                row=2, column=2, sticky="w"
+            )
         body = ttk.Panedwindow(self.root, orient="horizontal")
         body.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 12))
-
-        list_frame = ttk.Frame(body, padding=8)
-        list_frame.columnconfigure(0, weight=1)
-        list_frame.rowconfigure(1, weight=1)
-        body.add(list_frame, weight=3)
-
-        ttk.Label(list_frame, text="LINKED SCHEMATIC COMPONENTS").grid(
-            row=0, column=0, sticky="w", pady=(0, 8)
-        )
-        columns = ("reference", "value", "part", "footprint", "sheet")
-        self.tree = ttk.Treeview(
-            list_frame, columns=columns, show="headings", selectmode="browse"
-        )
-        headings = {
-            "reference": ("Reference", 90),
-            "value": ("Value", 220),
-            "part": ("LCSC / JLCPCB", 150),
-            "footprint": ("Footprint", 190),
-            "sheet": ("Sheet", 150),
-        }
-        for key, (label, width) in headings.items():
-            self.tree.heading(key, text=label)
-            self.tree.column(
-                key,
-                width=width,
-                minwidth=65,
-                stretch=key in {"value", "footprint", "sheet"},
+        if self.selected_component is None:
+            list_frame = ttk.Frame(body, padding=8)
+            list_frame.columnconfigure(0, weight=1)
+            list_frame.rowconfigure(1, weight=1)
+            body.add(list_frame, weight=3)
+            ttk.Label(list_frame, text="LINKED SCHEMATIC COMPONENTS").grid(
+                row=0, column=0, sticky="w", pady=(0, 8)
             )
-        self.tree.grid(row=1, column=0, sticky="nsew")
-        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
-        scrollbar.grid(row=1, column=1, sticky="ns")
-        self.tree.configure(yscrollcommand=scrollbar.set)
-        self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
-        self.tree.bind("<Double-1>", lambda _event: self.select_selected())
+            columns = ("reference", "value", "part", "footprint", "sheet")
+            self.tree = ttk.Treeview(
+                list_frame, columns=columns, show="headings", selectmode="browse"
+            )
+            headings = {
+                "reference": ("Reference", 90), "value": ("Value", 220),
+                "part": ("LCSC / JLCPCB", 150), "footprint": ("Footprint", 190),
+                "sheet": ("Sheet", 150),
+            }
+            for key, (label, width) in headings.items():
+                self.tree.heading(key, text=label)
+                self.tree.column(
+                    key, width=width, minwidth=65,
+                    stretch=key in {"value", "footprint", "sheet"}
+                )
+            self.tree.grid(row=1, column=0, sticky="nsew")
+            scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
+            scrollbar.grid(row=1, column=1, sticky="ns")
+            self.tree.configure(yscrollcommand=scrollbar.set)
+            self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+            self.tree.bind("<Double-1>", lambda _event: self.select_selected())
 
         detail_frame = ttk.Frame(body, padding=(18, 12))
         detail_frame.columnconfigure(0, weight=1)
         detail_frame.rowconfigure(1, weight=1)
-        body.add(detail_frame, weight=2)
+        body.add(
+            detail_frame,
+            weight=1 if self.selected_component is not None else 2,
+        )
 
         ttk.Label(
             detail_frame,
@@ -262,11 +360,11 @@ class ComponentBrowser:
         detail_canvas.bind("<Button-4>", scroll_detail)
         detail_canvas.bind("<Button-5>", scroll_detail)
 
-        visual = ttk.LabelFrame(content, text="Product image", padding=8)
+        visual = ttk.LabelFrame(content, text="Catalogue image", padding=8)
         visual.grid(row=0, column=0, sticky="ew")
         self.image_label = ttk.Label(
             visual,
-            text="Select a component to load its catalogue image",
+            text="No catalogue image supplied by the data source",
             anchor="center",
             justify="center",
             padding=30,
@@ -370,14 +468,31 @@ class ComponentBrowser:
         ttk.Label(footer, textvariable=self.status_var).pack(anchor="w")
 
     def refresh(self) -> None:
-        """Re-read symbols from the schematic view and apply the current search."""
+        """Re-read symbols from the schematic view and refresh the visible details."""
         property_name = self.field_var.get().strip() or DEFAULT_PART_FIELD
         try:
             self.components = find_linked_components(self.schematic, property_name)
-            self._apply_filter()
-            self.status_var.set(
-                f"Found {len(self.components)} symbol instance(s) with '{property_name}'."
-            )
+            if self.selected_component is not None:
+                refreshed = next(
+                    (
+                        item for item in self.components
+                        if item.reference == self.selected_component.reference
+                        and item.sheet_path == self.selected_component.sheet_path
+                    ),
+                    None,
+                )
+                if refreshed is not None:
+                    self.selected_component = refreshed
+                self._show_component(self.selected_component)
+                self.status_var.set(
+                    f"Showing JLCPCB properties for {self.selected_component.reference}."
+                )
+            else:
+                self._apply_filter()
+                self._refresh_project_summary()
+                self.status_var.set(
+                    f"Found {len(self.components)} symbol instance(s) with '{property_name}'."
+                )
         except Exception as exc:
             self.messagebox.showerror("Schematic scan failed", str(exc), parent=self.root)
             self.status_var.set(f"Scan failed: {exc}")
@@ -416,6 +531,8 @@ class ComponentBrowser:
         )
 
     def _selected_component(self) -> SchematicComponent | None:
+        if self.selected_component is not None:
+            return self.selected_component
         selected = self.tree.selection()
         if not selected:
             return None
@@ -427,6 +544,8 @@ class ComponentBrowser:
             self._show_component(component)
 
     def _show_component(self, component: SchematicComponent) -> None:
+        if self.selected_component is not None:
+            self.root.title(f"JLCPCB Component Properties — {component.reference}")
         self.detail_vars["reference"].set(component.reference or "—")
         self.detail_vars["value"].set(component.value or "—")
         self.detail_vars["part"].set(component.part_reference or "—")
@@ -437,7 +556,7 @@ class ComponentBrowser:
         self.catalogue_status_var.set("Loading catalogue metadata…")
         self.image_label.configure(
             image="",
-            text="Loading product information…",
+            text="Loading catalogue information…",
             padding=30,
         )
         self._image_ref = None
@@ -491,7 +610,52 @@ class ComponentBrowser:
                 )
                 continue
             self._show_catalogue_details(details, image_data)
+        summary_future = self._summary_future
+        if summary_future is not None and summary_future.done():
+            self._summary_future = None
+            if self._summary_future_token == self._summary_token:
+                try:
+                    self._display_project_summary(summary_future.result())
+                except Exception as exc:
+                    self.summary_status_var.set(f"Catalogue summary unavailable: {exc}")
+                    self.summary_vars["total"].set("Unavailable")
+                    self.summary_vars["availability"].set("Unknown")
         self._poll_id = self.root.after(120, self._drain_catalogue_queue)
+
+    def _refresh_project_summary(self) -> None:
+        if self.selected_component is not None:
+            return
+        self._summary_token += 1
+        self._summary_future_token = self._summary_token
+        if self._summary_future is not None:
+            self._summary_future.cancel()
+        self.summary_status_var.set("Loading catalogue prices and stock…")
+        self.summary_vars["components"].set(f"{len(self.components):,}")
+        self.summary_vars["parts"].set("Loading…")
+        self.summary_vars["total"].set("Loading…")
+        self.summary_vars["availability"].set("Loading…")
+        self._summary_future = self._summary_executor.submit(
+            _calculate_project_summary, tuple(self.components), self.provider
+        )
+
+    def _display_project_summary(self, summary: dict[str, int | float]) -> None:
+        count = int(summary["component_count"])
+        priced = int(summary["priced_quantity"])
+        self.summary_vars["components"].set(f"{count:,}")
+        self.summary_vars["parts"].set(f"{int(summary['unique_count']):,}")
+        total = f"USD {float(summary['total_usd']):,.4f}" if priced else "—"
+        if priced and priced < count:
+            total += " *"
+        self.summary_vars["total"].set(total)
+        self.summary_vars["availability"].set(
+            f"{int(summary['available_parts'])} ready · "
+            f"{int(summary['short_parts'])} short · "
+            f"{int(summary['unknown_parts'])} unknown"
+        )
+        self.summary_status_var.set(
+            "Cost = cached unit price × placed quantity; * means some prices are unknown. "
+            "Stock is a catalogue snapshot and is not reserved."
+        )
 
     @staticmethod
     def _format_datasheet_display(url: str) -> str:
@@ -567,7 +731,7 @@ class ComponentBrowser:
         if not image_data:
             self.image_label.configure(
                 image="",
-                text="No product image available for this part",
+                text="No catalogue image supplied by the data source",
                 padding=30,
             )
             self._image_ref = None
@@ -584,7 +748,7 @@ class ComponentBrowser:
         except Exception:
             self.image_label.configure(
                 image="",
-                text="Product image could not be decoded",
+                text="Catalogue image could not be decoded",
                 padding=30,
             )
             self._image_ref = None
@@ -718,14 +882,15 @@ class ComponentBrowser:
         except Exception:
             pass
         self._catalogue_executor.shutdown(wait=False, cancel_futures=True)
+        self._summary_executor.shutdown(wait=False, cancel_futures=True)
         self.root.destroy()
 
     def run(self) -> None:
         self.root.mainloop()
 
 
-def run() -> None:
-    """Connect to the KiCad instance that launched this IPC action and open the browser."""
+def _run_component_window(*, selected_component_only: bool) -> None:
+    """Connect to the launching Eeschema instance and open the requested view."""
     try:
         from kipy import KiCad
 
@@ -735,16 +900,34 @@ def run() -> None:
             raise RuntimeError(
                 "No active schematic was found. Open a project in Eeschema and try again."
             )
+        selected_component = (
+            find_selected_component(schematic) if selected_component_only else None
+        )
         settings_directory = Path(
             kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
         ).expanduser()
         settings_directory.mkdir(parents=True, exist_ok=True)
-        ComponentBrowser(schematic, settings_directory).run()
+        ComponentBrowser(
+            schematic, settings_directory, selected_component=selected_component
+        ).run()
     except Exception as exc:
         import tkinter as tk
         from tkinter import messagebox
 
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror("KiCad JLCPCB Interface", str(exc), parent=root)
+        if selected_component_only and isinstance(exc, ValueError):
+            messagebox.showinfo("JLCPCB Component Properties", str(exc), parent=root)
+        else:
+            messagebox.showerror("KiCad JLCPCB Interface", str(exc), parent=root)
         root.destroy()
+
+
+def run() -> None:
+    """Open the full-schematic component overview and search browser."""
+    _run_component_window(selected_component_only=False)
+
+
+def run_selected_component() -> None:
+    """Open catalogue details for exactly one selected linked schematic symbol."""
+    _run_component_window(selected_component_only=True)

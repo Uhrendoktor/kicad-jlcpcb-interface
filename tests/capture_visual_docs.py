@@ -27,72 +27,11 @@ ASSET_NAMES = (
     "component-browser-filtered.png",
     "component-browser-selected.png",
     "component-browser-workflow.gif",
-    "component-product-fixture.png",
+    "component-properties-selected.png",
     "jlcpcb-capacitor-symbol.svg",
     "jlcpcb-resistor-symbol.svg",
 )
 
-
-def _make_product_fixture(path: Path, part_type: str, part_code: str) -> bytes:
-    """Draw a labelled, type-specific fixture image; never imply a supplier photograph."""
-    from PIL import Image, ImageDraw, ImageFont
-
-    image = Image.new("RGB", (840, 460), (246, 248, 251))
-    draw = ImageDraw.Draw(image)
-    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-    bold_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    try:
-        title_font = ImageFont.truetype(bold_path, 30)
-        body_font = ImageFont.truetype(font_path, 21)
-        small_font = ImageFont.truetype(font_path, 16)
-    except OSError:
-        title_font = body_font = small_font = ImageFont.load_default()
-
-    if part_type == "resistor":
-        draw.rounded_rectangle((260, 165, 580, 292), radius=18, fill=(191, 151, 90))
-        draw.rounded_rectangle((292, 178, 548, 279), radius=12, fill=(55, 61, 68))
-        draw.rectangle((260, 190, 294, 266), fill=(205, 213, 220))
-        draw.rectangle((546, 190, 580, 266), fill=(205, 213, 220))
-        title = "SMD RESISTOR"
-    elif part_type == "capacitor":
-        draw.rounded_rectangle((270, 146, 570, 310), radius=24, fill=(205, 211, 215))
-        draw.rounded_rectangle((298, 158, 542, 298), radius=16, fill=(226, 222, 206))
-        draw.rectangle((270, 177, 305, 279), fill=(166, 176, 183))
-        draw.rectangle((535, 177, 570, 279), fill=(166, 176, 183))
-        title = "CERAMIC CAPACITOR"
-    elif part_type == "led":
-        draw.rounded_rectangle((270, 158, 570, 300), radius=35, fill=(186, 196, 199))
-        draw.rounded_rectangle((298, 170, 542, 288), radius=30, fill=(67, 154, 97))
-        draw.ellipse((356, 178, 486, 278), fill=(110, 205, 142), outline=(42, 121, 74), width=5)
-        draw.rectangle((270, 194, 305, 266), fill=(190, 151, 77))
-        draw.rectangle((535, 194, 570, 266), fill=(190, 151, 77))
-        title = "GREEN LED"
-    else:
-        draw.rounded_rectangle((248, 76, 592, 334), radius=34, fill=(37, 46, 58))
-        draw.rounded_rectangle((278, 102, 562, 308), radius=20, fill=(55, 67, 83))
-        draw.rounded_rectangle((391, 116, 450, 175), radius=8, fill=(205, 213, 220))
-        draw.ellipse((414, 137, 428, 151), fill=(74, 88, 105))
-        for x in range(278, 563, 40):
-            draw.rectangle((x, 58, x + 18, 77), fill=(190, 151, 77))
-            draw.rectangle((x, 333, x + 18, 352), fill=(190, 151, 77))
-        for y in range(122, 310, 36):
-            draw.rectangle((228, y, 249, y + 16), fill=(190, 151, 77))
-            draw.rectangle((591, y, 612, y + 16), fill=(190, 151, 77))
-        title = "MCU"
-
-    title_color = (245, 248, 251) if part_type in {"resistor", "ic"} else (38, 50, 61)
-    code_color = (176, 204, 226) if part_type in {"resistor", "ic"} else (68, 82, 96)
-    draw.text((420, 218), title, fill=title_color, font=title_font, anchor="mm")
-    draw.text((420, 267), part_code, fill=code_color, font=body_font, anchor="mm")
-    draw.text(
-        (420, 388),
-        "DOCUMENTATION FIXTURE - NOT A SUPPLIER PHOTO",
-        fill=(75, 86, 101),
-        font=small_font,
-        anchor="mm",
-    )
-    image.save(path, format="PNG", optimize=True)
-    return path.read_bytes()
 
 def _fixture_components() -> list[SchematicComponent]:
     """Build stable component records that exercise the production browser presentation."""
@@ -191,7 +130,7 @@ class _FixtureProvider:
             stock=stock,
             unit_price_usd=price,
             datasheet_url=f"https://example.invalid/datasheets/{part}.pdf",
-            image_url=f"https://fixture.invalid/{part}.png",
+            image_url="",
             is_basic=True,
             is_preferred=part == "C25804",
             category=category,
@@ -221,9 +160,7 @@ def _capture_window(root: Any, destination: Path) -> None:
     image.save(destination, format="PNG", optimize=True)
 
 
-def _drive_browser(
-    output_dir: Path, cache_dir: Path, image_bytes_by_url: dict[str, bytes]
-) -> None:
+def _drive_browser(output_dir: Path, cache_dir: Path) -> None:
     """Drive the real ComponentBrowser widget through overview, search and selection states."""
     from unittest.mock import patch
 
@@ -239,7 +176,7 @@ def _drive_browser(
         patch.object(
             browser_module,
             "_download_product_image",
-            side_effect=lambda url: image_bytes_by_url.get(url),
+            return_value=None,
         ),
     ):
         browser = browser_module.ComponentBrowser(schematic, cache_dir)
@@ -283,6 +220,13 @@ def _drive_browser(
                         )
                     root.after(100, advance)
                     return
+                if browser.summary_status_var.get().startswith(
+                    "Loading catalogue prices"
+                ):
+                    if time.monotonic() >= state["deadline"]:
+                        raise TimeoutError("Catalogue summary did not finish loading")
+                    root.after(100, advance)
+                    return
                 _capture_window(root, frames[index])
                 if index == 2:
                     browser.select_selected()
@@ -308,6 +252,59 @@ def _drive_browser(
             )
         if len({hashlib.sha256(path.read_bytes()).hexdigest() for path in frames}) != 3:
             raise RuntimeError("The three browser states did not produce distinct screenshots.")
+
+
+
+def _drive_selected_component_properties(output_dir: Path, cache_dir: Path) -> None:
+    """Capture the focused properties page shown for one selected schematic symbol."""
+    from unittest.mock import patch
+
+    components = _fixture_components()
+    provider = _FixtureProvider()
+    schematic = _FixtureSchematic()
+    with (
+        patch.object(browser_module, "JlcSearchProvider", return_value=provider),
+        patch.object(browser_module, "find_linked_components", return_value=components),
+        patch.object(browser_module, "_download_product_image", return_value=None),
+    ):
+        browser = browser_module.ComponentBrowser(
+            schematic, cache_dir, selected_component=components[2]
+        )
+        browser.root.geometry("1260x1120+20+20")
+        root = browser.root
+        errors: list[str] = []
+        captured = False
+        deadline = time.monotonic() + 25.0
+
+        def advance() -> None:
+            nonlocal captured
+            try:
+                root.update()
+                ready = (
+                    browser.detail_vars["part"].get().upper() == "C529334"
+                    and browser.catalogue_status_var.get() == "Catalogue details loaded."
+                )
+                if ready:
+                    _capture_window(root, output_dir / "component-properties-selected.png")
+                    captured = True
+                    browser.close()
+                    return
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("Selected component catalogue details did not load")
+                root.after(100, advance)
+            except BaseException as exc:
+                errors.append(f"{type(exc).__name__}: {exc}")
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+
+        root.after(150, advance)
+        browser.run()
+        if errors:
+            raise RuntimeError("Selected properties capture failed: " + errors[0])
+        if not captured:
+            raise RuntimeError("Selected properties capture did not complete")
 
 
 def _build_gif(output_dir: Path) -> None:
@@ -422,24 +419,6 @@ def main() -> int:
     for name in ASSET_NAMES:
         (output_dir / name).unlink(missing_ok=True)
 
-    fixture_dir = output_dir / ".fixture-images"
-    fixture_dir.mkdir(parents=True, exist_ok=True)
-    fixture_types = {
-        "C25804": "resistor",
-        "C14663": "capacitor",
-        "C529334": "ic",
-        "C72043": "led",
-    }
-    image_bytes_by_url = {}
-    for part_code, part_type in fixture_types.items():
-        image_path = (
-            output_dir / "component-product-fixture.png"
-            if part_code == "C25804"
-            else fixture_dir / f"{part_code}.png"
-        )
-        image_bytes_by_url[f"https://fixture.invalid/{part_code}.png"] = (
-            _make_product_fixture(image_path, part_type, part_code)
-        )
     cli = (
         os.environ.get("KICAD_CLI")
         or shutil.which("kicad-cli-nightly")
@@ -448,7 +427,8 @@ def main() -> int:
     if not cli:
         raise FileNotFoundError("kicad-cli-nightly or kicad-cli is required")
 
-    _drive_browser(output_dir, output_dir / ".cache", image_bytes_by_url)
+    _drive_browser(output_dir, output_dir / ".cache")
+    _drive_selected_component_properties(output_dir, output_dir / ".cache")
     _build_gif(output_dir)
     cli_version = _render_native_symbols(cli, output_dir)
 
@@ -472,7 +452,6 @@ def main() -> int:
         encoding="utf-8",
     )
     shutil.rmtree(output_dir / ".cache", ignore_errors=True)
-    shutil.rmtree(fixture_dir, ignore_errors=True)
     print(
         f"kicad-visual-docs=passed asset_count={len(assets)} "
         f"kicad_cli={cli_version} source_sha={manifest['source_sha']} output={output_dir}",

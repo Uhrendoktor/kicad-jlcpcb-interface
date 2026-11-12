@@ -139,3 +139,28 @@ def search_components(
     if not needle:
         return list(components)
     return [component for component in components if needle in component.search_text]
+
+
+def find_selected_component(
+    schematic: Any, property_name: str = DEFAULT_PART_FIELD
+) -> SchematicComponent:
+    """Return the one selected symbol carrying the configured supplier part field."""
+    get_selection = getattr(schematic, "get_selection", None)
+    if not callable(get_selection):
+        raise RuntimeError(
+            "This KiCad build does not expose schematic selection through the IPC API."
+        )
+
+    selection = list(get_selection())
+    if len(selection) != 1:
+        raise ValueError(
+            "Select exactly one schematic symbol before opening JLCPCB Component Properties."
+        )
+
+    component = component_from_symbol(selection[0], property_name)
+    if component is None:
+        field = str(property_name or DEFAULT_PART_FIELD).strip() or DEFAULT_PART_FIELD
+        raise ValueError(
+            f"The selected symbol has no non-empty '{field}' custom property."
+        )
+    return component
