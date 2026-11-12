@@ -283,13 +283,21 @@ class ComponentBrowser:
             ttk.Button(header, text="Refresh", command=self.refresh).grid(
                 row=2, column=2, sticky="w"
             )
-        body = ttk.Panedwindow(self.root, orient="horizontal")
+        # In overview mode the linked-parts table needs little vertical space,
+        # while the combined photo/catalogue/MPN details need the full window
+        # width. Stack those panes rather than squeezing the catalogue into a
+        # narrow right-hand column. The focused properties window keeps its
+        # wider, side-by-side detail presentation.
+        body = ttk.Panedwindow(
+            self.root,
+            orient="vertical" if self.selected_component is None else "horizontal",
+        )
         body.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 12))
         if self.selected_component is None:
             list_frame = ttk.Frame(body, padding=8)
             list_frame.columnconfigure(0, weight=1)
             list_frame.rowconfigure(1, weight=1)
-            body.add(list_frame, weight=3)
+            body.add(list_frame, weight=1)
             ttk.Label(list_frame, text="LINKED SCHEMATIC COMPONENTS").grid(
                 row=0, column=0, sticky="w", pady=(0, 8)
             )
@@ -320,7 +328,7 @@ class ComponentBrowser:
         detail_frame.rowconfigure(1, weight=1)
         body.add(
             detail_frame,
-            weight=1 if self.selected_component is not None else 2,
+            weight=1 if self.selected_component is not None else 4,
         )
 
         ttk.Label(
