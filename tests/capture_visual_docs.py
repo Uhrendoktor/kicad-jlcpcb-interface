@@ -631,9 +631,36 @@ def _drive_overview(
             if browser.search_var.get() != stage["query"]:
                 browser.search_var.set(stage["query"])
                 root.update()
+
+            # The production list is sorted by reference, so the first row is
+            # C1 rather than R1. Keep the full overview visible but explicitly
+            # select the intended demo part instead of assuming row order.
+            if browser.detail_vars["part"].get().upper() != stage["part"]:
+                target_id = next(
+                    (
+                        item_id
+                        for item_id, component in browser.visible_components.items()
+                        if component.part_code.upper() == stage["part"]
+                    ),
+                    None,
+                )
+                if target_id is None:
+                    raise RuntimeError(
+                        f"The overview does not contain the expected part {stage['part']}."
+                    )
+                browser.tree.selection_set(target_id)
+                browser.tree.focus(target_id)
+                browser._on_tree_select()
+                root.update()
+
             if browser.detail_vars["part"].get().upper() != stage["part"]:
                 if time.monotonic() >= state["deadline"]:
-                    raise TimeoutError(f"Live JLCPCB details did not load for {stage['part']}.")
+                    raise TimeoutError(
+                        f"Live JLCPCB details did not load for {stage['part']}; "
+                        f"selected={browser.detail_vars['part'].get()!r}; "
+                        f"catalogue_status={browser.catalogue_status_var.get()!r}; "
+                        f"browser_status={browser.status_var.get()!r}."
+                    )
                 root.after(120, advance)
                 return
             if browser.catalogue_status_var.get() != "Catalogue details loaded.":
