@@ -116,8 +116,8 @@ class ComponentBrowser:
 
         self.root = tk.Tk()
         self.root.title("KiCad JLCPCB Component Browser")
-        self.root.geometry("1240x790")
-        self.root.minsize(960, 620)
+        self.root.geometry("1360x900")
+        self.root.minsize(1040, 680)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
 
         self.search_var = tk.StringVar()
@@ -218,17 +218,49 @@ class ComponentBrowser:
 
         detail_frame = ttk.Frame(body, padding=(18, 12))
         detail_frame.columnconfigure(0, weight=1)
+        detail_frame.rowconfigure(1, weight=1)
         body.add(detail_frame, weight=2)
 
         ttk.Label(
             detail_frame,
             text="COMPONENT SUMMARY",
             font=("TkDefaultFont", 10, "bold"),
-        ).grid(row=0, column=0, sticky="w")
+        ).grid(row=0, column=0, columnspan=2, sticky="w")
 
-        content = ttk.Frame(detail_frame)
-        content.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
+        detail_canvas = tk.Canvas(detail_frame, highlightthickness=0, borderwidth=0)
+        detail_canvas.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
+        detail_scrollbar = ttk.Scrollbar(
+            detail_frame, orient="vertical", command=detail_canvas.yview
+        )
+        detail_scrollbar.grid(row=1, column=1, sticky="ns", pady=(10, 0))
+        detail_canvas.configure(yscrollcommand=detail_scrollbar.set)
+
+        content = ttk.Frame(detail_canvas)
+        content_window = detail_canvas.create_window(
+            (0, 0), window=content, anchor="nw"
+        )
         content.columnconfigure(0, weight=1)
+
+        def update_detail_scrollregion(_event=None) -> None:
+            detail_canvas.configure(scrollregion=detail_canvas.bbox("all"))
+
+        def fit_detail_content(event) -> None:
+            detail_canvas.itemconfigure(content_window, width=event.width)
+
+        def scroll_detail(event) -> None:
+            if getattr(event, "num", None) == 4:
+                detail_canvas.yview_scroll(-1, "units")
+            elif getattr(event, "num", None) == 5:
+                detail_canvas.yview_scroll(1, "units")
+            elif getattr(event, "delta", 0):
+                detail_canvas.yview_scroll(int(-event.delta / 120), "units")
+
+        content.bind("<Configure>", update_detail_scrollregion)
+        detail_canvas.bind("<Configure>", fit_detail_content)
+        detail_canvas.bind("<Enter>", lambda _event: detail_canvas.focus_set())
+        detail_canvas.bind("<MouseWheel>", scroll_detail)
+        detail_canvas.bind("<Button-4>", scroll_detail)
+        detail_canvas.bind("<Button-5>", scroll_detail)
 
         visual = ttk.LabelFrame(content, text="Product image", padding=8)
         visual.grid(row=0, column=0, sticky="ew")
