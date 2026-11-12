@@ -346,9 +346,12 @@ class ProviderTests(unittest.TestCase):
         self.assertIn("/selectSmtComponentList/v2", request.full_url)
         self.assertEqual(
             [item.lcsc for item in matches],
-            ["C60490", "C60489"],
+            ["C60490", "C60489", "C60492"],
         )
+        self.assertTrue(matches[0].mpn_match)
+        self.assertFalse(matches[-1].mpn_match)
         self.assertEqual(matches[0].manufacturer_part_number, "RC0402JR0710KL")
+        self.assertEqual(matches[-1].manufacturer_part_number, "RC0402JR-0710K")
         self.assertEqual(matches[0].unit_price_usd, 0.0028)
         self.assertEqual(
             [(tier.quantity, tier.unit_price_usd) for tier in matches[0].buy_price_tiers],

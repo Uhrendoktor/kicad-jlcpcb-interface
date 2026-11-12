@@ -414,22 +414,26 @@ class ComponentBrowser:
         )
         self.alternatives_tree = ttk.Treeview(
             alternatives,
-            columns=("part", "package", "class", "stock", "minimum", "price"),
+            columns=("part", "mpn", "package", "match", "class", "stock", "minimum", "price"),
             show="headings",
             height=5,
             selectmode="browse",
         )
         alt_headings = {
-            "part": ("JLCPCB part", 115),
-            "package": ("Package", 80),
-            "class": ("Library", 85),
+            "part": ("JLCPCB part", 100),
+            "mpn": ("Manufacturer P/N", 165),
+            "package": ("Package", 75),
+            "match": ("Match", 65),
+            "class": ("Library", 75),
             "stock": ("Stock / status", 120),
             "minimum": ("Minimum", 85),
             "price": ("Lowest price break", 160),
         }
         for key, (label, width) in alt_headings.items():
             self.alternatives_tree.heading(key, text=label)
-            self.alternatives_tree.column(key, width=width, minwidth=60, stretch=key == "price")
+            self.alternatives_tree.column(
+                key, width=width, minwidth=55, stretch=key in {"mpn", "price"}
+            )
         self.alternatives_tree.grid(row=0, column=0, sticky="ew")
         alt_scroll = ttk.Scrollbar(
             alternatives, orient="vertical", command=self.alternatives_tree.yview
@@ -618,7 +622,6 @@ class ComponentBrowser:
         self._detail_token += 1
         token = self._detail_token
         try:
-            part_code = component.part_code
             future = self._catalogue_executor.submit(
                 self._load_catalogue_details, component
             )
@@ -924,7 +927,9 @@ class ComponentBrowser:
                 iid=iid,
                 values=(
                     details.lcsc + ("  ✓" if details.lcsc == selected_lcsc else ""),
+                    details.manufacturer_part_number or "—",
                     details.package or "—",
+                    "Exact" if details.mpn_match else "Related",
                     library,
                     self._alternative_stock(details),
                     self._alternative_minimum(details),
@@ -932,9 +937,10 @@ class ComponentBrowser:
                 ),
             )
         self.alternatives_status_var.set(
-            f"Showing all {len(alternatives)} purchasable JLCPCB listing(s) returned "
-            "with this exact MPN, sorted by lowest listed unit price. Double-click a row "
-            "to open its JLCPCB product page."
+            f"Showing all {len(alternatives)} purchasable JLCPCB result(s) for this MPN, "
+            "with exact matches first, then related search results. Double-click a row "
+            "to open its JLCPCB product page. Related results are not guaranteed drop-in "
+            "replacements; compare package and attributes before substituting."
         )
 
     def open_selected_alternative(self) -> None:

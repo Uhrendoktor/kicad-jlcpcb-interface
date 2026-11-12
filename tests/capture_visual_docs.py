@@ -250,7 +250,22 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         )
 
     try:
-        kicad.wait_for_libraries(timeout_s=60.0)
+        # The GUI creates its socket before the IPC server and symbol libraries
+        # are ready. Retry the readiness probe instead of treating a busy editor
+        # as an unavailable API service.
+        ready_deadline = time.monotonic() + 60.0
+        last_ready_error = None
+        while time.monotonic() < ready_deadline:
+            try:
+                kicad.wait_for_libraries(timeout_s=5.0)
+                break
+            except Exception as exc:
+                last_ready_error = exc
+                time.sleep(0.5)
+        else:
+            raise RuntimeError(
+                f"KiCad IPC/library service did not become ready: {last_ready_error!r}"
+            )
         schematic = kicad.get_schematic()
         if schematic is None:
             raise RuntimeError("Eeschema opened, but no schematic document is available.")
@@ -375,9 +390,13 @@ def _drive_overview(
                         f"Overview detail source is not JLCPCB: {details.source!r}"
                     )
                 if browser._image_ref is None:
-                    raise RuntimeError("Live JLCPCB product image is missing from the overview.")
+                    raise RuntimeError(
+                        "Live JLCPCB product image is missing from the overview."
+                    )
                 if not browser._alternatives:
-                    raise RuntimeError("Live MPN alternatives were not loaded for the YAGEO resistor.")
+                    raise RuntimeError(
+                        "Live MPN alternatives were not loaded for the YAGEO resistor."
+                    )
             _capture_window(root, frames[index])
             state["index"] += 1
             state["deadline"] = time.monotonic() + 45.0
@@ -446,12 +465,21 @@ def _capture_live_selection_workflow(
                 and browser.catalogue_status_var.get() == "Catalogue details loaded."
             )
             if ready:
-                if browser._catalogue_details is None or browser._catalogue_details.is_cached:
-                    raise RuntimeError("Selected properties screenshot is not backed by live JLCPCB data.")
+                if (
+                    browser._catalogue_details is None
+                    or browser._catalogue_details.is_cached
+                ):
+                    raise RuntimeError(
+                        "Selected properties screenshot is not backed by live JLCPCB data."
+                    )
                 if browser._image_ref is None:
-                    raise RuntimeError("Selected properties window has no live JLCPCB product image.")
+                    raise RuntimeError(
+                        "Selected properties window has no live JLCPCB product image."
+                    )
                 if not browser._alternatives:
-                    raise RuntimeError("Selected properties window has no live MPN alternatives.")
+                    raise RuntimeError(
+                        "Selected properties window has no live MPN alternatives."
+                    )
                 _capture_window(
                     root, output_dir / "component-properties-selected.png"
                 )

@@ -234,6 +234,7 @@ class JlcPartDetails:
     min_purchase_num: int | None = None
     pre_min_purchase_num: int | None = None
     no_buy_reason: str = ""
+    mpn_match: bool | None = None
 
     @property
     def source_label(self) -> str:
@@ -404,10 +405,18 @@ def normalize_component_payload(
         stale=stale,
         price_tiers=price_tiers,
         buy_price_tiers=buy_price_tiers,
-        is_buyable=_boolean(_first(component, "isBuyComponent", "is_buyable", "buyable")),
-        can_presale_number=_integer(_first(component, "canPresaleNumber", "can_presale_number")),
-        min_purchase_num=_integer(_first(component, "minPurchaseNum", "min_purchase_num")),
-        pre_min_purchase_num=_integer(_first(component, "preMinPurchaseNum", "pre_min_purchase_num")),
+        is_buyable=_boolean(
+            _first(component, "isBuyComponent", "is_buyable", "buyable")
+        ),
+        can_presale_number=_integer(
+            _first(component, "canPresaleNumber", "can_presale_number")
+        ),
+        min_purchase_num=_integer(
+            _first(component, "minPurchaseNum", "min_purchase_num")
+        ),
+        pre_min_purchase_num=_integer(
+            _first(component, "preMinPurchaseNum", "pre_min_purchase_num")
+        ),
         no_buy_reason=str(_first(component, "noBuyReason", "no_buy_reason") or ""),
     )
 
@@ -698,9 +707,12 @@ class JlcSearchProvider:
         with self.opener(request, timeout=self.timeout_seconds) as response:
             result = json.loads(response.read().decode("utf-8"))
         if not isinstance(result, dict) or result.get("code") not in (None, 200):
-            raise RuntimeError(
-                f"JLCPCB MPN search rejected the request: {result.get('message', 'unknown error') if isinstance(result, dict) else 'invalid response'}"
+            message = (
+                result.get("message", "unknown error")
+                if isinstance(result, dict)
+                else "invalid response"
             )
+            raise RuntimeError(f"JLCPCB MPN search rejected the request: {message}")
         data = result.get("data")
         page_info = data.get("componentPageInfo") if isinstance(data, dict) else None
         if not isinstance(page_info, dict):
@@ -710,12 +722,12 @@ class JlcSearchProvider:
     def search_by_mpn(
         self, manufacturer_part_number: str, *, page_size: int = 100, max_pages: int = 25
     ) -> list[JlcPartDetails]:
-        """Return all purchasable JLCPCB listings with an exact normalized MPN.
+        """Return live purchasable JLCPCB keyword-search results for a manufacturer P/N.
 
-        Results are fetched live from JLCPCB (not the community index). Exact
-        alphanumeric MPN equality prevents similar but incompatible parts from
-        being presented as substitutions. In-stock and orderable pre-order
-        listings are retained; rows explicitly marked non-purchasable are not.
+        Exact normalized MPN matches sort first and are flagged. Related results
+        from JLCPCB's own search ranking are retained and flagged separately;
+        they are suggestions to compare, not guaranteed drop-in replacements.
+        Rows explicitly marked non-purchasable are excluded.
         """
         mpn = str(manufacturer_part_number or "").strip()
         wanted = _normalize_mpn(mpn)
@@ -734,7 +746,7 @@ class JlcSearchProvider:
                 if not isinstance(row, dict):
                     continue
                 candidate_mpn = str(_first(row, "componentModelEn", "mpn") or "")
-                if _normalize_mpn(candidate_mpn) != wanted:
+                if not _normalize_mpn(candidate_mpn):
                     continue
                 buyable = _boolean(_first(row, "isBuyComponent", "is_buyable", "buyable"))
                 if buyable is False:
@@ -751,13 +763,16 @@ class JlcSearchProvider:
                 details = normalize_component_payload(
                     row, lcsc=code, fetched_at=fetched_at
                 )
-                found[code] = details
+                found[code] = replace(
+                    details, mpn_match=_normalize_mpn(candidate_mpn) == wanted
+                )
             pages = _integer(page_info.get("pages")) or 1
             if page >= min(pages, max_pages):
                 break
         return sorted(
             found.values(),
             key=lambda item: (
+                item.mpn_match is False,
                 item.unit_price_usd is None,
                 item.unit_price_usd if item.unit_price_usd is not None else float("inf"),
                 -(item.stock if item.stock is not None else -1),
