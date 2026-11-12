@@ -55,6 +55,18 @@ class SchematicComponent:
         ).casefold()
 
 
+def _human_sheet_path(path: Any) -> str:
+    """Read the documented SheetPath display string without stringifying its wrapper."""
+    if path is None:
+        return ""
+    human_readable = getattr(path, "path_human_readable", None)
+    if human_readable:
+        return str(human_readable)
+    # Fallback for API snapshots where the human-readable label is unavailable.
+    path_ids = getattr(path, "path", ())
+    return "/".join(str(item) for item in path_ids)
+
+
 def component_from_symbol(
     symbol: Any, property_name: str = DEFAULT_PART_FIELD
 ) -> SchematicComponent | None:
@@ -80,7 +92,7 @@ def component_from_symbol(
         part_reference=part_reference,
         footprint=footprint,
         datasheet=datasheet,
-        sheet_path=str(getattr(symbol, "path", "") or ""),
+        sheet_path=_human_sheet_path(getattr(symbol, "path", None)),
         symbol=symbol,
     )
 
