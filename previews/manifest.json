@@ -1,20 +1,20 @@
 {
   "assets": {
-    "component-browser-filtered.png": "895b815ad77fffcce95a95f55920d80dcfbd63accce1942d4aa78b62dacc5ee3",
-    "component-browser-initial.png": "58be95ca9a85e5aad58dc0ac95ccfc30366374313ad4af4a7ec5801820f5a58b",
-    "component-browser-selected.png": "42f67dd14015b46f345a2e96f60c3b8647d0a62108f324801176b8001bbe681a",
-    "component-browser-workflow.gif": "3db1201017e06533ce7878cf83d828d89ff11bd1af200d5a721193b78deb360c",
-    "component-properties-selected.png": "1e06f41d040d59141e4fa9b89ec7c8ac946396eede887be3c887daf7be58692e",
-    "jlcpcb-capacitor-symbol.svg": "ef6c4a355737c2bbda7f54967d7fa3d2e86087a97dd76097f58146eddb58ec0a",
-    "jlcpcb-resistor-symbol.svg": "e1bd5133004209c9c8dcd2334bf0458aff9688e0b4abe75a6c3e5d29a1239d61",
+    "component-browser-filtered.png": "f31c93d3737151691d2ea1a112932a935eabf00c38ac62238257a6331b3ea52b",
+    "component-browser-initial.png": "733a18443845abbf69a5f3596a7f2012b5161df285d2284720194c8fce6459b3",
+    "component-browser-selected.png": "b36e7a11d15ae450a9a04173257b6d7f74271d8766649ce46d9254fe793c10e1",
+    "component-browser-workflow.gif": "bacc6d48f4df57532bee0a0e3a89b91aa993e2f22a4e9adfc6b324fbb32ae1c3",
+    "component-properties-selected.png": "66d7c0f0b6aa5539192ba852ae5aaf084125de6e57bfe657ab9fce4eb7ffa649",
+    "jlcpcb-capacitor-symbol.svg": "26981e318e4cb4d148899e26f2e678f3cf11b8c8232499079298842a17dcdfd9",
+    "jlcpcb-resistor-symbol.svg": "80f2e908f6ca6d69a587d53741b26ccb73d6bedc6aa7ffc7fa16b6f9d5f8e0f5",
     "schematic-before-selection.png": "205cfb9e7394ea0cad4dd91ae3069b8503d74cf2a1d39a9464f60a2668e0dc7e",
-    "schematic-component-selected.png": "9375a7833810f2921514f4dd73a2302e9f7921be895181650df5e44305840d23",
-    "schematic-properties-opened.png": "e92a32e6f1646d0faeb9026b66e33ebfef1a5c92b10d4b3547fe956f9f4421f8"
+    "schematic-component-selected.png": "49d9e3ec8c903a6e02bac922377067e15a9e07857c7f45a88ac489627d465928",
+    "schematic-properties-opened.png": "5df172a57809e547ba0142cdbb13a68dd989d066cd11aff69c3d5db95ac0e43e"
   },
   "catalogue_source": "live JLCPCB parts-page detail and MPN-search endpoints",
   "generator": "tests/capture_visual_docs.py",
   "kicad_cli_version": "10.99.0",
   "renderer": "live Eeschema IPC, production Tk browser and KiCad CLI",
   "schema_version": 1,
-  "source_sha": "79cb3fb414fc6e3363ef70bb04ac38e3662cd1bb"
+  "source_sha": "78bd7e7a507fe6b2e4b3b6ba9b679dc33d5cc4c4"
 }
