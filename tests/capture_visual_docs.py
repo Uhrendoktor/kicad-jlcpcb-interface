@@ -42,6 +42,7 @@ from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
     resolve_component_action_target,
+    resolve_passive_library_id,
 )
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 from kicad_jlcpcb.theme import apply_tk_theme  # noqa: E402
@@ -1425,10 +1426,15 @@ def _capture_passive_component_workflows(
         ),
         flush=True,
     )
-    if resolved_library_id != "Device:R":
+    verified_fixture_library_id = resolve_passive_library_id(
+        editable_symbol,
+        kicad,
+        document=getattr(schematic, "document", None),
+    )
+    if verified_fixture_library_id != "Device:R":
         raise RuntimeError(
-            "The selected R2 symbol did not match the canonical stock Device:R "
-            f"definition: {resolved_library_id!r}"
+            "The selected R2 fixture is not the canonical stock Device:R definition: "
+            f"{verified_fixture_library_id!r}"
         )
     populate = ComponentPopulator(
         schematic,
