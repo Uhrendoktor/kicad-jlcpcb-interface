@@ -88,18 +88,11 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
         self.assertIn(
-            [
-                "xdotool", "type", "--clearmodifiers", "--window", "0x200",
-                "--delay", "12", "R_C60489",
-            ],
+            ["xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"],
             runner.commands,
         )
         self.assertIn(
-            [
-                "xdotool", "key", "--clearmodifiers", "--window", "0x200",
-                "Return",
-            ],
-            runner.commands,
+            ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
         )
         chooser_move = ["xdotool", "windowmove", "--sync", "0x200", "0", "0"]
         chooser_activate = ["xdotool", "windowactivate", "--sync", "0x200"]
@@ -130,8 +123,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertLess(runner.commands.index(result_focus), runner.commands.index(return_command))
         self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "--window", "0x200", "ctrl+a"],
-            runner.commands
+            ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
         )
         self.assertFalse(
             any(
