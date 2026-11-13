@@ -981,8 +981,29 @@ def resolve_passive_action_target(
     return symbol, library_id, False
 
 
-def run_passive_component_action() -> None:
-    """Open the unified add/update workflow based on the current selection."""
+def resolve_component_action_target(
+    schematic: Any, selection: list[Any]
+) -> tuple[Any | None, str, bool]:
+    """Choose add/update mode; an existing symbol can be any editable schematic type."""
+    if not selection:
+        return None, "", True
+    if len(selection) != 1:
+        raise ValueError(
+            "Select exactly one schematic symbol to update it, or clear the selection "
+            "to add a new project-local component."
+        )
+    symbol = resolve_selected_symbol(schematic, selection[0])
+    required = ("reference", "value", "user_fields", "proto", "footprint_field")
+    if not all(hasattr(symbol, attribute) for attribute in required):
+        raise ValueError(
+            "The selected item is not an editable schematic symbol. Select one component "
+            "symbol to update it, or clear the selection to add a new component."
+        )
+    return symbol, symbol_library_id(symbol), False
+
+
+def run_component_action() -> None:
+    """Open the unified add/update component workflow based on the current selection."""
     try:
         from kipy import KiCad
 
@@ -992,8 +1013,8 @@ def run_passive_component_action() -> None:
             raise RuntimeError(
                 "No active schematic was found. Open a project in Eeschema."
             )
-        symbol, library_id, create_mode = resolve_passive_action_target(
-            schematic, kicad, list(schematic.get_selection())
+        symbol, library_id, create_mode = resolve_component_action_target(
+            schematic, list(schematic.get_selection())
         )
         editor_window_id = capture_eeschema_window_id() if create_mode else None
         settings_directory = Path(
@@ -1014,5 +1035,10 @@ def run_passive_component_action() -> None:
 
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror("JLCPCB Add or Update Passive", str(exc), parent=root)
+        messagebox.showerror("JLCPCB Add or Update Component", str(exc), parent=root)
         root.destroy()
+
+
+def run_passive_component_action() -> None:
+    """Backward-compatible entrypoint for older plugin action registrations."""
+    run_component_action()
