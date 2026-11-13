@@ -14,7 +14,7 @@
 - Capture and verify the live Properties controls and both modes of the unified Add or Update Component dialog in the visual CI fixture.
 - Organize the README around the user workflows, with small, contextual screenshots that explain why each step matters.
 - Add a complete user guide and visual-evidence documentation for the three schematic actions.
-- Follow the desktop light/dark appearance across ttk and classic Tk widgets, with a `KICAD_JLCPCB_THEME=system|light|dark` override; capture both passive-action modes in both palettes.
+- Follow the desktop light/dark appearance across ttk and classic Tk widgets, with a `KICAD_JLCPCB_THEME=system|light|dark` override; capture both component-action modes in both palettes.
 
 ## 0.1.0 — 2026-11-12
 
