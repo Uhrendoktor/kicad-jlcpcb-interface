@@ -122,20 +122,6 @@ def start_native_symbol_placement(
             f"within 15 seconds: {chooser_title!r}."
         )
     pause(0.2)
-    geometry = send("getwindowgeometry", "--shell", chooser_id)
-    dimensions = {
-        item.split("=", 1)[0]: item.split("=", 1)[1]
-        for line in geometry.splitlines()
-        for item in line.split()
-        if "=" in item
-    }
-    try:
-        window_x = int(dimensions["X"])
-        window_y = int(dimensions["Y"])
-    except (KeyError, ValueError) as exc:
-        raise RuntimeError(
-            f"Could not read KiCad's native symbol chooser position: {geometry!r}"
-        ) from exc
     # KiCad's native chooser gives its Filter control focus when it opens.
     # Keep that native focus path intact: the parent Tk review window has been
     # withdrawn before this function is called, so it cannot retain a mapped

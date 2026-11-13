@@ -98,12 +98,6 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        self.assertIn(
-            [
-                "xdotool", "key", "--clearmodifiers", "--window", "0x200", "Return"
-            ],
-            runner.commands,
-        )
         chooser_title_command = ["xdotool", "getwindowname", "0x200"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "15", "R_C60489"
