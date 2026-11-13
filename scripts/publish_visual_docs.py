@@ -14,7 +14,6 @@ ASSET_NAMES = {
     "component-browser-initial.png",
     "component-browser-filtered.png",
     "component-browser-selected.png",
-    "component-browser-workflow.gif",
     "component-properties-selected.png",
     "populate-component-proposed.png",
     "populate-component-confirmation.png",
