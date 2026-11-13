@@ -77,7 +77,7 @@ The capture asserts both the proposed part and data provenance: the Populate dia
 
 The demo schematic is populated through the live KiCad IPC API with controlled example references, values, LCSC links and MPN fields. The first resistor is initially a placeholder; the fixture then exercises the same conservative draft builder and IPC write-back that the Populate action uses.
 
-For generated-library coverage, the test creates a project-local symbol-library entry *before* Eeschema starts. The live UI capture can therefore test extension/reload of a nickname already loaded in the editor, while the Add Component UI action reuses the fixture's generated LCSC symbol. The test checks the generated library's native fields, hidden custom metadata, stock two-pin topology, project table entry, schematic library ID and KiCad CLI export. Separately, a unit test covers the first-use reload failure and verifies that the error explains the saved table row and the required close/reopen/retry workflow.
+For generated-library coverage, the fixture seeds a project-local `JLCPCB_Generated` table entry and a `C60489` resistor *before* Eeschema starts. This lets the live Add Component action fetch a second part (`C105637`), extend the already-loaded library, and place the new linked symbol without hitting the first-use table-registration limitation. The test checks the generated library's native fields, hidden custom metadata, stock two-pin topology, project table entry, schematic library ID and KiCad CLI export. Separately, a unit test covers the first-use reload failure and verifies that the error explains the saved table row and the required close/reopen/retry workflow.
 
 The properties-control capture checks:
 
