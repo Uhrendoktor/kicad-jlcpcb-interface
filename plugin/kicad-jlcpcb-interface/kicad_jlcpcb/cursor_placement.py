@@ -103,7 +103,7 @@ def start_native_symbol_placement(
     # The native chooser accepts type-to-search in its focused filter/list.
     # The exact generated name narrows the results to the symbol to place.
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
-    pause(0.6)
+    pause(0.15)
     send("key", "--clearmodifiers", "Return")
     for _ in range(30):
         focused_id = send("getwindowfocus")

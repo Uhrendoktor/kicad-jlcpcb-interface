@@ -67,12 +67,17 @@ class CursorPlacementTests(unittest.TestCase):
 
     def test_starts_native_chooser_and_returns_with_symbol_on_cursor(self):
         runner = FakeRunner(["0x200", "0x100"])
+        pauses = []
+
+        def pause(seconds):
+            pauses.append(seconds)
+
         start_native_symbol_placement(
             "0x100",
             "R_C60489",
             xdotool="xdotool",
             command_runner=runner,
-            pause=lambda _seconds: None,
+            pause=pause,
         )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
@@ -101,6 +106,8 @@ class CursorPlacementTests(unittest.TestCase):
                 if len(command) >= 4 and command[1] == "key"
             )
         )
+        self.assertIn(0.15, pauses)
+        self.assertNotIn(0.6, pauses)
 
     def test_accepts_return_to_another_eeschema_child_window(self):
         runner = FakeRunner(["0x200", "0x300"])
