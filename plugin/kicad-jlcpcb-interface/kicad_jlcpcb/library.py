@@ -682,7 +682,7 @@ def reload_project_symbol_library(kicad, generated: GeneratedLibrarySymbol) -> N
             f"The project library and table entry were saved, but the active Eeschema "
             f"session could not reload {generated.nickname!r}: {exc}. "
             "No schematic instance was placed. Save and close the project, reopen it, "
-            "then run JLCPCB Add Component from LCSC again for the same LCSC number. "
+            "then run JLCPCB Add or Update Component again with the same LCSC number. "
             "The existing symbol is reused idempotently after KiCad loads the table entry."
         ) from exc
     status_items = statuses if isinstance(statuses, (list, tuple)) else ()
