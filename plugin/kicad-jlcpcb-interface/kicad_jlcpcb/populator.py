@@ -83,6 +83,7 @@ class ComponentPopulator:
             max_workers=1, thread_name_prefix="jlcpcb-populate"
         )
         self.results: queue.Queue[tuple[Future, str, str]] = queue.Queue()
+        self.lookup_future: Future | None = None
         self.draft: ComponentDraft | None = None
         self.selected_details = None
         self.candidate_rows: dict[str, tuple[Any, ComponentDraft]] = {}
@@ -357,6 +358,7 @@ class ComponentPopulator:
             # Keep the Tk dialog out of worker-thread completion callbacks.
             result_queue.put((completed, search_mode, search_value))
 
+        self.lookup_future = future
         future.add_done_callback(enqueue_lookup_result)
 
     def _poll_results(self) -> None:
@@ -718,7 +720,19 @@ class ComponentPopulator:
             variable = getattr(self, name, None)
             setattr(self, name, None)
             del variable
-        self.executor.shutdown(wait=False, cancel_futures=True)
+        # A completed Future may still be executing its done-callback on the
+        # worker thread. Join that short callback before destroying Tk so its
+        # final reference releases cannot race StringVar/widget teardown.
+        lookup_finished = bool(
+            self.lookup_future is not None and self.lookup_future.done()
+        )
+        self.executor.shutdown(wait=lookup_finished, cancel_futures=True)
+        self.lookup_future = None
+        while True:
+            try:
+                self.results.get_nowait()
+            except queue.Empty:
+                break
         self.root.destroy()
 
     def run(self) -> None:
