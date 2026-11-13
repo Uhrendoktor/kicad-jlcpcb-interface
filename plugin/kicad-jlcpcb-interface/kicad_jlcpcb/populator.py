@@ -82,19 +82,17 @@ class ComponentPopulator:
         self.status_var = tk.StringVar(
             value="Enter an LCSC part number and fetch its catalogue record."
         )
-        self.symbol_var = tk.StringVar(
-            value=(
-                (
-                    "New generic passive · active sheet · placement in millimetres"
-                    if self.create_mode
-                    else (
-                        f"{reference} · {self.library_id} · "
-                        f"Value: {getattr(symbol, 'value', '') or '—'} · "
-                        f"Footprint: {self._field_value(getattr(symbol, 'footprint_field', None)) or '—'}"
-                    )
-                )
+        symbol_summary = (
+            "New generic passive · active sheet · placement in millimetres"
+            if self.create_mode
+            else (
+                f"{reference} · {self.library_id} · "
+                f"Value: {getattr(symbol, 'value', '') or '—'} · "
+                "Footprint: "
+                f"{self._field_value(getattr(symbol, 'footprint_field', None)) or '—'}"
             )
         )
+        self.symbol_var = tk.StringVar(value=symbol_summary)
         self.confidence_var = tk.StringVar(value="No proposal loaded.")
 
         outer = ttk.Frame(self.root, padding=16)
