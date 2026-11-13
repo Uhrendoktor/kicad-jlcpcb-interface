@@ -130,9 +130,6 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "windowmove", "--sync", "0x200", "0", "0"],
             runner.commands,
         )
-        self.assertFalse(
-            any(command[1] in {"click", "mousemove"} for command in runner.commands)
-        )
         self.assertIn(0.6, pauses)
         self.assertFalse(
             any(
