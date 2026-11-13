@@ -115,7 +115,35 @@ def start_native_symbol_placement(
             # and chooser transition are more reliable than an exact XID match.
             return
         pause(0.1)
+    def read_window(command: str, window_id: str) -> str:
+        result = command_runner(
+            [executable, command, str(window_id)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        if getattr(result, "returncode", 1) != 0:
+            return ""
+        return str(getattr(result, "stdout", "") or "").strip()
+
+    focused_id = send("getwindowfocus")
+    focused_pid = read_window("getwindowpid", focused_id) if focused_id else ""
+    focused_title = read_window("getwindowname", focused_id) if focused_id else ""
+    focused_class = (
+        read_window("getwindowclassname", focused_id) if focused_id else ""
+    )
+    chooser_title = read_window("getwindowname", chooser_id)
+    chooser_class = read_window("getwindowclassname", chooser_id)
+    editor_title = read_window("getwindowname", str(editor_window_id))
+    editor_class = read_window("getwindowclassname", str(editor_window_id))
     raise RuntimeError(
         "KiCad accepted the symbol chooser selection but did not return focus "
-        "to the Eeschema process. Check the native chooser and retry placement."
+        "to the Eeschema process. "
+        f"Editor={editor_window_id!r}/{editor_pid!r} "
+        f"({editor_class} {editor_title!r}); "
+        f"chooser={chooser_id!r} ({chooser_class} {chooser_title!r}); "
+        f"focused={focused_id!r}/{focused_pid!r} "
+        f"({focused_class} {focused_title!r}). "
+        "Check the native chooser and retry placement."
     )
