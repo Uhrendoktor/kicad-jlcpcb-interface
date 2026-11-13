@@ -193,7 +193,7 @@ class ComponentPopulator:
         )
         self.apply_button.pack(side="right", padx=(10, 0))
         self.root.protocol("WM_DELETE_WINDOW", self.close)
-        self.root.after(100, self._poll_results)
+        self._poll_id = self.root.after(100, self._poll_results)
 
     @staticmethod
     def _field_value(field: Any) -> str:
@@ -248,7 +248,8 @@ class ComponentPopulator:
                 self._render_draft(self.draft, details.is_cached or details.stale)
         except queue.Empty:
             pass
-        self.root.after(100, self._poll_results)
+        if not self.closed:
+            self._poll_id = self.root.after(100, self._poll_results)
 
     def _set_notes(self, lines: tuple[str, ...]) -> None:
         self.notes.configure(state="normal")
@@ -448,6 +449,11 @@ class ComponentPopulator:
         if self.closed:
             return
         self.closed = True
+        try:
+            self.root.after_cancel(self._poll_id)
+        except Exception:
+            pass
+        self._poll_id = None
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.root.destroy()
 
