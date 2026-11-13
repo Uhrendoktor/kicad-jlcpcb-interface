@@ -37,6 +37,11 @@ from kicad_jlcpcb.model import (  # noqa: E402
     iter_schematic_symbols,
 )
 from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
+from kicad_jlcpcb.populator import (  # noqa: E402
+    ComponentPopulator,
+    resolve_passive_library_id,
+    resolve_selected_symbol,
+)
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 
 ASSET_NAMES = (
@@ -45,6 +50,12 @@ ASSET_NAMES = (
     "component-browser-selected.png",
     "component-browser-workflow.gif",
     "component-properties-selected.png",
+    "populate-component-proposed.png",
+    "populate-component-confirmation.png",
+    "populate-component-applied.png",
+    "add-component-proposed.png",
+    "add-component-confirmation.png",
+    "add-component-placed.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
     "schematic-properties-opened.png",
@@ -1065,6 +1076,57 @@ def _capture_live_selection_workflow(
                     root, output_dir / "component-properties-selected.png"
                 )
                 _capture_desktop(output_dir / "schematic-properties-opened.png")
+
+                # Exercise the same callbacks wired to the properties window's
+                # selection, clipboard, supplier-link and MPN-result controls.
+                browser.select_selected()
+                one_selected = list(schematic.get_selection())
+                if [str(item.reference) for item in one_selected] != ["R1"]:
+                    raise RuntimeError(
+                        "Select in schematic did not select only the focused R1 symbol."
+                    )
+                browser.select_same_part_on_sheet()
+                same_part = sorted(
+                    str(item.reference) for item in schematic.get_selection()
+                )
+                if same_part != ["R1", "R3"]:
+                    raise RuntimeError(
+                        "Select same part on sheet did not select both C60489 instances: "
+                        f"{same_part!r}"
+                    )
+                browser.copy_part_id()
+                if browser.root.clipboard_get() != "C60489":
+                    raise RuntimeError("Copy part ID did not copy C60489 to the clipboard.")
+
+                opened_urls = []
+                original_open = browser_module.webbrowser.open_new_tab
+                browser_module.webbrowser.open_new_tab = (
+                    lambda url: opened_urls.append(str(url))
+                )
+                try:
+                    browser.search_lcsc()
+                    browser.open_product_page()
+                    browser.open_datasheet()
+                    alternative_ids = list(browser._alternative_by_iid)
+                    if not alternative_ids:
+                        raise RuntimeError("The MPN alternatives table has no selectable rows.")
+                    browser.alternatives_tree.selection_set(alternative_ids[0])
+                    browser.open_selected_alternative()
+                finally:
+                    browser_module.webbrowser.open_new_tab = original_open
+                if len(opened_urls) != 4 or any(
+                    not url.startswith("https://") for url in opened_urls
+                ):
+                    raise RuntimeError(
+                        "Search/product/datasheet/MPN actions did not open four HTTPS URLs: "
+                        f"{opened_urls!r}"
+                    )
+                print(
+                    "live-properties-controls=passed "
+                    "select-one=R1 select-same=R1,R3 clipboard=C60489 "
+                    "https-links=4",
+                    flush=True,
+                )
                 captured = True
                 browser.close()
                 return
@@ -1084,6 +1146,367 @@ def _capture_live_selection_workflow(
         raise RuntimeError("Schematic selection workflow failed: " + failures[0])
     if not captured:
         raise RuntimeError("The selected-component properties window was not captured.")
+
+
+def _drive_populator_form(
+    populator: ComponentPopulator,
+    output_dir: Path,
+    *,
+    proposal_asset: str,
+    confirmation_asset: str,
+    completed_asset: str,
+    confirmation_title: str,
+    required_confirmation_text: str,
+    expected_lcsc: str,
+    expected_value: str,
+    expected_footprint: str,
+    validate_result,
+) -> None:
+    """Capture the real LCSC proposal form, confirm it, and verify the IPC result."""
+    root = populator.root
+    failures: list[str] = []
+    state = {"done": False, "deadline": time.monotonic() + 60.0}
+
+    def advance() -> None:
+        try:
+            root.update()
+            if (
+                populator.draft is None
+                or str(populator.apply_button.cget("state")) != "normal"
+            ):
+                if time.monotonic() >= state["deadline"]:
+                    raise TimeoutError(
+                        "The LCSC review form did not receive an applicable live draft: "
+                        f"status={populator.status_var.get()!r}"
+                    )
+                root.after(150, advance)
+                return
+
+            draft = populator.draft
+            if (
+                draft.lcsc != expected_lcsc
+                or draft.kind != "resistor"
+                or draft.value != expected_value
+                or draft.footprint != expected_footprint
+                or "JLCPCB parts-page endpoint" not in draft.source_label
+                or "live response" not in draft.source_label
+            ):
+                raise RuntimeError(
+                    "The LCSC form is not showing the expected fresh "
+                    f"{expected_value}/0402 draft for {expected_lcsc}: "
+                    f"lcsc={draft.lcsc!r}, kind={draft.kind!r}, value={draft.value!r}, "
+                    f"footprint={draft.footprint!r}, source={draft.source_label!r}"
+                )
+            if not populator.fields_tree.get_children():
+                raise RuntimeError("The LCSC review form contains no proposed fields.")
+
+            _capture_window(root, output_dir / proposal_asset)
+
+            original_askyesno = populator.messagebox.askyesno
+            original_showerror = populator.messagebox.showerror
+
+            def confirm(title: str, message: str, parent=None) -> bool:
+                if title != confirmation_title:
+                    raise RuntimeError(
+                        f"Unexpected confirmation title: {title!r}; "
+                        f"expected {confirmation_title!r}."
+                    )
+                if required_confirmation_text.casefold() not in message.casefold():
+                    raise RuntimeError(
+                        "The confirmation text omitted its required safety/behavior "
+                        f"explanation: {message!r}"
+                    )
+
+                dismissal_errors: list[str] = []
+
+                def capture_and_accept() -> None:
+                    try:
+                        # Crop to the production form window. The native modal
+                        # remains layered over its parent, without the large Xvfb
+                        # desktop area or unrelated Eeschema controls.
+                        _capture_window(root, output_dir / confirmation_asset)
+                    except BaseException as exc:
+                        dismissal_errors.append(
+                            f"confirmation screenshot failed: {type(exc).__name__}: {exc}"
+                        )
+                    try:
+                        search = subprocess.run(
+                            [
+                                "xdotool",
+                                "search",
+                                "--onlyvisible",
+                                "--name",
+                                title,
+                            ],
+                            check=False,
+                            capture_output=True,
+                            text=True,
+                            timeout=10,
+                        )
+                        windows = [
+                            item.strip()
+                            for item in search.stdout.splitlines()
+                            if item.strip()
+                        ]
+                        if search.returncode == 0 and windows:
+                            # Message boxes are separate X11 windows. Focus the
+                            # exact title from askyesno, then send Return to that
+                            # window rather than whichever editor window happens
+                            # to own the global focus.
+                            window_id = windows[-1]
+                            focus = subprocess.run(
+                                ["xdotool", "windowfocus", "--sync", window_id],
+                                check=False,
+                                capture_output=True,
+                                text=True,
+                                timeout=10,
+                            )
+                            if focus.returncode:
+                                raise RuntimeError(
+                                    "could not focus confirmation window: "
+                                    + (focus.stderr.strip() or str(focus.returncode))
+                                )
+                            result = subprocess.run(
+                                [
+                                    "xdotool",
+                                    "key",
+                                    "--clearmodifiers",
+                                    "--window",
+                                    window_id,
+                                    "Return",
+                                ],
+                                check=False,
+                                capture_output=True,
+                                text=True,
+                                timeout=10,
+                            )
+                        else:
+                            result = subprocess.run(
+                                ["xdotool", "key", "--clearmodifiers", "Return"],
+                                check=False,
+                                capture_output=True,
+                                text=True,
+                                timeout=10,
+                            )
+                            if search.returncode:
+                                dismissal_errors.append(
+                                    "could not locate the confirmation window by title; "
+                                    "used the active-window fallback"
+                                )
+                        if result.returncode:
+                            dismissal_errors.append(
+                                "could not accept the confirmation dialog: "
+                                + (result.stderr.strip() or str(result.returncode))
+                            )
+                    except BaseException as exc:
+                        dismissal_errors.append(
+                            f"could not dismiss the confirmation dialog: "
+                            f"{type(exc).__name__}: {exc}"
+                        )
+
+                # askyesno runs a nested Tk event loop. A scheduled callback can
+                # capture the actual modal messagebox, then accept its Yes button.
+                root.after(500, capture_and_accept)
+                accepted = original_askyesno(
+                    title, message, parent=parent or root
+                )
+                if dismissal_errors:
+                    raise RuntimeError("; ".join(dismissal_errors))
+                if not accepted:
+                    raise RuntimeError("The automated visual fixture did not confirm the action.")
+                return accepted
+
+            def unexpected_error(title: str, message: str, parent=None):
+                raise RuntimeError(f"{title}: {message}")
+
+            populator.messagebox.askyesno = confirm
+            populator.messagebox.showerror = unexpected_error
+            try:
+                populator.apply()
+            finally:
+                populator.messagebox.askyesno = original_askyesno
+                populator.messagebox.showerror = original_showerror
+
+            validate_result(populator)
+            root.update()
+            _capture_window(root, output_dir / completed_asset)
+            state["done"] = True
+            populator.close()
+        except BaseException as exc:
+            failures.append(f"{type(exc).__name__}: {exc}")
+            try:
+                populator.close()
+            except Exception:
+                pass
+
+    root.after(200, advance)
+    populator.run()
+    if failures:
+        raise RuntimeError(
+            f"{proposal_asset} / {completed_asset} capture failed: {failures[0]}"
+        )
+    if not state["done"]:
+        raise RuntimeError(
+            f"{proposal_asset} / {completed_asset} capture stopped before completion."
+        )
+
+
+def _capture_passive_component_workflows(
+    schematic: Any,
+    symbols: dict[str, Any],
+    kicad: Any,
+    output_dir: Path,
+    cache_dir: Path,
+) -> None:
+    """Exercise both production LCSC dialogs against the live Eeschema connection."""
+    # Populate: the entrypoint requires exactly one selected generic passive.
+    schematic.clear_selection()
+    schematic.add_to_selection([symbols["R2"]])
+    selected = find_selected_component(schematic)
+    if selected.reference != "R2":
+        raise RuntimeError("The populate UI fixture did not select R2.")
+
+    editable_symbol = resolve_selected_symbol(schematic, selected.symbol)
+    resolved_library_id = resolve_passive_library_id(
+        editable_symbol, kicad, document=schematic.document
+    )
+    print(
+        "selected-symbol-resolution="
+        + json.dumps(
+            {
+                "reference": str(editable_symbol.reference),
+                "raw_library_id": symbol_library_id(editable_symbol),
+                "resolved_library_id": resolved_library_id,
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
+    if resolved_library_id != "Device:R":
+        raise RuntimeError(
+            "The selected R2 symbol did not match the canonical stock Device:R "
+            f"definition: {resolved_library_id!r}"
+        )
+    populate = ComponentPopulator(
+        schematic,
+        editable_symbol,
+        cache_dir / "populate-ui-cache",
+        create_mode=False,
+        kicad=kicad,
+        library_id=resolved_library_id,
+    )
+
+    populate.root.geometry("860x780+960+30")
+    populate.lcsc_var.set("C60489")
+    populate.lookup()
+
+    def validate_populate_result(_populator: ComponentPopulator) -> None:
+        updated = next(
+            (item for item in find_linked_components(schematic) if item.reference == "R2"),
+            None,
+        )
+        if (
+            updated is None
+            or updated.part_code != "C60489"
+            or updated.value != "10k"
+            or updated.footprint != "Resistor_SMD:R_0402_1005Metric"
+            or updated.manufacturer_part_number != "RC0402JR-0710KL"
+        ):
+            raise RuntimeError(
+                "The confirmed populate UI action did not write the reviewed LCSC fields "
+                "back into R2 through KiCad IPC."
+            )
+
+    _drive_populator_form(
+        populate,
+        output_dir,
+        proposal_asset="populate-component-proposed.png",
+        confirmation_asset="populate-component-confirmation.png",
+        completed_asset="populate-component-applied.png",
+        confirmation_title="Confirm component property update",
+        required_confirmation_text=(
+            "graphic, pins and electrical pin mapping will NOT be changed"
+        ),
+        expected_lcsc="C60489",
+        expected_value="10k",
+        expected_footprint="Resistor_SMD:R_0402_1005Metric",
+        validate_result=validate_populate_result,
+    )
+    print(
+        "live-populate-ui=passed selected=R2 lcsc=C60489 "
+        "result=updated-and-saved",
+        flush=True,
+    )
+
+    # Add: the entrypoint requires an empty Eeschema selection. The project-local
+    # library is already registered by the live fixture, so this exercises the
+    # same reload-and-place path that users get after the first-use reopen/retry.
+    schematic.clear_selection()
+    if list(schematic.get_selection()):
+        raise RuntimeError("The add-component UI fixture did not clear the Eeschema selection.")
+
+    create = ComponentPopulator(
+        schematic,
+        None,
+        cache_dir / "add-ui-cache",
+        create_mode=True,
+        kicad=kicad,
+    )
+    create.root.geometry("940x800+960+30")
+    create.lcsc_var.set("C105637")
+    create.x_var.set("205.0")
+    create.y_var.set("160.0")
+    create.lookup()
+
+    def validate_create_result(populator: ComponentPopulator) -> None:
+        added = populator.symbol
+        if (
+            added is None
+            or added.reference != "R4"
+            or symbol_library_id(added) != "JLCPCB_Generated:R_C105637"
+            or added.value != "1k"
+            or added.footprint_field.text.value
+            != "Resistor_SMD:R_0402_1005Metric"
+        ):
+            raise RuntimeError(
+                "The confirmed add-component UI action did not place R4 linked to the "
+                "project-local generated LCSC symbol."
+            )
+        linked = next(
+            (item for item in find_linked_components(schematic) if item.reference == "R4"),
+            None,
+        )
+        if (
+            linked is None
+            or linked.part_code != "C105637"
+            or linked.value != "1k"
+            or linked.manufacturer_part_number != "RC0402JR-071KL"
+        ):
+            raise RuntimeError(
+                "The add-component UI action did not persist the LCSC metadata in the "
+                "schematic hierarchy."
+            )
+
+    _drive_populator_form(
+        create,
+        output_dir,
+        proposal_asset="add-component-proposed.png",
+        confirmation_asset="add-component-confirmation.png",
+        completed_asset="add-component-placed.png",
+        confirmation_title="Confirm new schematic component",
+        required_confirmation_text=(
+            "clones KiCad's stock passive graphics and two-pin electrical topology"
+        ),
+        expected_lcsc="C105637",
+        expected_value="1k",
+        expected_footprint="Resistor_SMD:R_0402_1005Metric",
+        validate_result=validate_create_result,
+    )
+    print(
+        "live-add-component-ui=passed reference=R4 "
+        "library_id=JLCPCB_Generated:R_C105637",
+        flush=True,
+    )
 
 
 def _build_gif(output_dir: Path) -> None:
@@ -1211,6 +1634,9 @@ def main() -> int:
         _position_eeschema_window()
         _drive_overview(schematic, output_dir, cache_dir)
         _capture_live_selection_workflow(schematic, symbols, output_dir, cache_dir)
+        _capture_passive_component_workflows(
+            schematic, symbols, kicad, output_dir, cache_dir
+        )
         _build_gif(output_dir)
         cli_version = _render_native_symbols(cli, output_dir)
 

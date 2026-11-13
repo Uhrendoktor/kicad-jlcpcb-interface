@@ -13,11 +13,12 @@ from .draft import (
     ComponentDraft,
     apply_component_draft_fields,
     build_component_draft,
+    symbol_definition_matches_library,
     symbol_library_id,
     update_schematic_symbol,
 )
 from .library import generate_project_library_symbol, reload_project_symbol_library
-from .model import component_from_symbol
+from .model import component_from_symbol, iter_schematic_symbols
 from .placement import place_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
 
@@ -35,6 +36,7 @@ class ComponentPopulator:
         *,
         create_mode: bool = False,
         kicad: Any | None = None,
+        library_id: str | None = None,
     ):
         import tkinter as tk
         from tkinter import messagebox, ttk
@@ -50,7 +52,11 @@ class ComponentPopulator:
             raise ValueError("Create mode does not accept an existing symbol.")
         if not self.create_mode and symbol is None:
             raise ValueError("Select a generic Device:R or Device:C placeholder.")
-        self.library_id = symbol_library_id(symbol) if symbol is not None else ""
+        self.library_id = (
+            str(library_id or "").strip() or symbol_library_id(symbol)
+            if symbol is not None
+            else ""
+        )
         if not self.create_mode and self.library_id not in SUPPORTED_PLACEHOLDERS:
             raise ValueError(
                 "Select a generic Device:R or Device:C placeholder. "
@@ -109,17 +115,18 @@ class ComponentPopulator:
             ),
             font=("TkDefaultFont", 15, "bold"),
         ).pack(anchor="w")
+        instructions = (
+            "Fetch supplier data, review the proposed fields, then explicitly apply "
+            + (
+                "them to the active schematic. A stock KiCad Device:R or Device:C symbol "
+                "will be placed at the coordinates below."
+                if self.create_mode
+                else "them to the selected symbol."
+            )
+        )
         ttk.Label(
             outer,
-            text=(
-                "Fetch supplier data, review the proposed fields, then explicitly apply "
-                (
-                    "them to the active schematic. A stock KiCad Device:R or Device:C symbol "
-                    "will be placed at the coordinates below."
-                    if self.create_mode
-                    else "them to the selected symbol."
-                )
-            ),
+            text=instructions,
             wraplength=800,
         ).pack(anchor="w", pady=(4, 12))
         ttk.Label(outer, textvariable=self.symbol_var, wraplength=800).pack(
@@ -186,7 +193,7 @@ class ComponentPopulator:
         )
         self.apply_button.pack(side="right", padx=(10, 0))
         self.root.protocol("WM_DELETE_WINDOW", self.close)
-        self.root.after(100, self._poll_results)
+        self._poll_id = self.root.after(100, self._poll_results)
 
     @staticmethod
     def _field_value(field: Any) -> str:
@@ -210,10 +217,21 @@ class ComponentPopulator:
         )
         self.status_var.set(f"Fetching {lcsc} from JLCPCB catalogue…")
         self.lookup_button.configure(state="disabled")
+        results_queue = self.results
         future = self.executor.submit(
             self.provider.lookup, lcsc, force_refresh=True
         )
-        future.add_done_callback(lambda completed: self.results.put((completed, lcsc)))
+
+        def enqueue_lookup_result(
+            completed: Future,
+            *,
+            result_queue=results_queue,
+            part_code=lcsc,
+        ) -> None:
+            # Keep the Tk dialog out of worker-thread completion callbacks.
+            result_queue.put((completed, part_code))
+
+        future.add_done_callback(enqueue_lookup_result)
 
     def _poll_results(self) -> None:
         if self.closed:
@@ -241,7 +259,8 @@ class ComponentPopulator:
                 self._render_draft(self.draft, details.is_cached or details.stale)
         except queue.Empty:
             pass
-        self.root.after(100, self._poll_results)
+        if not self.closed:
+            self._poll_id = self.root.after(100, self._poll_results)
 
     def _set_notes(self, lines: tuple[str, ...]) -> None:
         self.notes.configure(state="normal")
@@ -258,6 +277,12 @@ class ComponentPopulator:
         for name, value in draft.proposed_fields:
             self.fields_tree.insert("", "end", values=(name, value))
         notes = list(draft.warnings)
+        if self.create_mode:
+            notes = [
+                note
+                for note in notes
+                if not note.startswith("This action only populates fields on the selected symbol.")
+            ]
         notes.append(f"Catalogue source: {draft.source_label}")
         compatible = (
             draft.symbol_hint in SUPPORTED_PLACEHOLDERS
@@ -396,7 +421,6 @@ class ComponentPopulator:
         if (
             draft is None
             or not draft.proposed_fields
-            or draft.symbol_hint != symbol_library_id(self.symbol)
             or draft.symbol_hint != self.library_id
         ):
             return
@@ -414,7 +438,9 @@ class ComponentPopulator:
         ):
             return
         try:
-            changed = apply_component_draft_fields(self.symbol, draft)
+            changed = apply_component_draft_fields(
+                self.symbol, draft, expected_library_id=self.library_id
+            )
             update_schematic_symbol(self.schematic, self.symbol)
             self.schematic.save()
         except Exception as exc:
@@ -440,6 +466,11 @@ class ComponentPopulator:
         if self.closed:
             return
         self.closed = True
+        try:
+            self.root.after_cancel(self._poll_id)
+        except Exception:
+            pass
+        self._poll_id = None
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.root.destroy()
 
@@ -484,6 +515,74 @@ def run_component_creator() -> None:
         root.destroy()
 
 
+def _symbol_instance_id(symbol: Any) -> str:
+    identifier = getattr(symbol, "id", None)
+    value = getattr(identifier, "value", None)
+    return str(value or identifier or "").strip()
+
+
+def _sheet_path_label(symbol: Any) -> str:
+    path = getattr(symbol, "path", None)
+    return str(getattr(path, "path_human_readable", "") or "").strip()
+
+
+def resolve_selected_symbol(schematic: Any, selected_symbol: Any) -> Any:
+    """Resolve a selected item to the editable symbol instance in the hierarchy."""
+    selected_id = _symbol_instance_id(selected_symbol)
+    selected_reference = str(
+        getattr(selected_symbol, "reference", "") or ""
+    ).strip()
+    selected_path = _sheet_path_label(selected_symbol)
+    candidates = list(iter_schematic_symbols(schematic))
+
+    if selected_id:
+        match = next(
+            (
+                candidate
+                for candidate in candidates
+                if _symbol_instance_id(candidate) == selected_id
+            ),
+            None,
+        )
+        if match is not None:
+            return match
+
+    matches = [
+        candidate
+        for candidate in candidates
+        if str(getattr(candidate, "reference", "") or "").strip()
+        == selected_reference
+        and (not selected_path or _sheet_path_label(candidate) == selected_path)
+    ]
+    return matches[0] if len(matches) == 1 else selected_symbol
+
+
+def resolve_passive_library_id(
+    symbol: Any,
+    kicad: Any,
+    *,
+    document: Any | None = None,
+) -> str:
+    """Return a verified stock passive ID, including KiCad's embedded-definition case.
+
+    Prefer the true LIB_ID when the binding exposes it. If not, compare the full
+    embedded symbol definition against both canonical stock passives. A custom or
+    modified symbol is not accepted merely because its reference starts with R/C.
+    """
+    direct_id = symbol_library_id(symbol)
+    if direct_id:
+        return direct_id if direct_id in SUPPORTED_PLACEHOLDERS else ""
+
+    matches = [
+        library_id
+        for library_id in sorted(SUPPORTED_PLACEHOLDERS)
+        if symbol_definition_matches_library(
+            symbol, kicad, library_id, document=document
+        )
+    ]
+    return matches[0] if len(matches) == 1 else ""
+
+
 def run_component_populator() -> None:
     """Open the review-first field populator for exactly one selected symbol."""
     try:
@@ -500,22 +599,31 @@ def run_component_populator() -> None:
             raise ValueError(
                 "Select exactly one schematic symbol before opening this action."
             )
-        symbol = selection[0]
+        symbol = resolve_selected_symbol(schematic, selection[0])
         required = ("reference", "value", "user_fields", "proto", "footprint_field")
         if not all(hasattr(symbol, attribute) for attribute in required):
             raise ValueError(
                 "The selected item is not a schematic symbol with editable properties."
             )
-        library_id = symbol_library_id(symbol)
+        library_id = resolve_passive_library_id(
+            symbol, kicad, document=schematic.document
+        )
         if library_id not in SUPPORTED_PLACEHOLDERS:
             raise ValueError(
                 "This first version accepts only generic Device:R or Device:C placeholders. "
-                f"The selected symbol resolves to {library_id or 'an unknown library ID'}."
+                "KiCad did not expose a supported library ID, and the selected symbol "
+                "does not exactly match either stock passive definition."
             )
         settings_directory = Path(
             kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
         ).expanduser()
-        ComponentPopulator(schematic, symbol, settings_directory).run()
+        ComponentPopulator(
+            schematic,
+            symbol,
+            settings_directory,
+            kicad=kicad,
+            library_id=library_id,
+        ).run()
     except Exception as exc:
         import tkinter as tk
         from tkinter import messagebox

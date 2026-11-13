@@ -52,6 +52,120 @@ def symbol_library_id(symbol: Any) -> str:
     return f"{library}:{name}" if library and name else ""
 
 
+def _symbol_definition_non_pin_proto(definition: Any) -> Any | None:
+    """Copy a symbol definition without its child pin items or definition ID."""
+    message = getattr(definition, "proto", None)
+    if message is None:
+        return None
+    try:
+        normalized = type(message)()
+        normalized.CopyFrom(message)
+        descriptor = getattr(normalized, "DESCRIPTOR", None)
+        fields = getattr(descriptor, "fields_by_name", {})
+        if "id" in fields:
+            normalized.ClearField("id")
+        if "items" in fields:
+            kept_items = [
+                child
+                for child in normalized.items
+                if not str(getattr(getattr(child, "item", None), "type_url", ""))
+                .endswith(".SchematicPin")
+            ]
+            normalized.ClearField("items")
+            normalized.items.extend(kept_items)
+        return normalized
+    except Exception:
+        return None
+
+
+def _symbol_definition_pin_signature(definition: Any) -> tuple[Any, ...] | None:
+    """Describe every pin, including unit/body-style placement and pin electrical data."""
+    try:
+        signature = []
+        for child in getattr(definition, "items", ()):
+            item = getattr(child, "item", None)
+            kind = str(getattr(child, "kind", "") or "")
+            if not (
+                kind.endswith("SchematicPin")
+                or (
+                    hasattr(item, "number")
+                    and hasattr(item, "electrical_type")
+                    and hasattr(item, "position")
+                )
+            ):
+                continue
+
+            item_proto = getattr(item, "proto", None)
+            if item_proto is None:
+                return None
+            normalized_pin = type(item_proto)()
+            normalized_pin.CopyFrom(item_proto)
+            fields = getattr(
+                getattr(normalized_pin, "DESCRIPTOR", None),
+                "fields_by_name",
+                {},
+            )
+            if "id" in fields:
+                normalized_pin.ClearField("id")
+
+            unit = getattr(child, "unit", None)
+            unit_number = getattr(unit, "unit", unit)
+            child_proto = getattr(child, "proto", None)
+            body_style = getattr(child_proto, "body_style", None)
+            body_style_number = getattr(body_style, "style", body_style)
+            signature.append(
+                (
+                    unit_number,
+                    body_style_number,
+                    bool(getattr(child, "is_private", False)),
+                    normalized_pin.SerializeToString(deterministic=True),
+                )
+            )
+        return tuple(sorted(signature, key=repr))
+    except Exception:
+        return None
+
+
+def symbol_definition_matches_library(
+    symbol: Any,
+    kicad: Any,
+    library_id: str,
+    *,
+    document: Any | None = None,
+) -> bool:
+    """Match the complete embedded symbol to a canonical library definition.
+
+    KiCad serializes schematic instances with a definition rebuilt from the symbol
+    library, but the instance serialization also includes its pin children. The
+    library lookup returns the canonical symbol definition. Compare all non-pin
+    graphics/properties after removing the root definition ID, then compare every
+    pin separately after removing only its instance KIID. This avoids a false
+    mismatch between two equivalent definitions while still rejecting changed
+    geometry, pin numbers, types or positions.
+    """
+    definition = getattr(symbol, "definition", None)
+    instance_proto = _symbol_definition_non_pin_proto(definition)
+    instance_pins = _symbol_definition_pin_signature(definition)
+    if instance_proto is None or instance_pins is None:
+        return False
+
+    try:
+        if document is None:
+            library_symbol = kicad.get_library_symbol(library_id)
+        else:
+            library_symbol = kicad.get_library_symbol(library_id, document=document)
+    except Exception:
+        return False
+
+    library_definition = library_symbol
+    library_proto = _symbol_definition_non_pin_proto(library_definition)
+    library_pins = _symbol_definition_pin_signature(library_definition)
+    if library_proto is None or library_pins is None:
+        return False
+
+    return instance_proto == library_proto and instance_pins == library_pins
+
+
 @dataclass(frozen=True, slots=True)
 class ComponentDraft:
     """A reviewable proposal; it deliberately contains no symbol/pin geometry."""
