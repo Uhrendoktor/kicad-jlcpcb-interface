@@ -70,7 +70,7 @@ jobs:
           "${RUNNER_TEMP}/kicad-visual-venv/bin/python" -m pip install --disable-pip-version-check -r plugin/kicad-jlcpcb-interface/requirements.txt
           "${RUNNER_TEMP}/kicad-visual-venv/bin/python" -c 'import kipy; import tkinter; from PIL import Image, ImageGrab, ImageTk; print("kicad-python/Tk/Pillow capture runtime=ready")'
 
-      - name: Test visual documentation assets and GIF compositing
+      - name: Test visual documentation asset provenance
         run: "${RUNNER_TEMP}/kicad-visual-venv/bin/python -m unittest discover -s tests -p test_visual_docs.py -v"
 
       - name: Generate browser screenshots, GIF and native symbol SVGs
