@@ -1386,7 +1386,18 @@ def _drive_populator_form(
             state["done"] = True
             populator.close()
         except BaseException as exc:
-            failures.append(f"{type(exc).__name__}: {exc}")
+            diagnostic = ""
+            if populator.create_mode:
+                screenshot = output_dir / "add-component-chooser-failure.png"
+                try:
+                    _capture_desktop(screenshot)
+                    diagnostic = f"; chooser screenshot: {screenshot.name}"
+                except BaseException as capture_error:
+                    diagnostic = (
+                        "; chooser screenshot failed: "
+                        f"{type(capture_error).__name__}: {capture_error}"
+                    )
+            failures.append(f"{type(exc).__name__}: {exc}{diagnostic}")
             try:
                 populator.close()
             except Exception:
