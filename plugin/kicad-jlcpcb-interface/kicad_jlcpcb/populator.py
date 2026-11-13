@@ -140,8 +140,8 @@ class ComponentPopulator:
         instructions = (
             "Find the catalogue part, review the proposed fields and warnings, then confirm. "
             + (
-                "With no selection, search by LCSC code, MPN, device name or passive value, review the "
-                "suggested KiCad symbol and footprint, then place a project-local copy. "
+                "With no selection, search by LCSC code, MPN, device name or passive value, "
+                "review the suggested KiCad symbol and footprint, then place a project-local copy. "
                 "For other parts, enter the stock Library:Symbol ID yourself."
                 if self.create_mode
                 else (
