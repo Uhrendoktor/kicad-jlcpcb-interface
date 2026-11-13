@@ -452,6 +452,34 @@ class ComponentPopulator:
                     continue
                 self.selected_details = details
                 self.draft = build_component_draft(details)
+                if self.create_mode:
+                    library_class = (
+                        "Basic" if details.is_basic is True
+                        else "Extended" if details.is_basic is False
+                        else "Unknown"
+                    )
+                    stock = f"{details.stock:,}" if details.stock is not None else "—"
+                    price = (
+                        "$" + f"{details.unit_price_usd:.4g}"
+                        if details.unit_price_usd is not None
+                        else "—"
+                    )
+                    self.candidate_rows["candidate-0"] = (details, self.draft)
+                    self.candidate_tree.insert(
+                        "",
+                        "end",
+                        iid="candidate-0",
+                        values=(
+                            details.lcsc,
+                            self.draft.value,
+                            details.package or "—",
+                            library_class,
+                            stock,
+                            price,
+                        ),
+                    )
+                    self.candidate_tree.selection_set("candidate-0")
+                    self.candidate_tree.focus("candidate-0")
                 self._render_draft(self.draft, details.is_cached or details.stale)
         except queue.Empty:
             pass

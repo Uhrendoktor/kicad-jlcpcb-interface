@@ -17,7 +17,7 @@ KiCad JLCPCB Interface is a KiCad 11 Schematic Editor IPC add-on that connects s
 | **JLCPCB Component Overview** | Scans linked symbols across the schematic hierarchy, filters the list, shows catalogue details and estimates design cost and stock coverage. |
 | **JLCPCB Component Properties** | Opens catalogue details for exactly one selected LCSC-linked symbol, including supplier image, price breaks and MPN search results. |
 | **JLCPCB Populate Selected Symbol** | Reviews catalogue-derived fields, then updates one compatible `Device:R` or `Device:C` placeholder after confirmation. |
-| **JLCPCB Add Component from LCSC** | Creates or reuses a project-local resistor/capacitor symbol cloned from KiCad's stock two-pin topology, then places a linked instance. |
+| **JLCPCB Add Component from LCSC** | Searches by LCSC code or resistor/capacitor value, ranks exact Basic/Extended matches, then generates a project-local symbol for cursor or X/Y placement. |
 
 ## See it in KiCad
 
@@ -121,8 +121,10 @@ For the complete action-by-action instructions, catalogue field behavior, troubl
 ## Data, accuracy and limitations
 
 - **Conservative generation.** Automatic symbol generation currently supports only resistor/capacitor records with a confident value and one of the reviewed SMD package-to-footprint mappings. New symbols clone KiCad's stock `Device:R` or `Device:C` graphics and two-pin electrical topology. Arbitrary IC pin maps and electrical pin types are not inferred.
-- **No PCB-library generation.** The add-on does not create copper footprints, pad mappings or 3D models. Always verify the selected footprint and electrical suitability before board use or ordering.
-- **Supplier data.** Catalogue details and MPN keyword results come from JLCPCB website endpoints that are not a supported public components API and may change. Source/freshness labels distinguish direct JLCPCB results, community fallbacks and cached snapshots.
+- **Value-based passive discovery.** The Add Component action accepts nominal values such as `10k`, `4k7`, `100nF` and `4.7uF`. It filters JLCPCB keyword results to exact electrical-value matches with a supported footprint, ranks Basic listings first and keeps Extended listings available as alternatives.
+- **Cursor placement.** Place-at-cursor uses KiCad's native Add Symbol chooser via `xdotool` on X11 when the action is launched from a focused Eeschema window. Explicit X/Y placement remains available as a fallback.
+- **No PCB-library generation. The add-on does not create copper footprints, pad mappings or 3D models. Always verify the selected footprint and electrical suitability before board use or ordering.
+- **Supplier data.** Catalogue details, MPN searches and value-keyword searches use JLCPCB website endpoints that are not a supported public components API and may change. Source/freshness labels distinguish direct JLCPCB results, community fallbacks and cached snapshots.
 - **Indicative availability.** Stock and unit prices are snapshots, not a quote, stock reservation or purchase guarantee. Related MPN-search results are comparison candidates, not guaranteed drop-in replacements.
 - **Separate properties window.** The selected-symbol properties view is a separate add-on window; the KiCad IPC plugin API does not provide extension tabs inside KiCad's built-in Symbol Properties dialog.
 - **First generated library.** The first generated-library registration in an already-open project needs a close/reopen and retry, as described above.

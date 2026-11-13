@@ -77,7 +77,7 @@ The same production windows are captured in both palettes. In GitHub's light UI 
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png" alt="Add Component from LCSC proposal with X and Y coordinates" width="80%">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png" alt="Add Component from LCSC with catalogue match details and cursor or X/Y placement options" width="80%">
 </p>
 
 <p align="center">

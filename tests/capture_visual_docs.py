@@ -1210,6 +1210,8 @@ def _drive_populator_form(
                 return
 
             draft = populator.draft
+            if populator.create_mode and not populator.candidate_tree.get_children():
+                raise RuntimeError("The Add Component catalogue row was not rendered.")
             if (
                 draft.lcsc != expected_lcsc
                 or draft.kind != "resistor"
