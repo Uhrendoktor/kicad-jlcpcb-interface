@@ -249,7 +249,7 @@ The generated footprint association is a KiCad footprint-library reference, not 
 | --- | --- |
 | Overview says no linked components were found | Confirm that symbols have a non-empty custom field matching the browser's **Part-link field** value. Default is `LCSC`. |
 | Component Properties rejects the selection | Select exactly one symbol, and confirm it has the configured part-link field. |
-| Populate action rejects the symbol | The selected library ID must be `Device:R` or `Device:C` and must match the catalogue classification. |
+| Add or Update Passive rejects the selection | Select exactly one stock `Device:R` or `Device:C` to update it, or clear the selection to add a new part. |
 | Proposal is incomplete / Apply is disabled | Check the confidence and review notes. The component may not be a supported passive, value may be ambiguous, or package may be unmapped. Complete the component manually. |
 | Catalogue information is cached or stale | Check the source/freshness label. Supplier endpoints may be unavailable or may have changed; do not treat cached stock/price as current. |
 | Product image is missing | The record may lack an image, the supplier image endpoint may be unavailable, or the HTTPS image download/decoder may have failed. |
