@@ -139,11 +139,29 @@ def start_native_symbol_placement(
         raise RuntimeError(
             f"Could not read KiCad's native symbol chooser position: {geometry!r}"
         ) from exc
-    send("mousemove", "--sync", str(window_x + 80), str(window_y + 17))
+    send("mousemove", "--sync", str(window_x + 200), str(window_y + 20))
     send("click", "1")
+    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
+    if debug_capture:
+        try:
+            from PIL import ImageGrab
+
+            after_click = debug_capture.replace(
+                ".png", "-after-click.png"
+            )
+            ImageGrab.grab().save(after_click)
+            print(
+                f"chooser-click-debug=pointer={send('getmouselocation', '--shell')!r} "
+                f"focus={send('getwindowfocus')!r} screenshot={after_click!r}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"chooser-click-debug=failed error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
     send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "15", symbol_name)
-    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         try:
             from PIL import ImageGrab

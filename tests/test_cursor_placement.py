@@ -100,7 +100,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
         chooser_title_command = ["xdotool", "getwindowname", "0x200"]
         geometry_command = ["xdotool", "getwindowgeometry", "--shell", "0x200"]
-        filter_move = ["xdotool", "mousemove", "--sync", "110", "377"]
+        filter_move = ["xdotool", "mousemove", "--sync", "230", "380"]
         filter_click = ["xdotool", "click", "1"]
         clear_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
         type_command = [
