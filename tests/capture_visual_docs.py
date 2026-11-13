@@ -37,6 +37,7 @@ from kicad_jlcpcb.model import (  # noqa: E402
     iter_schematic_symbols,
 )
 from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
+from kicad_jlcpcb.populator import ComponentPopulator  # noqa: E402
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 
 ASSET_NAMES = (
@@ -45,6 +46,10 @@ ASSET_NAMES = (
     "component-browser-selected.png",
     "component-browser-workflow.gif",
     "component-properties-selected.png",
+    "populate-component-proposed.png",
+    "populate-component-applied.png",
+    "add-component-proposed.png",
+    "add-component-placed.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
     "schematic-properties-opened.png",
@@ -1086,6 +1091,232 @@ def _capture_live_selection_workflow(
         raise RuntimeError("The selected-component properties window was not captured.")
 
 
+def _drive_populator_form(
+    populator: ComponentPopulator,
+    output_dir: Path,
+    *,
+    proposal_asset: str,
+    completed_asset: str,
+    confirmation_title: str,
+    required_confirmation_text: str,
+    validate_result,
+) -> None:
+    """Capture the real LCSC proposal form, confirm it, and verify the IPC result."""
+    root = populator.root
+    failures: list[str] = []
+    state = {"done": False, "deadline": time.monotonic() + 60.0}
+
+    def advance() -> None:
+        try:
+            root.update()
+            if (
+                populator.draft is None
+                or str(populator.apply_button.cget("state")) != "normal"
+            ):
+                if time.monotonic() >= state["deadline"]:
+                    raise TimeoutError(
+                        "The LCSC review form did not receive an applicable live draft: "
+                        f"status={populator.status_var.get()!r}"
+                    )
+                root.after(150, advance)
+                return
+
+            draft = populator.draft
+            if (
+                draft.lcsc != "C60489"
+                or draft.kind != "resistor"
+                or draft.value != "10k"
+                or draft.footprint != "Resistor_SMD:R_0402_1005Metric"
+                or "JLCPCB parts-page endpoint" not in draft.source_label
+                or "live response" not in draft.source_label
+            ):
+                raise RuntimeError(
+                    "The LCSC form is not showing the expected fresh 10 kΩ/0402 draft: "
+                    f"lcsc={draft.lcsc!r}, kind={draft.kind!r}, value={draft.value!r}, "
+                    f"footprint={draft.footprint!r}, source={draft.source_label!r}"
+                )
+            if not populator.fields_tree.get_children():
+                raise RuntimeError("The LCSC review form contains no proposed fields.")
+
+            _capture_window(root, output_dir / proposal_asset)
+
+            original_askyesno = populator.messagebox.askyesno
+            original_showerror = populator.messagebox.showerror
+
+            def confirm(title: str, message: str, parent=None) -> bool:
+                if title != confirmation_title:
+                    raise RuntimeError(
+                        f"Unexpected confirmation title: {title!r}; "
+                        f"expected {confirmation_title!r}."
+                    )
+                if required_confirmation_text.casefold() not in message.casefold():
+                    raise RuntimeError(
+                        "The confirmation text omitted its required safety/behavior "
+                        f"explanation: {message!r}"
+                    )
+                return True
+
+            def unexpected_error(title: str, message: str, parent=None):
+                raise RuntimeError(f"{title}: {message}")
+
+            populator.messagebox.askyesno = confirm
+            populator.messagebox.showerror = unexpected_error
+            try:
+                populator.apply()
+            finally:
+                populator.messagebox.askyesno = original_askyesno
+                populator.messagebox.showerror = original_showerror
+
+            validate_result(populator)
+            root.update()
+            _capture_window(root, output_dir / completed_asset)
+            state["done"] = True
+            populator.close()
+        except BaseException as exc:
+            failures.append(f"{type(exc).__name__}: {exc}")
+            try:
+                populator.close()
+            except Exception:
+                pass
+
+    root.after(200, advance)
+    populator.run()
+    if failures:
+        raise RuntimeError(
+            f"{proposal_asset} / {completed_asset} capture failed: {failures[0]}"
+        )
+    if not state["done"]:
+        raise RuntimeError(
+            f"{proposal_asset} / {completed_asset} capture stopped before completion."
+        )
+
+
+def _capture_passive_component_workflows(
+    schematic: Any,
+    symbols: dict[str, Any],
+    kicad: Any,
+    output_dir: Path,
+    cache_dir: Path,
+) -> None:
+    """Exercise both production LCSC dialogs against the live Eeschema connection."""
+    # Populate: the entrypoint requires exactly one selected generic passive.
+    schematic.clear_selection()
+    schematic.add_to_selection([symbols["R2"]])
+    selected = find_selected_component(schematic)
+    if selected.reference != "R2":
+        raise RuntimeError("The populate UI fixture did not select R2.")
+
+    populate = ComponentPopulator(
+        schematic,
+        selected.symbol,
+        cache_dir / "populate-ui-cache",
+        create_mode=False,
+    )
+    populate.root.geometry("860x780+960+30")
+    populate.lcsc_var.set("C60489")
+    populate.lookup()
+
+    def validate_populate_result(_populator: ComponentPopulator) -> None:
+        updated = next(
+            (item for item in find_linked_components(schematic) if item.reference == "R2"),
+            None,
+        )
+        if (
+            updated is None
+            or updated.part_code != "C60489"
+            or updated.value != "10k"
+            or updated.footprint != "Resistor_SMD:R_0402_1005Metric"
+            or updated.manufacturer_part_number != "RC0402JR-0710KL"
+        ):
+            raise RuntimeError(
+                "The confirmed populate UI action did not write the reviewed LCSC fields "
+                "back into R2 through KiCad IPC."
+            )
+
+    _drive_populator_form(
+        populate,
+        output_dir,
+        proposal_asset="populate-component-proposed.png",
+        completed_asset="populate-component-applied.png",
+        confirmation_title="Confirm component property update",
+        required_confirmation_text=(
+            "graphic, pins and electrical pin mapping will NOT be changed"
+        ),
+        validate_result=validate_populate_result,
+    )
+    print(
+        "live-populate-ui=passed selected=R2 lcsc=C60489 "
+        "result=updated-and-saved",
+        flush=True,
+    )
+
+    # Add: the entrypoint requires an empty Eeschema selection. The project-local
+    # library is already registered by the live fixture, so this exercises the
+    # same reload-and-place path that users get after the first-use reopen/retry.
+    schematic.clear_selection()
+    if list(schematic.get_selection()):
+        raise RuntimeError("The add-component UI fixture did not clear the Eeschema selection.")
+
+    create = ComponentPopulator(
+        schematic,
+        None,
+        cache_dir / "add-ui-cache",
+        create_mode=True,
+        kicad=kicad,
+    )
+    create.root.geometry("940x800+960+30")
+    create.lcsc_var.set("C60489")
+    create.x_var.set("205.0")
+    create.y_var.set("160.0")
+    create.lookup()
+
+    def validate_create_result(populator: ComponentPopulator) -> None:
+        added = populator.symbol
+        if (
+            added is None
+            or added.reference != "R4"
+            or symbol_library_id(added) != "JLCPCB_Generated:R_C60489"
+            or added.value != "10k"
+            or added.footprint_field.text.value
+            != "Resistor_SMD:R_0402_1005Metric"
+        ):
+            raise RuntimeError(
+                "The confirmed add-component UI action did not place R4 linked to the "
+                "project-local generated LCSC symbol."
+            )
+        linked = next(
+            (item for item in find_linked_components(schematic) if item.reference == "R4"),
+            None,
+        )
+        if (
+            linked is None
+            or linked.part_code != "C60489"
+            or linked.value != "10k"
+            or linked.manufacturer_part_number != "RC0402JR-0710KL"
+        ):
+            raise RuntimeError(
+                "The add-component UI action did not persist the LCSC metadata in the "
+                "schematic hierarchy."
+            )
+
+    _drive_populator_form(
+        create,
+        output_dir,
+        proposal_asset="add-component-proposed.png",
+        completed_asset="add-component-placed.png",
+        confirmation_title="Confirm new schematic component",
+        required_confirmation_text=(
+            "clones KiCad's stock passive graphics and two-pin electrical topology"
+        ),
+        validate_result=validate_create_result,
+    )
+    print(
+        "live-add-component-ui=passed reference=R4 "
+        "library_id=JLCPCB_Generated:R_C60489",
+        flush=True,
+    )
+
+
 def _build_gif(output_dir: Path) -> None:
     """Create a full-desktop GIF of the actual Eeschema selection-to-properties workflow."""
     from PIL import Image
@@ -1211,6 +1442,9 @@ def main() -> int:
         _position_eeschema_window()
         _drive_overview(schematic, output_dir, cache_dir)
         _capture_live_selection_workflow(schematic, symbols, output_dir, cache_dir)
+        _capture_passive_component_workflows(
+            schematic, symbols, kicad, output_dir, cache_dir
+        )
         _build_gif(output_dir)
         cli_version = _render_native_symbols(cli, output_dir)
 
