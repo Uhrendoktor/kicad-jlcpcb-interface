@@ -3,7 +3,6 @@
 ## Unreleased
 
 - Add direct placement of a new stock generic resistor/capacitor from a reviewed LCSC draft, with next free reference and explicit X/Y placement coordinates.
-
 - Add review-first LCSC field population for selected generic resistor/capacitor symbols, with conservative value/footprint inference and KiCad IPC write-back.
 - Scan LCSC-linked symbols across the complete schematic hierarchy.
 - Navigate to a symbol's sheet, zoom to it and select it through KiCad's `FocusOnItems` IPC command.

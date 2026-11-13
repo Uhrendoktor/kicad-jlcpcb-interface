@@ -19,7 +19,11 @@ def next_component_reference(schematic: Any, draft: ComponentDraft) -> str:
     """Choose the first unused R/C reference across the complete schematic hierarchy."""
     prefix = str(draft.reference_prefix or "").upper()
     expected = {"Device:R": "R", "Device:C": "C"}.get(draft.symbol_hint)
-    if expected is None or prefix != expected or draft.symbol_hint not in SUPPORTED_PLACEHOLDERS:
+    if (
+        expected is None
+        or prefix != expected
+        or draft.symbol_hint not in SUPPORTED_PLACEHOLDERS
+    ):
         raise ValueError("Only reviewed Device:R and Device:C drafts can be placed.")
     used: set[int] = set()
     pattern = re.compile(rf"{re.escape(prefix)}(\d+)", re.IGNORECASE)

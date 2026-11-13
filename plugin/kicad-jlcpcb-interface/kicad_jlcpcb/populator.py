@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import queue
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
@@ -16,8 +17,7 @@ from .draft import (
     update_schematic_symbol,
 )
 from .model import component_from_symbol
-from .placement import place_component_from_draft, next_component_reference
-from .placement import place_component_from_draft
+from .placement import next_component_reference, place_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
@@ -263,7 +263,8 @@ class ComponentPopulator:
             if self.create_mode
             else bool(draft.symbol_hint) and draft.symbol_hint == self.library_id
         )
-        if draft.symbol_hint and not compatible:
+        complete_for_placement = bool(draft.value and draft.footprint)
+        if draft.symbol_hint and not compatible and not self.create_mode:
             notes.append(
                 f"The proposal requires {draft.symbol_hint}, but the selected symbol is "
                 f"{self.library_id}; no values can be applied to this symbol."
@@ -278,6 +279,11 @@ class ComponentPopulator:
                 "This places KiCad's stock generic passive symbol; it does not generate "
                 "custom symbol graphics, pins, pad mappings or 3D models."
             )
+            if compatible and not complete_for_placement:
+                notes.append(
+                    "A reliable Value and supported Footprint are both required for "
+                    "automatic placement; this draft is incomplete."
+                )
         if cached:
             notes.append(
                 "The provider returned a cached/offline snapshot; "
@@ -287,22 +293,33 @@ class ComponentPopulator:
         self.confidence_var.set(
             f"{draft.kind.title()} · {draft.confidence.title()} confidence · {draft.lcsc}"
         )
+        can_apply = (
+            compatible
+            and bool(draft.proposed_fields)
+            and (not self.create_mode or complete_for_placement)
+        )
         self.status_var.set(
-            "Review the proposed properties. Nothing is written until you apply them."
-            if compatible
+            (
+                "Review the proposed properties. Nothing is placed until you confirm."
+                if self.create_mode
+                else "Review the proposed properties. Nothing is written until you apply them."
+            )
+            if can_apply
             else (
-                "Proposal is not compatible with the selected placeholder; "
-                "no write-back is available."
+                "This proposal is incomplete or incompatible; automatic write-back is disabled."
             )
         )
-        self.apply_button.configure(
-            state="normal" if compatible and draft.proposed_fields else "disabled"
-        )
+        self.apply_button.configure(state="normal" if can_apply else "disabled")
 
     def apply(self) -> None:
         draft = self.draft
         if self.create_mode:
-            if draft is None or draft.symbol_hint not in SUPPORTED_PLACEHOLDERS:
+            if (
+                draft is None
+                or draft.symbol_hint not in SUPPORTED_PLACEHOLDERS
+                or not draft.value
+                or not draft.footprint
+            ):
                 return
             try:
                 x_position = float(self.x_var.get())
@@ -314,7 +331,20 @@ class ComponentPopulator:
                     parent=self.root,
                 )
                 return
-            reference = next_component_reference(self.schematic, draft)
+            if not math.isfinite(x_position) or not math.isfinite(y_position):
+                self.messagebox.showerror(
+                    "Invalid placement",
+                    "Placement coordinates must be finite millimetre values.",
+                    parent=self.root,
+                )
+                return
+            try:
+                reference = next_component_reference(self.schematic, draft)
+            except Exception as exc:
+                self.messagebox.showerror(
+                    "Cannot allocate component reference", str(exc), parent=self.root
+                )
+                return
             warning = (
                 f"Place {reference} ({draft.symbol_hint}) for {draft.lcsc} at "
                 f"X={x_position:g} mm, Y={y_position:g} mm?\\n\\n"

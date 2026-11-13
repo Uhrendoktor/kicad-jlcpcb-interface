@@ -12,7 +12,6 @@ PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.draft import build_component_draft  # noqa: E402
-from kicad_jlcpcb.model import find_linked_components  # noqa: E402
 from kicad_jlcpcb.placement import (  # noqa: E402
     next_component_reference,
     place_component_from_draft,
@@ -94,6 +93,18 @@ class FakeVector2:
         return (x, y)
 
 
+
+class FakeHierarchicalSchematic:
+    def __init__(self, symbols_by_sheet):
+        self.symbols_by_sheet = symbols_by_sheet
+
+    def iter_sheets(self):
+        return tuple(self.symbols_by_sheet)
+
+    def for_sheet(self, sheet):
+        return SimpleNamespace(get_symbols=lambda: self.symbols_by_sheet[sheet])
+
+
 class PlacementTests(unittest.TestCase):
     def setUp(self):
         self.geometry = types.ModuleType("kipy.geometry")
@@ -124,6 +135,18 @@ class PlacementTests(unittest.TestCase):
             )
         )
         self.assertEqual(next_component_reference(schematic, capacitor), "C2")
+
+    def test_next_reference_scans_child_sheets_in_the_hierarchy(self):
+        schematic = FakeHierarchicalSchematic(
+            {
+                "root": [SimpleNamespace(reference="R1")],
+                "child": [
+                    SimpleNamespace(reference="R2"),
+                    SimpleNamespace(reference="C1"),
+                ],
+            }
+        )
+        self.assertEqual(next_component_reference(schematic, resistor_draft()), "R3")
 
     def test_placement_creates_stock_symbol_populates_and_saves(self):
         schematic = FakeSchematic()
