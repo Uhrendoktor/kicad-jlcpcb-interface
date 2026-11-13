@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 import unittest
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -104,6 +105,84 @@ class FakeHierarchicalSchematic:
     def for_sheet(self, path):
         self.requested_sheet = path
         return self.sheet_view
+
+
+class TkCleanupResource:
+    def __init__(self, name, events, root):
+        self.name = name
+        self.events = events
+        self.root = root
+
+    def __del__(self):
+        self.events.append(
+            (self.name, threading.get_ident(), self.root.destroyed)
+        )
+
+
+class TkCleanupRoot:
+    def __init__(self, events):
+        self.events = events
+        self.destroyed = False
+
+    def after_cancel(self, _callback_id):
+        pass
+
+    def destroy(self):
+        self.destroyed = True
+        self.events.append(("root-destroyed", threading.get_ident(), True))
+
+
+class TkCleanupExecutor:
+    def shutdown(self, *, wait, cancel_futures):
+        pass
+
+
+class BrowserCleanupTests(unittest.TestCase):
+    def test_releases_all_tk_resources_on_ui_thread_before_destroy(self):
+        events = []
+        root = TkCleanupRoot(events)
+        browser = object.__new__(ComponentBrowser)
+        browser._closed = False
+        browser._poll_id = "poll-id"
+        browser.root = root
+        browser._catalogue_executor = TkCleanupExecutor()
+        browser._summary_executor = TkCleanupExecutor()
+
+        direct_variables = (
+            "search_var",
+            "field_var",
+            "status_var",
+            "catalogue_status_var",
+            "summary_status_var",
+            "alternatives_status_var",
+        )
+        for name in direct_variables:
+            setattr(browser, name, TkCleanupResource(name, events, root))
+        browser.summary_vars = {
+            name: TkCleanupResource(f"summary:{name}", events, root)
+            for name in ("components", "parts", "total", "availability")
+        }
+        browser.detail_vars = {
+            name: TkCleanupResource(f"detail:{name}", events, root)
+            for name in ("reference", "value", "part")
+        }
+        browser._image_ref = TkCleanupResource("product-image", events, root)
+
+        ComponentBrowser.close(browser)
+
+        resource_events = [event for event in events if event[0] != "root-destroyed"]
+        expected = {
+            *direct_variables,
+            *(f"summary:{name}" for name in browser.summary_vars),
+            *(f"detail:{name}" for name in browser.detail_vars),
+            "product-image",
+        }
+        released = {event[0] for event in resource_events}
+        self.assertEqual(released, expected)
+        self.assertTrue(all(event[1] == threading.get_ident() for event in resource_events))
+        self.assertTrue(all(not event[2] for event in resource_events))
+        self.assertTrue(root.destroyed)
+        self.assertEqual(events[-1][0], "root-destroyed")
 
 
 class SelectionTests(unittest.TestCase):
