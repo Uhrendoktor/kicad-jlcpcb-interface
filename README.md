@@ -6,11 +6,11 @@
 
 **Bring JLCPCB/LCSC catalogue information into KiCad's Schematic Editor.**
 
-Link schematic symbols to LCSC part numbers, check catalogue availability against your design, and add or update supported passive components without losing circuit context.
+Link schematic symbols to LCSC part numbers, check catalogue availability, and add or update components with a review-first workflow that preserves symbol pin definitions.
 
 [Install](#install) · [Quick start](#quick-start) · [User guide](docs/user-guide.md)
 
-> **Supported scope:** automatic passive handling is limited to two-pin resistors and capacitors whose value can be identified confidently and whose footprint matches a reviewed mapping. The add-on does not generate arbitrary IC symbols, pin maps, PCB footprints or 3D models.
+> **Supported scope:** a selected editable schematic symbol of any component type can receive reviewed catalogue fields without changing its library symbol or pin mapping. For new parts, the tool suggests stock symbols and footprints where mappings are known; otherwise users can enter a KiCad Library:Symbol, Value and optional Footprint. Project-local copies preserve the chosen stock symbol's pins and graphics. The tool does not infer manufacturer-specific pin maps or generate PCB copper/3D assets.
 
 ## What it helps you do
 
@@ -18,7 +18,7 @@ Link schematic symbols to LCSC part numbers, check catalogue availability agains
 | --- | --- |
 | **JLCPCB Component Overview** | Check which schematic symbols are linked to LCSC parts, inspect catalogue details, and estimate cost and stock coverage across the design. |
 | **JLCPCB Component Properties** | Inspect the supplier record, pricing, MPN matches and schematic fields for one selected linked symbol. |
-| **JLCPCB Add or Update Passive** | Use one review-first workflow to populate a selected generic resistor/capacitor, or add a new project-local passive when nothing is selected. |
+| **JLCPCB Add or Update Component** | Update catalogue fields on one selected symbol without changing its pinout, or add a project-local copy of a suggested/manually selected KiCad symbol when nothing is selected. |
 
 ## Install
 
@@ -76,48 +76,50 @@ When a catalogue row needs closer inspection, **Select in schematic** takes you 
   <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/schematic-properties-opened.png" alt="Linked resistor selected in Eeschema with its JLCPCB Component Properties window open." width="440">
 </p>
 
-### 3. Add or update a passive through one review
+### 3. Add or update any component through one review
 
-A generic passive already on the schematic and a new part from the catalogue need the same safeguard: review the proposed component data before changing the design. **JLCPCB Add or Update Passive** combines both paths in one Eeschema action. Its mode follows the current selection:
+JLCPCB Add or Update Component chooses its mode from the Eeschema selection:
 
-- **Update an existing placeholder:** select exactly one stock `Device:R` or `Device:C`. Enter its LCSC part number, review the proposed fields and warnings, then confirm. Only supported fields are updated; symbol graphics, pins and electrical pin mapping are preserved.
-- **Add a new passive:** save the project and clear the selection. Search by LCSC code or a value such as `10k`, `4k7`, `100nF` or `4.7uF`. Review the catalogue matches and placement, then confirm to create or reuse a project-local symbol and place it.
+- **Update:** select exactly one editable schematic symbol, including an IC, connector, sensor or passive. Look up its LCSC part, review the proposed Value, Footprint, datasheet and metadata, edit the Value/Footprint inputs when needed, then confirm. The existing symbol library identity, graphics, pins and electrical pin types are preserved.
+- **Add:** clear the selection, then search by LCSC code, manufacturer part number, component name or another keyword. Passive values such as 10k and 100nF still use exact-value matching. Choose a suggested KiCad symbol or enter a stock Library:Symbol manually, then review/edit Value, optional Footprint and reference prefix before placing a project-local copy.
 
-The two review screens below show the outcomes of that same action: enriching an existing placeholder versus creating a new reusable symbol.
+The same review screen handles both tasks. Uncertain symbol and footprint choices stay editable instead of being guessed silently.
 
 <table>
   <tr>
     <td valign="top" width="50%">
-      <strong>Update a selected placeholder</strong>
-      <p>Use this when the schematic already contains a generic resistor or capacitor and you want to add its LCSC, manufacturer, footprint and other reviewed metadata without changing its electrical symbol.</p>
+      <strong>Update a selected component</strong>
+      <p>Update catalogue properties on one existing symbol without replacing its graphics or pin mapping. A manually entered footprint can fill gaps in catalogue package mapping.</p>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png">
-        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Screenshot showing the proposed catalogue fields for updating an existing generic resistor." width="320">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Catalogue properties proposed for a selected schematic component." width="320">
       </picture>
     </td>
     <td valign="top" width="50%">
-      <strong>Add a new project-local symbol</strong>
-      <p>Use this when the part is not yet in the schematic. Search by part number or passive value, compare exact matches, and review where the generated symbol will be placed.</p>
+      <strong>Add a project-local symbol</strong>
+      <p>Search by LCSC code or free text, accept a suggested stock symbol or enter a KiCad Library:Symbol, and review the value and optional footprint before placement.</p>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
-        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Screenshot showing catalogue matches and placement options before adding a reusable passive symbol." width="320">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Catalogue candidates and project-local symbol placement options." width="320">
       </picture>
     </td>
   </tr>
 </table>
 
-With no selection the action can place at the cursor through KiCad's native Add Symbol chooser on X11 when `xdotool` is available, or use explicit X/Y coordinates in millimetres. Multiple selections and unsupported selected symbols are rejected; clear the selection to add a new part.
+When no catalogue-to-symbol mapping is available, enter the stock KiCad identifier (for example, Amplifier_Operational:LM358). The selected symbol definition is copied into the project-local library with its original pins, units and graphics. This does not validate that the chosen symbol matches the actual orderable part: check pin numbers and electrical types against the manufacturer datasheet. Symbols that extend another library symbol must be replaced with a standalone KiCad symbol choice.
+
+For add mode, placement can use KiCad's native Add Symbol chooser at the cursor on X11 when xdotool is available, or explicit X/Y coordinates in millimetres. The generated project-local symbol can be reused on subsequent runs. Multiple selections are rejected; clear the selection to add a new component.
 
 > **First use in a project:** when the generated-library table entry does not yet exist, the open Eeschema session may not recognize the new library immediately. The library and table entry are saved, but no instance is placed. Close and reopen the project, then repeat the same add-mode search; the existing generated symbol is reused.
 
-For detailed instructions, field behavior and troubleshooting, see the **[User guide](docs/user-guide.md)**.
-
+For detailed field behavior and troubleshooting, see the **[User guide](docs/user-guide.md)**.
 ## Data, accuracy and limitations
 
-- **Conservative symbol handling.** Update mode accepts stock generic `Device:R` and `Device:C` placeholders. Add mode generates symbols from KiCad's stock resistor/capacitor graphics and two-pin electrical topology; arbitrary IC pin maps and electrical pin types are not inferred.
-- **Value-based search.** Add mode accepts nominal values such as `10k`, `4k7`, `100nF` and `4.7uF`. Results are filtered to exact electrical-value matches with a supported footprint. Basic listings are ranked first; Extended listings remain available as alternatives.
-- **Placement.** Cursor placement uses KiCad's native Add Symbol chooser through `xdotool` on X11 when launched from a focused Eeschema window. Explicit X/Y placement is available as a fallback.
-- **No PCB asset generation.** The add-on does not create copper footprints, pad mappings or 3D models. Verify the selected footprint and electrical suitability before board use or ordering.
+- **Conservative symbol handling.** Update mode works on one editable selected symbol of any component family and never replaces its graphics, library identity or pin mapping. Add mode suggests common generic symbols (resistor, capacitor, inductor, diode, LED, fuse and crystal) and can clone a manually selected standalone KiCad symbol. A suggestion is not a verified manufacturer pinout.
+- **Reviewable footprints.** Reviewed mappings cover common SMD resistor/capacitor/inductor sizes, selected LED sizes and diode packages. Other packages remain blank until entered by the user. Footprints are optional for symbol generation, but required before normal PCB layout.
+- **Search behavior.** Add mode supports LCSC-code lookup, keyword search by MPN/device name, and exact nominal-value matching for supported resistor/capacitor values. Other keyword matches are candidates to review, not guaranteed electrical equivalents.
+- **Placement.** Cursor placement uses KiCad's native Add Symbol chooser through xdotool on X11 when launched from a focused Eeschema window. Explicit X/Y placement is available as a fallback.
+- **No pin-map or PCB asset generation.** The add-on does not infer IC pin assignments/electrical types, create copper footprints or generate 3D models. It copies the symbol pin definitions the user selected; verify symbol and footprint compatibility against the datasheet before board use or ordering.
 - **Supplier data.** Catalogue detail and search use JLCPCB website endpoints that are not a supported public components API and may change. Source/freshness labels distinguish direct JLCPCB results, community fallbacks and cached snapshots.
 - **Indicative availability.** Stock and unit prices are snapshots, not a quote, reservation or purchase guarantee. Related MPN-search results are comparison candidates, not guaranteed drop-in replacements.
 - **Separate properties window.** Component Properties is a separate add-on window; the KiCad IPC plugin API does not provide extension tabs inside KiCad's built-in Symbol Properties dialog.
@@ -132,7 +134,7 @@ python -m compileall -q plugin tests scripts
 ruff check plugin tests scripts
 ```
 
-CI checks Python 3.12–3.14 and runs a live visual job with KiCad nightly, Eeschema IPC, Tk and KiCad CLI. The visual job checks the overview and properties views, both modes of Add or Update Passive, live selection, field write-back and generated-library placement. Interactive plugin-manager discovery and full GUI navigation through a multi-sheet project remain separate release-validation items.
+CI checks Python 3.12–3.14 and runs a live visual job with KiCad nightly, Eeschema IPC, Tk and KiCad CLI. The visual job checks the overview and properties views, both modes of Add or Update Component, live selection, field write-back and generated-library placement. Interactive plugin-manager discovery and full GUI navigation through a multi-sheet project remain separate release-validation items.
 
 ## Documentation
 
