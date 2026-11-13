@@ -19,7 +19,6 @@ PLUGIN_ROOT = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(PLUGIN_ROOT))
 
-from scripts.workflow_gif import build_workflow_gif  # noqa: E402
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
@@ -46,6 +45,7 @@ from kicad_jlcpcb.populator import (  # noqa: E402
 )
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 from kicad_jlcpcb.theme import apply_tk_theme  # noqa: E402
+from scripts.workflow_gif import build_workflow_gif  # noqa: E402
 
 ASSET_NAMES = (
     "component-browser-initial.png",
