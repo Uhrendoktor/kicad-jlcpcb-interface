@@ -42,8 +42,11 @@ def place_component_from_draft(
     draft: ComponentDraft,
     x_mm: float,
     y_mm: float,
+    *,
+    library_id: str | None = None,
 ) -> Any:
-    """Place a stock KiCad passive symbol, populate its fields and save the schematic."""
+    """Place a stock or project-generated passive and populate its fields."""
+
     if draft.symbol_hint not in SUPPORTED_PLACEHOLDERS:
         raise ValueError("Catalogue data does not identify a supported resistor or capacitor.")
     try:
@@ -62,13 +65,14 @@ def place_component_from_draft(
     reference = next_component_reference(schematic, draft)
     from kipy.geometry import Vector2
 
+    requested_library_id = str(library_id or draft.symbol_hint)
     symbol = schematic.place_symbol_from_library(
-        draft.symbol_hint,
+        requested_library_id,
         Vector2.from_xy_mm(x_position, y_position),
         reference=reference,
     )
     changed = apply_component_draft_fields(
-        symbol, draft, expected_library_id=draft.symbol_hint
+        symbol, draft, expected_library_id=requested_library_id
     )
     if not changed:
         raise RuntimeError("The catalogue draft did not produce any fields to apply.")

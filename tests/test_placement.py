@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
-from kicad_jlcpcb.draft import build_component_draft  # noqa: E402
+from kicad_jlcpcb.draft import build_component_draft, symbol_library_id  # noqa: E402
 from kicad_jlcpcb.placement import (  # noqa: E402
     next_component_reference,
     place_component_from_draft,
@@ -53,11 +53,12 @@ def resistor_draft():
 
 
 class FakeSymbol:
-    def __init__(self, reference="R3", *, expose_definition=True):
+    def __init__(self, reference="R3", *, expose_definition=True, library_id="Device:R"):
         self.reference = reference
         self.value = "R"
+        library, name = library_id.split(":", 1)
         definition_id = (
-            SimpleNamespace(library="Device", name="R")
+            SimpleNamespace(library=library, name=name)
             if expose_definition
             else SimpleNamespace(library="", name="")
         )
@@ -84,7 +85,9 @@ class FakeSchematic:
 
     def place_symbol_from_library(self, lib_id, position, reference=None):
         self.place_request = (lib_id, position, reference)
-        self.created = FakeSymbol(reference, expose_definition=self.expose_definition)
+        self.created = FakeSymbol(
+            reference, expose_definition=self.expose_definition, library_id=lib_id
+        )
         self.symbols.append(self.created)
         return self.created
 
@@ -176,6 +179,27 @@ class PlacementTests(unittest.TestCase):
         self.assertEqual(fields["LCSC"].text.text, "C60489")
         self.assertEqual(fields["MPN"].text.text, "RC0402JR-0710KL")
         self.assertFalse(fields["LCSC"].visible)
+        self.assertTrue(schematic.saved)
+        update.assert_called_once_with(schematic, created)
+
+    def test_placement_can_use_generated_project_library_symbol(self):
+        schematic = FakeSchematic()
+        with patch("kicad_jlcpcb.placement.update_schematic_symbol") as update:
+            created = place_component_from_draft(
+                schematic,
+                resistor_draft(),
+                205.5,
+                160.0,
+                library_id="JLCPCB_Generated:R_C60489",
+            )
+        self.assertEqual(
+            schematic.place_request,
+            ("JLCPCB_Generated:R_C60489", (205.5, 160.0), "R3"),
+        )
+        self.assertEqual(
+            symbol_library_id(created), "JLCPCB_Generated:R_C60489"
+        )
+        self.assertEqual(created.value, "10k")
         self.assertTrue(schematic.saved)
         update.assert_called_once_with(schematic, created)
 

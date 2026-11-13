@@ -17,6 +17,7 @@ from .draft import (
     update_schematic_symbol,
 )
 from .model import component_from_symbol
+from .library import generate_project_library_symbol, reload_project_symbol_library
 from .placement import place_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
 
@@ -33,6 +34,7 @@ class ComponentPopulator:
         settings_directory: str | Path,
         *,
         create_mode: bool = False,
+        kicad: Any | None = None,
     ):
         import tkinter as tk
         from tkinter import messagebox, ttk
@@ -42,6 +44,7 @@ class ComponentPopulator:
         self.messagebox = messagebox
         self.schematic = schematic
         self.symbol = symbol
+        self.kicad = kicad
         self.create_mode = bool(create_mode)
         if self.create_mode and symbol is not None:
             raise ValueError("Create mode does not accept an existing symbol.")
@@ -274,8 +277,9 @@ class ComponentPopulator:
             )
         if self.create_mode:
             notes.append(
-                "This places KiCad's stock generic passive symbol; it does not generate "
-                "custom symbol graphics, pins, pad mappings or 3D models."
+                "This creates a project-local reusable symbol by cloning KiCad's stock "
+                "passive graphics and two-pin electrical topology. It does not infer "
+                "arbitrary pin maps, copper footprints or 3D models."
             )
             if compatible and not complete_for_placement:
                 notes.append(
@@ -344,37 +348,48 @@ class ComponentPopulator:
                 )
                 return
             warning = (
-                f"Place {reference} ({draft.symbol_hint}) for {draft.lcsc} at "
-                f"X={x_position:g} mm, Y={y_position:g} mm?\\n\\n"
-                "This uses KiCad's stock passive symbol and the reviewed catalogue fields. "
-                "It does not create new graphics, pins, pin electrical types, pad mapping "
-                "or 3D geometry. Verify the footprint and electrical suitability."
+                f"Generate a project-local symbol and place {reference} ({draft.symbol_hint}) "
+                f"for {draft.lcsc} at X={x_position:g} mm, Y={y_position:g} mm?\n\n"
+                "The reusable symbol clones KiCad's stock passive graphics and two-pin "
+                "electrical topology. The project symbol table and .kicad_sym library "
+                "will be updated. Verify the footprint and electrical suitability."
             )
             if not self.messagebox.askyesno(
                 "Confirm new schematic component", warning, parent=self.root
             ):
                 return
             try:
+                if self.kicad is None:
+                    raise RuntimeError("The KiCad project connection is unavailable.")
+                project = self.schematic.get_project()
+                generated = generate_project_library_symbol(
+                    project, draft, kicad=self.kicad
+                )
+                reload_project_symbol_library(self.kicad, generated)
                 created = place_component_from_draft(
-                    self.schematic, draft, x_position, y_position
+                    self.schematic,
+                    draft,
+                    x_position,
+                    y_position,
+                    library_id=generated.library_id,
                 )
             except Exception as exc:
-                self.status_var.set(f"KiCad placement failed: {exc}")
+                self.status_var.set(f"Project library generation failed: {exc}")
                 self.messagebox.showerror(
-                    "Component placement failed", str(exc), parent=self.root
+                    "Component library generation failed", str(exc), parent=self.root
                 )
                 return
             self.symbol = created
-            self.library_id = symbol_library_id(created) or draft.symbol_hint
+            self.library_id = symbol_library_id(created)
             self.symbol_var.set(
                 f"Added {created.reference} · {self.library_id} · "
                 f"Value: {created.value} · "
                 f"Footprint: {self._field_value(created.footprint_field)}"
             )
             self.status_var.set(
-                f"Added and saved {created.reference} at "
-                f"X={x_position:g} mm, Y={y_position:g} mm. "
-                "Move it in Eeschema if needed and verify the footprint before board use."
+                f"Generated {generated.library_path.name}, loaded {generated.library_id}, "
+                f"and placed {created.reference} at X={x_position:g} mm, "
+                f"Y={y_position:g} mm. Verify the footprint before board use."
             )
             self.apply_button.configure(state="disabled")
             return
@@ -457,7 +472,7 @@ def run_component_creator() -> None:
             kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
         ).expanduser()
         ComponentPopulator(
-            schematic, None, settings_directory, create_mode=True
+            schematic, None, settings_directory, create_mode=True, kicad=kicad
         ).run()
     except Exception as exc:
         import tkinter as tk

@@ -218,6 +218,31 @@ class ComponentDraftTests(unittest.TestCase):
             )
         self.assertEqual(symbol.value, "old")
 
+    def test_accepts_exact_project_library_id_for_same_lcsc_draft(self):
+        draft = build_component_draft(details())
+        symbol = SimpleNamespace(
+            definition=SimpleNamespace(
+                id=SimpleNamespace(library="JLCPCB_Generated", name="R_C60489")
+            ),
+            value="R",
+            footprint_field=SimpleNamespace(text=SimpleNamespace(value="")),
+            datasheet_field=SimpleNamespace(text=SimpleNamespace(value="")),
+            description_field=SimpleNamespace(text=SimpleNamespace(value="")),
+            proto=SimpleNamespace(
+                value_field=RawField(),
+                user_fields=RepeatedFields(),
+            ),
+        )
+        changed = apply_component_draft_fields(
+            symbol, draft, expected_library_id="JLCPCB_Generated:R_C60489"
+        )
+        self.assertEqual(symbol.value, "10k")
+        self.assertIn("Description", changed)
+        with self.assertRaisesRegex(ValueError, "does not identify this LCSC"):
+            apply_component_draft_fields(
+                symbol, draft, expected_library_id="JLCPCB_Generated:R_C1591"
+            )
+
     def test_non_https_datasheet_is_not_proposed(self):
         draft = build_component_draft(details(datasheet_url="http://example.test/ds.pdf"))
         self.assertEqual(draft.datasheet_url, "")
