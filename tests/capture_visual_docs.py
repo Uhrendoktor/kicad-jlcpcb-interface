@@ -1572,6 +1572,9 @@ def _capture_passive_component_workflows(
                 "The generated project library does not contain the selected symbol."
             )
 
+    os.environ["KICAD_CHOOSER_DEBUG_CAPTURE"] = str(
+        output_dir / "add-component-chooser-after-filter.png"
+    )
     _drive_populator_form(
         create,
         output_dir,

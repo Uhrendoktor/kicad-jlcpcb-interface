@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -134,6 +135,24 @@ def start_native_symbol_placement(
     send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
+    pointer = send("getmouselocation", "--shell")
+    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
+    if debug_capture:
+        try:
+            from PIL import ImageGrab
+
+            ImageGrab.grab().save(debug_capture)
+            print(
+                f"chooser-filter-debug=captured path={debug_capture!r} "
+                f"pointer={pointer!r} focus={send('getwindowfocus')!r}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"chooser-filter-debug=failed error={type(exc).__name__}: {exc}; "
+                f"pointer={pointer!r}",
+                flush=True,
+            )
     # Filtering leaves the exact symbol as the first row. Select that row
     # explicitly instead of relying on whichever chooser control has focus.
     send(
