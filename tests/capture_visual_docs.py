@@ -1262,38 +1262,6 @@ def _capture_passive_component_workflows(
     if selected.reference != "R2":
         raise RuntimeError("The populate UI fixture did not select R2.")
 
-    selection_symbol = list(schematic.get_selection())[0]
-    queried_symbol = next(
-        (item for item in schematic.get_symbols() if item.reference == "R2"),
-        None,
-    )
-
-    def describe_symbol(symbol: Any) -> dict[str, Any]:
-        if symbol is None:
-            return {"missing": True}
-        proto = getattr(symbol, "proto", None)
-        descriptor = getattr(proto, "DESCRIPTOR", None)
-        fields = list(getattr(descriptor, "fields_by_name", {}) or {})
-        raw_identifiers = {
-            name: str(getattr(proto, name))
-            for name in fields
-            if "lib" in name.casefold() or "id" in name.casefold()
-        }
-        definition = getattr(symbol, "definition", None)
-        definition_id = getattr(definition, "id", None)
-        return {
-            "class": type(symbol).__name__,
-            "reference": str(getattr(symbol, "reference", "")),
-            "id": str(getattr(getattr(symbol, "id", None), "value", "")),
-            "library_id": symbol_library_id(symbol),
-            "definition_id": {
-                "library": str(getattr(definition_id, "library", "")),
-                "name": str(getattr(definition_id, "name", "")),
-            },
-            "proto_fields": fields,
-            "proto_identifiers": raw_identifiers,
-        }
-
     editable_symbol = resolve_selected_symbol(schematic, selected.symbol)
     resolved_library_id = resolve_passive_library_id(
         editable_symbol, kicad, document=schematic.document
@@ -1320,6 +1288,8 @@ def _capture_passive_component_workflows(
         editable_symbol,
         cache_dir / "populate-ui-cache",
         create_mode=False,
+        kicad=kicad,
+        library_id=resolved_library_id,
     )
 
     populate.root.geometry("860x780+960+30")
