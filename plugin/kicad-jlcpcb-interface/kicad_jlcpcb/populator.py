@@ -97,7 +97,11 @@ class ComponentPopulator:
         current = component_from_symbol(symbol) if symbol is not None else None
         self.lcsc_var = tk.StringVar(value=current.part_code if current else "")
         self.symbol_hint_var = tk.StringVar(value="")
-        self.footprint_var = tk.StringVar(value="")
+        self.value_var = tk.StringVar(value=getattr(symbol, "value", "") or "")
+        self.footprint_var = tk.StringVar(
+            value=self._field_value(getattr(symbol, "footprint_field", None))
+            if symbol is not None else ""
+        )
         self.reference_prefix_var = tk.StringVar(value="")
         self.x_var = tk.StringVar(value="100.0")
         self.y_var = tk.StringVar(value="100.0")
@@ -105,7 +109,7 @@ class ComponentPopulator:
             value="cursor" if self.cursor_placement_available else "coordinates"
         )
         self.status_var = tk.StringVar(
-            value="Enter an LCSC code (or a resistor/capacitor value such as 10k or 100nF)."
+            value="Search by LCSC code, MPN, component name or passive value."
             if self.create_mode
             else "Enter an LCSC part number and fetch its catalogue record."
         )
@@ -162,7 +166,7 @@ class ComponentPopulator:
         controls.pack(fill="x", pady=(0, 8))
         ttk.Label(
             controls,
-            text="LCSC code or value" if self.create_mode else "LCSC part number",
+            text="LCSC / MPN / keyword / value" if self.create_mode else "LCSC part number",
         ).pack(side="left", padx=(0, 8))
         self.lcsc_entry = ttk.Entry(
             controls, textvariable=self.lcsc_var, width=30 if self.create_mode else 24
@@ -175,39 +179,55 @@ class ComponentPopulator:
         )
         self.lookup_button.pack(side="left")
 
+        component_options = ttk.LabelFrame(
+            outer, text="COMPONENT DETAILS (REVIEW OR EDIT)", padding=(8, 5)
+        )
+        component_options.pack(fill="x", pady=(0, 8))
+        row = 0
         if self.create_mode:
-            component_options = ttk.LabelFrame(
-                outer, text="KICAD SYMBOL AND FOOTPRINT (REVIEW OR EDIT)", padding=(8, 5)
-            )
-            component_options.pack(fill="x", pady=(0, 8))
-            ttk.Label(component_options, text="Library:Symbol").grid(
-                row=0, column=0, sticky="w", padx=(0, 8), pady=3
+            ttk.Label(component_options, text="KiCad Library:Symbol").grid(
+                row=row, column=0, sticky="w", padx=(0, 8), pady=3
             )
             symbol_entry = ttk.Entry(
                 component_options, textvariable=self.symbol_hint_var, width=34
             )
-            symbol_entry.grid(row=0, column=1, sticky="ew", pady=3)
+            symbol_entry.grid(row=row, column=1, sticky="ew", pady=3)
             symbol_entry.bind("<KeyRelease>", self._refresh_readiness)
-            ttk.Label(component_options, text="Footprint (optional)").grid(
-                row=1, column=0, sticky="w", padx=(0, 8), pady=3
-            )
-            footprint_entry = ttk.Entry(
-                component_options, textvariable=self.footprint_var, width=34
-            )
-            footprint_entry.grid(row=1, column=1, sticky="ew", pady=3)
-            footprint_entry.bind("<KeyRelease>", self._refresh_readiness)
+            row += 1
+        ttk.Label(component_options, text="Value").grid(
+            row=row, column=0, sticky="w", padx=(0, 8), pady=3
+        )
+        value_entry = ttk.Entry(
+            component_options, textvariable=self.value_var, width=34
+        )
+        value_entry.grid(row=row, column=1, sticky="ew", pady=3)
+        value_entry.bind("<KeyRelease>", self._refresh_readiness)
+        row += 1
+        ttk.Label(component_options, text="Footprint (optional)").grid(
+            row=row, column=0, sticky="w", padx=(0, 8), pady=3
+        )
+        footprint_entry = ttk.Entry(
+            component_options, textvariable=self.footprint_var, width=34
+        )
+        footprint_entry.grid(row=row, column=1, sticky="ew", pady=3)
+        footprint_entry.bind("<KeyRelease>", self._refresh_readiness)
+        row += 1
+        if self.create_mode:
             ttk.Label(component_options, text="Reference prefix").grid(
-                row=2, column=0, sticky="w", padx=(0, 8), pady=3
+                row=row, column=0, sticky="w", padx=(0, 8), pady=3
             )
             prefix_entry = ttk.Entry(
                 component_options, textvariable=self.reference_prefix_var, width=8
             )
-            prefix_entry.grid(row=2, column=1, sticky="w", pady=3)
+            prefix_entry.grid(row=row, column=1, sticky="w", pady=3)
             prefix_entry.bind("<KeyRelease>", self._refresh_readiness)
-            component_options.columnconfigure(1, weight=1)
+        component_options.columnconfigure(1, weight=1)
 
+        if self.create_mode:
             candidate_frame = ttk.LabelFrame(
-                outer, text="EXACT-VALUE CATALOGUE MATCHES", padding=(7, 5)
+                outer,
+                text="CATALOGUE CANDIDATES · PASSIVE VALUE SEARCH IS EXACT",
+                padding=(7, 5),
             )
             candidate_frame.pack(fill="x", pady=(0, 8))
             self.candidate_tree = ttk.Treeview(
@@ -567,9 +587,25 @@ class ComponentPopulator:
             "end",
             values=("Suggested symbol type", draft.symbol_hint or "Choose manually"),
         )
+        self.value_var.set(
+            draft.value
+            or (
+                (
+                    getattr(self.selected_details, "manufacturer_part_number", "")
+                    or getattr(self.selected_details, "lcsc", "")
+                )
+                if self.create_mode and self.selected_details is not None
+                else getattr(self.symbol, "value", "") or ""
+            )
+        )
         if self.create_mode:
             self.symbol_hint_var.set(draft.symbol_hint)
             self.footprint_var.set(draft.footprint)
+        else:
+            self.footprint_var.set(
+                draft.footprint
+                or self._field_value(getattr(self.symbol, "footprint_field", None))
+            )
             self.reference_prefix_var.set(draft.reference_prefix)
         self.fields_tree.insert(
             "",
@@ -666,12 +702,20 @@ class ComponentPopulator:
         if self.closed or not self.create_mode or self.draft is None:
             return
         hint = self.symbol_hint_var.get().strip()
-        ready = ":" in hint and bool(self.draft.proposed_fields) and bool(
-            self.draft.value or self.selected_details
+        ready = (
+            bool(
+                self.value_var.get().strip()
+                or self.draft.value
+                or self.selected_details
+            )
+            and bool(self.draft.proposed_fields)
+            and (not self.create_mode or ":" in hint)
         )
         self.apply_button.configure(state="normal" if ready else "disabled")
-        if not ready and hint:
-            self.status_var.set("Enter a valid KiCad Library:Symbol and review the proposed fields.")
+        if not ready:
+            self.status_var.set(
+                "Enter a KiCad Library:Symbol and a component value before placing the part."
+            )
 
     def apply(self) -> None:
         draft = self.draft
@@ -681,10 +725,15 @@ class ComponentPopulator:
             selected_hint = self.symbol_hint_var.get().strip() or draft.symbol_hint
             selected_footprint = self.footprint_var.get().strip()
             selected_prefix = self.reference_prefix_var.get().strip() or draft.reference_prefix
-            selected_value = draft.value or str(
-                getattr(self.selected_details, "manufacturer_part_number", "") or
-                getattr(self.selected_details, "lcsc", "") or ""
-            ).strip()
+            selected_value = (
+                self.value_var.get().strip()
+                or draft.value
+                or str(
+                    getattr(self.selected_details, "manufacturer_part_number", "")
+                    or getattr(self.selected_details, "lcsc", "")
+                    or ""
+                ).strip()
+            )
             draft = replace(
                 draft,
                 symbol_hint=selected_hint,
@@ -812,6 +861,11 @@ class ComponentPopulator:
             return
         if draft is None or not draft.proposed_fields:
             return
+        draft = replace(
+            draft,
+            value=self.value_var.get().strip() or draft.value,
+            footprint=self.footprint_var.get().strip(),
+        )
         reference = str(getattr(self.symbol, "reference", "") or "selected symbol")
         warning = (
             f"Apply {len(draft.proposed_fields)} proposed field(s) to {reference}?\n\n"
@@ -873,6 +927,7 @@ class ComponentPopulator:
             "symbol_var",
             "confidence_var",
             "symbol_hint_var",
+            "value_var",
             "footprint_var",
             "reference_prefix_var",
         ):
