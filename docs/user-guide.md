@@ -200,7 +200,7 @@ Use add mode when nothing is selected in Eeschema. The add-on creates or reuses 
 2. Search by LCSC code, manufacturer part number, device name or another keyword. Resistor/capacitor value queries such as 10k, 4k7, 470R, 100nF and 4.7uF use exact-value candidate filtering; other free-text searches show catalogue candidates to review.
 3. Select a catalogue row when the search returns multiple parts. Review the suggested symbol, Value, package, Footprint, metadata, confidence and warnings.
 4. In **Component details**, accept or edit the suggested KiCad `Library:Symbol`. When no confident symbol mapping is available, enter a stock ID manually, for example `Amplifier_Operational:LM358`. You can also replace an uncertain automatic suggestion. Edit Value, optional Footprint and Reference prefix as required.
-5. Choose **Place at cursor in KiCad** or **Use X/Y coordinates (mm)**, then confirm **Generate and place component**.
+5. Confirm **Generate and place component**. KiCad opens its native Add Symbol chooser, selects the generated project-local copy and returns to Eeschema with the symbol attached to the mouse cursor. Click in the schematic to place it or press Escape to cancel. Add mode has no X/Y coordinate fallback.
 
 Automatic symbol suggestions currently cover common resistors, capacitors, inductors, diodes, LEDs, fuses and crystals. The suggestions are generic symbol templates, not manufacturer-specific pin maps. When classification is ambiguous, the symbol field remains for manual selection rather than guessing an IC pinout.
 
