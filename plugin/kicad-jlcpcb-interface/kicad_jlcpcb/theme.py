@@ -435,17 +435,26 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
             ("active", palette["foreground"]),
         ],
     )
+    scrollbar_options = {
+        "background": palette["scroll_thumb"],
+        "troughcolor": palette["scroll_trough"],
+        "bordercolor": palette["scroll_trough"],
+        "lightcolor": palette["scroll_thumb"],
+        "darkcolor": palette["scroll_thumb"],
+        "relief": "flat",
+        "borderwidth": 0,
+        "width": 12,
+    }
+    style.configure("TScrollbar", **scrollbar_options)
     for scrollbar_style in ("Vertical.TScrollbar", "Horizontal.TScrollbar"):
-        style.configure(
+        style.configure(scrollbar_style, **scrollbar_options)
+        style.map(
             scrollbar_style,
-            background=palette["scroll_thumb"],
-            troughcolor=palette["scroll_trough"],
-            bordercolor=palette["scroll_trough"],
-            lightcolor=palette["scroll_thumb"],
-            darkcolor=palette["scroll_thumb"],
-            relief="flat",
-            borderwidth=0,
-            width=12,
+            background=[
+                ("active", palette["accent"]),
+                ("pressed", palette["accent"]),
+                ("!disabled", palette["scroll_thumb"]),
+            ],
         )
     # Remove the legacy arrow buttons; leave one low-contrast draggable thumb.
     for scrollbar_style, layout in (
