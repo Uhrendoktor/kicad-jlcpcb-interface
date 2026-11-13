@@ -127,7 +127,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertLess(runner.commands.index(type_command), runner.commands.index(result_focus))
         self.assertEqual(
             runner.commands[runner.commands.index(result_focus) + 1],
-            filter_click,
+            result_click,
         )
         self.assertLess(runner.commands.index(result_focus), runner.commands.index(return_command))
         self.assertIn(
