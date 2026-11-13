@@ -101,9 +101,10 @@ def start_native_symbol_placement(
             "Preferences → Hotkeys and bind Add Symbol to A, then retry."
         )
 
-    # XTest pointer motion alone can leave wx's chooser filter outside the
-    # event target. Send both pointer and keyboard input to the actual chooser
-    # X11 window so its Filter control receives the search string.
+    # Place and activate the chooser at a known origin before using physical
+    # XTest pointer/key events. Some wxGTK builds ignore XSendEvent input to
+    # the composite chooser window and the original global coordinates can hit
+    # the root window rather than the Filter entry.
     geometry = send("getwindowgeometry", "--shell", chooser_id)
     dimensions = {
         item.split("=", 1)[0]: item.split("=", 1)[1]
@@ -127,18 +128,14 @@ def start_native_symbol_placement(
     filter_y = max(10, int(height * 0.025))
     result_x = int(width * 0.15)
     result_y = int(height * 0.12)
+    send("windowmove", "--sync", chooser_id, "0", "0")
+    send("windowactivate", "--sync", chooser_id)
     send("windowfocus", "--sync", chooser_id)
-    pause(0.1)
-    send(
-        "mousemove", "--sync", "--window", chooser_id,
-        str(filter_x), str(filter_y),
-    )
-    send("click", "--window", chooser_id, "1")
-    send("key", "--clearmodifiers", "--window", chooser_id, "ctrl+a")
-    send(
-        "type", "--clearmodifiers", "--window", chooser_id,
-        "--delay", "12", symbol_name,
-    )
+    pause(0.15)
+    send("mousemove", "--sync", str(filter_x), str(filter_y))
+    send("click", "1")
+    send("key", "--clearmodifiers", "ctrl+a")
+    send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.5)
     pointer = send("getmouselocation", "--shell")
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
@@ -159,12 +156,9 @@ def start_native_symbol_placement(
                 flush=True,
             )
     # After filtering the exact generated symbol is the first result.
-    send(
-        "mousemove", "--sync", "--window", chooser_id,
-        str(result_x), str(result_y),
-    )
-    send("click", "--window", chooser_id, "1")
-    send("key", "--clearmodifiers", "--window", chooser_id, "Return")
+    send("mousemove", "--sync", str(result_x), str(result_y))
+    send("click", "1")
+    send("key", "--clearmodifiers", "Return")
     for _ in range(30):
         focused_id = send("getwindowfocus")
         if (
