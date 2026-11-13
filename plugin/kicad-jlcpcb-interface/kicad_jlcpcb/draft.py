@@ -573,8 +573,9 @@ def apply_component_draft_fields(
     draft: ComponentDraft,
     *,
     expected_library_id: str | None = None,
+    allow_symbol_mismatch: bool = False,
 ) -> tuple[str, ...]:
-    """Apply fields only after validating the exact symbol/library identity."""
+    """Apply reviewed fields, optionally allowing an intentional selected-symbol update."""
     actual_library_id = symbol_library_id(symbol)
     expected = str(expected_library_id or "").strip()
     if expected and actual_library_id and expected != actual_library_id:
@@ -584,6 +585,7 @@ def apply_component_draft_fields(
         )
     if (
         not expected
+        and not allow_symbol_mismatch
         and draft.symbol_hint
         and not _library_id_matches_draft(actual_library_id, draft)
     ):
@@ -591,7 +593,7 @@ def apply_component_draft_fields(
             f"Proposal requires {draft.symbol_hint}, but the selected symbol is "
             f"{actual_library_id or 'an unknown library symbol'}."
         )
-    if not expected and not actual_library_id and not draft.symbol_hint:
+    if not expected and not allow_symbol_mismatch and not actual_library_id and not draft.symbol_hint:
         raise ValueError("The selected symbol's library identity could not be determined.")
     changed: list[str] = []
     if draft.value:
