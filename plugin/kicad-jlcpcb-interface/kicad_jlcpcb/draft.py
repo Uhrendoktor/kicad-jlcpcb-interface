@@ -78,7 +78,6 @@ class ComponentDraft:
             ("LCSC", self.lcsc),
             ("Manufacturer", self.manufacturer),
             ("MPN", self.mpn),
-            ("Description", self.description),
         ]
         if self.category:
             fields.append(("JLCPCB Category", self.category))
@@ -104,6 +103,8 @@ class ComponentDraft:
             fields.append(("Footprint", self.footprint))
         if self.datasheet_url:
             fields.append(("Datasheet", self.datasheet_url))
+        if self.description:
+            fields.append(("Description", self.description))
         fields.extend(self.custom_fields)
         return tuple(fields)
 
@@ -342,6 +343,15 @@ def apply_component_draft_fields(
         if text is not None:
             text.value = draft.datasheet_url
             changed.append("Datasheet")
+    if draft.description:
+        description_field = getattr(symbol, "description_field", None)
+        text = getattr(description_field, "text", None)
+        if text is None:
+            raise RuntimeError(
+                "KiCad did not expose the built-in symbol Description property."
+            )
+        text.value = draft.description
+        changed.append("Description")
 
     proto = symbol.proto
     raw_fields = list(getattr(proto, "user_fields", ()) or ())

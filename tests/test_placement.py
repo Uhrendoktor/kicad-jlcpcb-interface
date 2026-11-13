@@ -64,6 +64,7 @@ class FakeSymbol:
         self.definition = SimpleNamespace(id=definition_id)
         self.footprint_field = SimpleNamespace(text=SimpleNamespace(value=""))
         self.datasheet_field = SimpleNamespace(text=SimpleNamespace(value=""))
+        self.description_field = SimpleNamespace(text=SimpleNamespace(value=""))
         self.proto = SimpleNamespace(
             value_field=RawField("Value", "R"),
             user_fields=RepeatedFields(),
@@ -166,7 +167,12 @@ class PlacementTests(unittest.TestCase):
             created.footprint_field.text.value,
             "Resistor_SMD:R_0402_1005Metric",
         )
+        self.assertEqual(
+            created.description_field.text.value,
+            "10K Ohm Thick Film Resistor",
+        )
         fields = {field.name: field for field in created.proto.user_fields}
+        self.assertNotIn("Description", fields)
         self.assertEqual(fields["LCSC"].text.text, "C60489")
         self.assertEqual(fields["MPN"].text.text, "RC0402JR-0710KL")
         self.assertFalse(fields["LCSC"].visible)
@@ -183,6 +189,10 @@ class PlacementTests(unittest.TestCase):
         self.assertEqual(created.reference, "R3")
         self.assertEqual(created.value, "10k")
         self.assertEqual(created.footprint_field.text.value, "Resistor_SMD:R_0402_1005Metric")
+        self.assertEqual(
+            created.description_field.text.value,
+            "10K Ohm Thick Film Resistor",
+        )
         fields = {field.name: field for field in created.proto.user_fields}
         self.assertEqual(fields["LCSC"].text.text, "C60489")
         update.assert_called_once_with(schematic, created)

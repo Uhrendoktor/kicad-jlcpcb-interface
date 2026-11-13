@@ -148,6 +148,7 @@ class ComponentDraftTests(unittest.TestCase):
             value="old",
             footprint_field=SimpleNamespace(text=SimpleNamespace(value="Old:Footprint")),
             datasheet_field=SimpleNamespace(text=SimpleNamespace(value="")),
+            description_field=SimpleNamespace(text=SimpleNamespace(value="")),
             proto=proto,
         )
 
@@ -160,7 +161,12 @@ class ComponentDraftTests(unittest.TestCase):
         self.assertEqual(
             symbol.datasheet_field.text.value, "https://example.test/resistor.pdf"
         )
+        self.assertEqual(symbol.description_field.text.value, draft.description)
+        self.assertEqual(
+            dict(draft.proposed_fields)["Description"], draft.description
+        )
         fields = {field.name: field for field in proto.user_fields}
+        self.assertNotIn("Description", fields)
         self.assertEqual(fields["MPN"].text.text, "RC0402JR-0710KL")
         self.assertEqual(fields["Internal note"].text.text, "keep me")
         self.assertFalse(fields["Manufacturer"].visible)
@@ -187,6 +193,7 @@ class ComponentDraftTests(unittest.TestCase):
                     value="old",
                     footprint_field=SimpleNamespace(text=SimpleNamespace(value="")),
                     datasheet_field=SimpleNamespace(text=SimpleNamespace(value="")),
+                    description_field=SimpleNamespace(text=SimpleNamespace(value="")),
                     proto=SimpleNamespace(value_field=RawField(), user_fields=RepeatedFields()),
                 ),
                 resistor_draft,

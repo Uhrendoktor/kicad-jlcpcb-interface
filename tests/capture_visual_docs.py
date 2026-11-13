@@ -645,7 +645,6 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             ("LCSC", "C60489"),
             ("MPN", "RC0402JR-0710KL"),
             ("Manufacturer", draft.manufacturer),
-            ("Description", draft.description),
         ):
             field = raw_fields.get(name)
             if field is None or field.text.value != expected_value:
@@ -654,6 +653,8 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
                 )
         if raw_fields["Manufacturer"].visible:
             raise RuntimeError("Generated metadata fields should not clutter the symbol drawing.")
+        if created["R1"].description_field.text.value != draft.description:
+            raise RuntimeError("KiCad did not retain the native R1 Description property.")
         placed_components = find_linked_components(schematic)
         placed_reference = next(
             (item for item in placed_components if item.reference == "R3"), None
@@ -689,13 +690,16 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             ("LCSC", draft.lcsc),
             ("MPN", draft.mpn),
             ("Manufacturer", draft.manufacturer),
-            ("Description", draft.description),
         ):
             field = raw_placed_fields.get(name)
             if field is None or field.text.value != expected_value:
                 raise RuntimeError(
                     f"Direct LCSC placement did not retain custom field {name!r}."
                 )
+        if placed_symbol_readback.description_field.text.value != draft.description:
+            raise RuntimeError(
+                "Direct LCSC placement did not retain the built-in Description property."
+            )
         print(
             "live-lcsc-direct-placement=passed "
             f"reference={placed_reference.reference} "
