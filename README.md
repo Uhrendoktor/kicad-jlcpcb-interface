@@ -6,7 +6,7 @@
 
 **Find, review and place LCSC-linked passive components from the KiCad Schematic Editor.**
 
-KiCad JLCPCB Interface is a KiCad 11 Schematic Editor IPC add-on that connects schematic symbols to JLCPCB/LCSC catalogue records. It brings part lookup, project-wide inspection, conservative field population and reusable project-local resistor/capacitor symbols into one review-first workflow.
+KiCad JLCPCB Interface is a KiCad 11 Schematic Editor IPC add-on that connects schematic symbols to JLCPCB/LCSC catalogue records. It brings part lookup by LCSC code or passive value, project-wide inspection, conservative field population and reusable project-local resistor/capacitor symbols into one review-first workflow.
 
 > Automatic component support is deliberately narrow: reviewed two-pin resistors and capacitors with a known value and a supported footprint. The add-on does not generate arbitrary IC symbols, pin maps, PCB footprints or 3D models.
 

@@ -365,6 +365,67 @@ class ProviderTests(unittest.TestCase):
         )
         self.assertIn("live response", matches[0].source_label)
 
+    def test_keyword_search_keeps_rows_without_mpn_and_excludes_unbuyable_parts(self):
+        requests = []
+
+        def opener(request, timeout):
+            requests.append((request, timeout))
+            return FakeResponse(
+                {
+                    "code": 200,
+                    "data": {
+                        "componentPageInfo": {
+                            "list": [
+                                {
+                                    "componentCode": 10001,
+                                    "description": "10K Ohm Thick Film Resistor",
+                                    "firstSortName": "Resistors",
+                                    "componentSpecificationEn": "0402",
+                                    "componentLibraryType": "base",
+                                    "stockCount": 12000,
+                                    "isBuyComponent": True,
+                                },
+                                {
+                                    "componentCode": 10002,
+                                    "description": "10K Ohm Thick Film Resistor",
+                                    "firstSortName": "Resistors",
+                                    "componentSpecificationEn": "0603",
+                                    "componentLibraryType": "extended",
+                                    "stockCount": 25000,
+                                    "isBuyComponent": True,
+                                },
+                                {
+                                    "componentCode": 10003,
+                                    "description": "10K Ohm Thick Film Resistor",
+                                    "firstSortName": "Resistors",
+                                    "componentSpecificationEn": "0402",
+                                    "componentLibraryType": "base",
+                                    "isBuyComponent": False,
+                                },
+                            ],
+                            "pages": 1,
+                            "total": 3,
+                        }
+                    },
+                }
+            )
+
+        with TemporaryDirectory() as temp:
+            provider = JlcSearchProvider(Path(temp) / "parts.sqlite3", opener=opener)
+            matches = provider.search_by_keyword("10k")
+
+        self.assertEqual(len(requests), 1)
+        request, _timeout = requests[0]
+        self.assertEqual(request.get_method(), "POST")
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(payload["keyword"], "10k")
+        self.assertEqual([item.lcsc for item in matches], ["C10001", "C10002"])
+        self.assertEqual(matches[0].manufacturer_part_number, "")
+        self.assertTrue(matches[0].is_basic)
+        self.assertFalse(matches[1].is_basic)
+        self.assertTrue(matches[0].is_buyable)
+        self.assertEqual(matches[0].source, "JLCPCB keyword search (unofficial)")
+
     def test_returns_none_when_no_match_and_no_cache(self):
         def opener(request, timeout):
             if "getComponentDetail" in request.full_url:

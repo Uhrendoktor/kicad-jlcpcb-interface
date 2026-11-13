@@ -1489,7 +1489,8 @@ def _capture_passive_component_workflows(
         kicad=kicad,
         theme="light",
     )
-    create.root.geometry("940x800+960+30")
+    create.root.geometry("1040x930+840+30")
+    create.placement_mode_var.set("coordinates")
     create.lcsc_var.set("C105637")
     create.x_var.set("205.0")
     create.y_var.set("160.0")

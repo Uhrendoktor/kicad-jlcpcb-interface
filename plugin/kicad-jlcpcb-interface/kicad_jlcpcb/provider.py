@@ -610,6 +610,49 @@ class JlcSearchProvider:
                 return candidate
         return None
 
+    def search_by_keyword(
+        self, keyword: str, *, page_size: int = 200, max_pages: int = 2
+    ) -> list[JlcPartDetails]:
+        """Search all purchasable JLCPCB listings for a value or free-form keyword.
+
+        Unlike MPN search, this keeps rows without a manufacturer part number:
+        passive catalogue records are often identifiable by electrical attributes
+        and description alone. It uses an undocumented website endpoint.
+        """
+        query = str(keyword or "").strip()
+        if not query:
+            return []
+        page_size = max(1, min(int(page_size), 500))
+        max_pages = max(1, min(int(max_pages), 3))
+        found: dict[str, JlcPartDetails] = {}
+        for page in range(1, max_pages + 1):
+            page_info = self._fetch_mpn_page(query, page, page_size)
+            rows = page_info.get("list", [])
+            if not isinstance(rows, list) or not rows:
+                break
+            fetched_at = time.time()
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                if _boolean(_first(row, "isBuyComponent", "is_buyable", "buyable")) is False:
+                    continue
+                raw_code = _first(row, "componentCode", "lcsc", "lcsc_code")
+                if raw_code in (None, ""):
+                    continue
+                try:
+                    code = normalize_lcsc_code(str(raw_code))
+                except ValueError:
+                    continue
+                normalized_row = dict(row)
+                normalized_row["_provider_label"] = "JLCPCB keyword search (unofficial)"
+                found[code] = normalize_component_payload(
+                    normalized_row, lcsc=code, fetched_at=fetched_at
+                )
+            pages = _integer(page_info.get("pages")) or 1
+            if page >= min(pages, max_pages):
+                break
+        return list(found.values())
+
     def lookup(self, raw_lcsc: str, *, force_refresh: bool = False) -> JlcPartDetails | None:
         """Look up an exact part; prefer JLCPCB detail data, then community search.
 

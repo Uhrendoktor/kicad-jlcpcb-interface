@@ -395,6 +395,9 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
         for name, value in details.attributes.items()
         if str(name).strip() and value not in (None, "")
     )[:32]
+    if details.is_basic is not None:
+        library_type = "Basic" if details.is_basic else "Extended"
+        attributes = (("JLCPCB Library Type", library_type), *attributes[:31])
     return ComponentDraft(
         lcsc=normalize_lcsc_code(details.lcsc),
         kind=kind,
