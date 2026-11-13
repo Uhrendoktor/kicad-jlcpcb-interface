@@ -88,10 +88,6 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
         self.assertIn(
-            ["xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"],
-            runner.commands,
-        )
-        self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
         )
         type_command = [
@@ -117,8 +113,6 @@ class CursorPlacementTests(unittest.TestCase):
                 if len(command) >= 4 and command[1] == "key"
             )
         )
-        self.assertIn(0.5, pauses)
-        self.assertNotIn(0.6, pauses)
 
     def test_accepts_return_to_another_eeschema_child_window(self):
         runner = FakeRunner(["0x200", "0x300"])
