@@ -367,8 +367,11 @@ class ComponentDraftTests(unittest.TestCase):
         identity_before = symbol.definition.id
         pins_before = symbol.definition.pins
 
+        with self.assertRaisesRegex(ValueError, "Proposal requires Device:R"):
+            apply_component_draft_fields(symbol, draft)
+
         changed = apply_component_draft_fields(
-            symbol, draft, expected_library_id="Amplifier_Operational:LM358"
+            symbol, draft, allow_symbol_mismatch=True
         )
 
         self.assertIn("Value", changed)
