@@ -203,7 +203,7 @@ For a supported resistor or capacitor, the add-on:
 
 - Clones the corresponding KiCad stock `Device:R` or `Device:C` symbol graphics and two-pin electrical topology.
 - Adds the inferred Value, supported footprint, datasheet and Description.
-- Adds hidden LCSC, Manufacturer, MPN, JLCPCB Basic/Extended library class, category and selected attribute properties.
+- Adds hidden LCSC, Manufacturer, MPN, `JLCPCB Library Type` (Basic/Extended), category and selected attribute properties.
 - Writes or extends `JLCPCB_Generated.kicad_sym` in the project directory.
 - Registers the project library in `sym-lib-table` using a project-relative KiCad project variable URI.
 - Reloads the project library before opening KiCad's native chooser or placing an instance at the X/Y coordinates.
