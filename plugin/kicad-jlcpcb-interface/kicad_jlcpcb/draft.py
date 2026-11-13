@@ -515,7 +515,7 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
     if not datasheet_url:
         warnings.append("The catalogue record has no valid HTTPS datasheet URL.")
 
-    if kind in _SYMBOL_HINTS and value and footprint:
+    if kind in {"resistor", "capacitor", "inductor"} and value and footprint:
         confidence = "high"
     elif kind in _SYMBOL_HINTS:
         confidence = "partial"
