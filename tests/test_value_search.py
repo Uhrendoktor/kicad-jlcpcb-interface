@@ -58,6 +58,8 @@ class PassiveValueSearchTests(unittest.TestCase):
     def test_distinguishes_explicit_lcsc_codes_from_passive_values(self):
         self.assertTrue(is_lcsc_lookup_query("C60489"))
         self.assertTrue(is_lcsc_lookup_query("60489"))
+        self.assertFalse(is_lcsc_lookup_query("100"))
+        self.assertFalse(is_lcsc_lookup_query("123"))
         self.assertTrue(is_lcsc_lookup_query("1591"))
         self.assertTrue(
             is_lcsc_lookup_query("https://lcsc.com/product-detail/C60489.html")
