@@ -122,39 +122,14 @@ def start_native_symbol_placement(
             f"within 15 seconds: {chooser_title!r}."
         )
     pause(0.2)
-    # With the Tk review window withdrawn, click the actual wxSearchCtrl. The
-    # headless fixture does not focus this child control automatically, even
-    # though the chooser frame itself owns X11 focus.
-    # The native chooser is a panel embedded in the Eeschema frame, not a
-    # separate top-level window. Its X11 focus XID reports an interior widget
-    # origin, so use the measured screen coordinates of the visible Filter
-    # field in the controlled Eeschema fixture.
-    # Address pointer coordinates relative to the Eeschema parent window.
-    # The chooser's reported XID is an embedded modal panel, and XTest global
-    # motion can resolve to the root window in a headless session.
+    # Focus the library tree itself, then send the query through its native
+    # wxEVT_CHAR_HOOK path. KiCad's LIB_TREE forwards printable keys received
+    # by the tree control to its wxSearchCtrl, which is more reliable than
+    # synthesizing a mouse click on the embedded search widget under Xvfb.
     send(
-        "mousemove", "--sync", "--window", str(editor_window_id), "170", "276"
+        "mousemove", "--sync", "--window", str(editor_window_id), "180", "450"
     )
     send("click", "1")
-    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
-    if debug_capture:
-        try:
-            from PIL import ImageGrab
-
-            after_click = debug_capture.replace(
-                ".png", "-after-click.png"
-            )
-            ImageGrab.grab().save(after_click)
-            print(
-                f"chooser-click-debug=pointer={send('getmouselocation', '--shell')!r} "
-                f"focus={send('getwindowfocus')!r} screenshot={after_click!r}",
-                flush=True,
-            )
-        except Exception as exc:
-            print(
-                f"chooser-click-debug=failed error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
     send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "15", symbol_name)
     if debug_capture:

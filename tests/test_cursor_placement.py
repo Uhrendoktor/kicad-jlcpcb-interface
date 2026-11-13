@@ -99,8 +99,8 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
         chooser_title_command = ["xdotool", "getwindowname", "0x200"]
-        filter_move = [
-            "xdotool", "mousemove", "--sync", "--window", "0x100", "170", "276"
+        tree_focus_move = [
+            "xdotool", "mousemove", "--sync", "--window", "0x100", "180", "450"
         ]
         filter_click = ["xdotool", "click", "1"]
         clear_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
@@ -110,7 +110,7 @@ class CursorPlacementTests(unittest.TestCase):
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         loaded_index = runner.commands.index(type_command)
         title_index = runner.commands.index(chooser_title_command)
-        move_index = runner.commands.index(filter_move)
+        move_index = runner.commands.index(tree_focus_move)
         click_index = runner.commands.index(filter_click)
         clear_index = runner.commands.index(clear_command)
         self.assertLess(title_index, move_index)
