@@ -35,7 +35,7 @@ PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 
 
 class ComponentPopulator:
-    """Review-first UI for populating a placeholder or generating a project-local passive."""
+    """Review-first UI for updating or adding project-local KiCad components."""
 
     def __init__(
         self,
@@ -601,12 +601,12 @@ class ComponentPopulator:
         if self.create_mode:
             self.symbol_hint_var.set(draft.symbol_hint)
             self.footprint_var.set(draft.footprint)
+            self.reference_prefix_var.set(draft.reference_prefix)
         else:
             self.footprint_var.set(
                 draft.footprint
                 or self._field_value(getattr(self.symbol, "footprint_field", None))
             )
-            self.reference_prefix_var.set(draft.reference_prefix)
         self.fields_tree.insert(
             "",
             "end",
