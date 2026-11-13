@@ -17,7 +17,7 @@ from .draft import (
     update_schematic_symbol,
 )
 from .library import generate_project_library_symbol, reload_project_symbol_library
-from .model import component_from_symbol
+from .model import component_from_symbol, iter_schematic_symbols
 from .placement import place_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
 
@@ -109,17 +109,18 @@ class ComponentPopulator:
             ),
             font=("TkDefaultFont", 15, "bold"),
         ).pack(anchor="w")
+        instructions = (
+            "Fetch supplier data, review the proposed fields, then explicitly apply "
+            + (
+                "them to the active schematic. A stock KiCad Device:R or Device:C symbol "
+                "will be placed at the coordinates below."
+                if self.create_mode
+                else "them to the selected symbol."
+            )
+        )
         ttk.Label(
             outer,
-            text=(
-                "Fetch supplier data, review the proposed fields, then explicitly apply "
-                (
-                    "them to the active schematic. A stock KiCad Device:R or Device:C symbol "
-                    "will be placed at the coordinates below."
-                    if self.create_mode
-                    else "them to the selected symbol."
-                )
-            ),
+            text=instructions,
             wraplength=800,
         ).pack(anchor="w", pady=(4, 12))
         ttk.Label(outer, textvariable=self.symbol_var, wraplength=800).pack(
@@ -484,6 +485,56 @@ def run_component_creator() -> None:
         root.destroy()
 
 
+def _symbol_instance_id(symbol: Any) -> str:
+    identifier = getattr(symbol, "id", None)
+    value = getattr(identifier, "value", None)
+    return str(value or identifier or "").strip()
+
+
+def _sheet_path_label(symbol: Any) -> str:
+    path = getattr(symbol, "path", None)
+    return str(getattr(path, "path_human_readable", "") or "").strip()
+
+
+def resolve_selected_symbol(schematic: Any, selected_symbol: Any) -> Any:
+    """Resolve selection payloads to a complete editable symbol instance.
+
+    Some KiCad selection responses expose a symbol's fields and KIID but omit its
+    library definition. The schematic symbol query returns the full instance,
+    including definition.id, which is needed to safely restrict field population
+    to Device:R and Device:C.
+    """
+    selected_id = _symbol_instance_id(selected_symbol)
+    selected_reference = str(
+        getattr(selected_symbol, "reference", "") or ""
+    ).strip()
+    selected_path = _sheet_path_label(selected_symbol)
+    candidates = list(iter_schematic_symbols(schematic))
+
+    if selected_id:
+        match = next(
+            (
+                candidate
+                for candidate in candidates
+                if _symbol_instance_id(candidate) == selected_id
+                and symbol_library_id(candidate)
+            ),
+            None,
+        )
+        if match is not None:
+            return match
+
+    matches = [
+        candidate
+        for candidate in candidates
+        if str(getattr(candidate, "reference", "") or "").strip()
+        == selected_reference
+        and (not selected_path or _sheet_path_label(candidate) == selected_path)
+        and symbol_library_id(candidate)
+    ]
+    return matches[0] if len(matches) == 1 else selected_symbol
+
+
 def run_component_populator() -> None:
     """Open the review-first field populator for exactly one selected symbol."""
     try:
@@ -500,7 +551,7 @@ def run_component_populator() -> None:
             raise ValueError(
                 "Select exactly one schematic symbol before opening this action."
             )
-        symbol = selection[0]
+        symbol = resolve_selected_symbol(schematic, selection[0])
         required = ("reference", "value", "user_fields", "proto", "footprint_field")
         if not all(hasattr(symbol, attribute) for attribute in required):
             raise ValueError(
