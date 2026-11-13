@@ -1196,6 +1196,13 @@ def _drive_populator_form(
     failures: list[str] = []
     state = {"done": False, "deadline": time.monotonic() + 60.0}
 
+    def close_populator() -> None:
+        # The result queue can be notified just before the executor's done
+        # callback returns. Join that short-lived worker before destroying Tk,
+        # so callback/future cleanup cannot release Tk objects on the worker.
+        populator.executor.shutdown(wait=True, cancel_futures=True)
+        populator.close()
+
     def advance() -> None:
         try:
             root.update()
@@ -1368,11 +1375,11 @@ def _drive_populator_form(
             root.update()
             _capture_window(root, output_dir / completed_asset)
             state["done"] = True
-            populator.close()
+            close_populator()
         except BaseException as exc:
             failures.append(f"{type(exc).__name__}: {exc}")
             try:
-                populator.close()
+                close_populator()
             except Exception:
                 pass
 
