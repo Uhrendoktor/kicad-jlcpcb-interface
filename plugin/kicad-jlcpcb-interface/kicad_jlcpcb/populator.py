@@ -94,11 +94,7 @@ class ComponentPopulator:
         self.palette = apply_tk_theme(self.root, theme)
         self.theme = self.root._kicad_jlcpcb_theme
         reference = str(getattr(symbol, "reference", "") or "selected symbol")
-        self.root.title(
-            "JLCPCB Add Component from LCSC"
-            if self.create_mode
-            else f"JLCPCB Populate Selected Symbol — {reference}"
-        )
+        self.root.title("JLCPCB Add or Update Passive")
         self.root.geometry("1040x930" if self.create_mode else "860x780")
         self.root.minsize(820 if self.create_mode else 720, 700 if self.create_mode else 620)
 
@@ -132,19 +128,19 @@ class ComponentPopulator:
         ttk.Label(
             outer,
             text=(
-                "Search and add a passive component"
+                "Add a new passive component"
                 if self.create_mode
-                else "Populate selected symbol from LCSC"
+                else "Update the selected passive"
             ),
             style="Title.TLabel",
         ).pack(anchor="w")
         instructions = (
-            "Fetch supplier data, review the proposed fields, then explicitly apply "
+            "Find the catalogue part, review the proposed fields and warnings, then confirm. "
             + (
-                "them to the active schematic. Search by LCSC number or nominal value, "
-                "choose an exact Basic/Extended match, then place at the cursor or by X/Y."
+                "With no selection, search by LCSC code or passive value, choose a match "
+                "and place a reusable project-local symbol."
                 if self.create_mode
-                else "them to the selected symbol."
+                else "The selected symbol's graphics, pins and electrical pin mapping are preserved."
             )
         )
         ttk.Label(
@@ -803,43 +799,6 @@ def next_component_reference(schematic: Any, draft: ComponentDraft) -> str:
     return _next_reference(schematic, draft)
 
 
-def run_component_creator() -> None:
-    """Open the LCSC-to-placement action when no symbol is selected."""
-    try:
-        from kipy import KiCad
-
-        editor_window_id = capture_eeschema_window_id()
-        kicad = KiCad()
-        schematic = kicad.get_schematic()
-        if schematic is None:
-            raise RuntimeError(
-                "No active schematic was found. Open a project in Eeschema."
-            )
-        if list(schematic.get_selection()):
-            raise ValueError(
-                "Clear the Eeschema selection before adding a new LCSC component."
-            )
-        settings_directory = Path(
-            kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
-        ).expanduser()
-        ComponentPopulator(
-            schematic,
-            None,
-            settings_directory,
-            create_mode=True,
-            kicad=kicad,
-            editor_window_id=editor_window_id,
-        ).run()
-    except Exception as exc:
-        import tkinter as tk
-        from tkinter import messagebox
-
-        root = tk.Tk()
-        root.withdraw()
-        messagebox.showerror("JLCPCB Add Component from LCSC", str(exc), parent=root)
-        root.destroy()
-
-
 def _symbol_instance_id(symbol: Any) -> str:
     identifier = getattr(symbol, "id", None)
     value = getattr(identifier, "value", None)
@@ -908,8 +867,47 @@ def resolve_passive_library_id(
     return matches[0] if len(matches) == 1 else ""
 
 
-def run_component_populator() -> None:
-    """Open the review-first field populator for exactly one selected symbol."""
+def resolve_passive_action_target(
+    schematic: Any,
+    kicad: Any,
+    selection: list[Any],
+) -> tuple[Any | None, str, bool]:
+    """Choose create or update mode from the active Eeschema selection.
+
+    With no selection, the action creates a new project-local passive. With one
+    exact stock Device:R or Device:C selected, it updates that placeholder's
+    catalogue fields. Ambiguous or unsupported selections are rejected.
+    """
+    if not selection:
+        return None, "", True
+    if len(selection) != 1:
+        raise ValueError(
+            "Select one generic Device:R or Device:C to update it, or clear the "
+            "selection to add a new passive."
+        )
+
+    symbol = resolve_selected_symbol(schematic, selection[0])
+    required = ("reference", "value", "user_fields", "proto", "footprint_field")
+    if not all(hasattr(symbol, attribute) for attribute in required):
+        raise ValueError(
+            "The selected item is not an editable schematic symbol. Select one "
+            "generic Device:R or Device:C to update it, or clear the selection "
+            "to add a new passive."
+        )
+    library_id = resolve_passive_library_id(
+        symbol, kicad, document=getattr(schematic, "document", None)
+    )
+    if library_id not in SUPPORTED_PLACEHOLDERS:
+        raise ValueError(
+            "Only stock generic Device:R and Device:C symbols can be updated. "
+            "Select one of those placeholders, or clear the selection to add "
+            "a new passive."
+        )
+    return symbol, library_id, False
+
+
+def run_passive_component_action() -> None:
+    """Open the unified add/update workflow based on the current selection."""
     try:
         from kipy import KiCad
 
@@ -919,26 +917,10 @@ def run_component_populator() -> None:
             raise RuntimeError(
                 "No active schematic was found. Open a project in Eeschema."
             )
-        selection = list(schematic.get_selection())
-        if len(selection) != 1:
-            raise ValueError(
-                "Select exactly one schematic symbol before opening this action."
-            )
-        symbol = resolve_selected_symbol(schematic, selection[0])
-        required = ("reference", "value", "user_fields", "proto", "footprint_field")
-        if not all(hasattr(symbol, attribute) for attribute in required):
-            raise ValueError(
-                "The selected item is not a schematic symbol with editable properties."
-            )
-        library_id = resolve_passive_library_id(
-            symbol, kicad, document=schematic.document
+        symbol, library_id, create_mode = resolve_passive_action_target(
+            schematic, kicad, list(schematic.get_selection())
         )
-        if library_id not in SUPPORTED_PLACEHOLDERS:
-            raise ValueError(
-                "This first version accepts only generic Device:R or Device:C placeholders. "
-                "KiCad did not expose a supported library ID, and the selected symbol "
-                "does not exactly match either stock passive definition."
-            )
+        editor_window_id = capture_eeschema_window_id() if create_mode else None
         settings_directory = Path(
             kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
         ).expanduser()
@@ -946,8 +928,10 @@ def run_component_populator() -> None:
             schematic,
             symbol,
             settings_directory,
+            create_mode=create_mode,
             kicad=kicad,
-            library_id=library_id,
+            library_id=library_id or None,
+            editor_window_id=editor_window_id,
         ).run()
     except Exception as exc:
         import tkinter as tk
@@ -955,7 +939,5 @@ def run_component_populator() -> None:
 
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror(
-            "JLCPCB Populate Selected Symbol", str(exc), parent=root
-        )
+        messagebox.showerror("JLCPCB Add or Update Passive", str(exc), parent=root)
         root.destroy()
