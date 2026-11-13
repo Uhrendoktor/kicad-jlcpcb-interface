@@ -16,8 +16,8 @@ from .draft import (
     symbol_library_id,
     update_schematic_symbol,
 )
-from .model import component_from_symbol
 from .library import generate_project_library_symbol, reload_project_symbol_library
+from .model import component_from_symbol
 from .placement import place_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
 
@@ -25,7 +25,7 @@ PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 
 
 class ComponentPopulator:
-    """Small review-first UI; no library files or symbol geometry are written."""
+    """Review-first UI for populating a placeholder or generating a project-local passive."""
 
     def __init__(
         self,

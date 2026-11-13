@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Generate reusable project-local passive symbols from reviewed LCSC drafts by cloning KiCad's stock resistor/capacitor topology, preserving their two pins, writing native and hidden custom fields, registering/reloading the project library and placing linked instances.
+- Generate reusable project-local passive symbols from reviewed LCSC drafts by cloning KiCad's stock resistor/capacitor topology, preserving their two pins, writing native and hidden custom fields, registering the project library and placing linked instances. The first generated-library entry requires reopening the project and retrying once so Eeschema loads the new table row.
 - Add direct placement of a new stock generic resistor/capacitor from a reviewed LCSC draft, with next free reference and explicit X/Y placement coordinates.
 - Add review-first LCSC field population for selected generic resistor/capacitor symbols, with conservative value/footprint inference and KiCad IPC write-back.
 - Scan LCSC-linked symbols across the complete schematic hierarchy.

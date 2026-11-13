@@ -10,7 +10,6 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeAlias
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,7 +22,7 @@ class Quoted:
     value: str
 
 
-Sexp: TypeAlias = Atom | Quoted | list["Sexp"]
+type Sexp = Atom | Quoted | list["Sexp"]
 _GENERATOR = "kicad_jlcpcb_interface"
 _LIBRARY_BASENAME = "JLCPCB_Generated"
 _LIBRARY_DESCRIPTION = "Project-local passive symbols generated from reviewed LCSC data"
@@ -423,7 +422,8 @@ def _project_directory(project_or_path) -> Path:
     raw = getattr(project_or_path, "path", project_or_path)
     if raw is None or not str(raw).strip():
         raise SymbolLibraryError(
-            "The active KiCad project has no saved path. Save the project before generating a library."
+            "The active KiCad project has no saved path. "
+            "Save the project before generating a library."
         )
     path = Path(str(raw)).expanduser()
     if path.is_file() or path.suffix.casefold() in {".kicad_pro", ".kicad_sch"}:
@@ -556,7 +556,9 @@ def generate_project_library_symbol(
     try:
         device_root = parse_sexpr(device_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, SymbolLibraryError) as exc:
-        raise SymbolLibraryError(f"Could not parse KiCad Device library {device_path}: {exc}") from exc
+        raise SymbolLibraryError(
+            f"Could not parse KiCad Device library {device_path}: {exc}"
+        ) from exc
     if _head(device_root) != "kicad_symbol_lib":
         raise SymbolLibraryError("KiCad Device symbol library has an invalid root node.")
     source_name = draft.symbol_hint.split(":", 1)[1]
@@ -582,7 +584,8 @@ def generate_project_library_symbol(
             ) from exc
         if _head(library_root) != "kicad_symbol_lib" or not _library_is_owned(library_root):
             raise SymbolLibraryConflict(
-                f"Existing file {library_path} is not owned by this generator; it was left untouched."
+                f"Existing file {library_path} is not owned by this generator; "
+                "it was left untouched."
             )
     else:
         library_root = _root_header(device_root)
@@ -644,8 +647,11 @@ def reload_project_symbol_library(kicad, generated: GeneratedLibrarySymbol) -> N
         statuses = kicad.wait_for_libraries(types=[1], scope=2, timeout_s=60.0)
     except Exception as exc:
         raise SymbolLibraryError(
-            f"The project library was written, but KiCad could not reload "
-            f"{generated.nickname!r}: {exc}. Reopen the project before placing this part."
+            f"The project library and table entry were saved, but the active Eeschema "
+            f"session could not reload {generated.nickname!r}: {exc}. "
+            "No schematic instance was placed. Save and close the project, reopen it, "
+            "then run JLCPCB Add Component from LCSC again for the same LCSC number. "
+            "The existing symbol is reused idempotently after KiCad loads the table entry."
         ) from exc
     status_items = statuses if isinstance(statuses, (list, tuple)) else ()
     errors = [

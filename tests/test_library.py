@@ -15,10 +15,12 @@ from kicad_jlcpcb.draft import ComponentDraft  # noqa: E402
 from kicad_jlcpcb.library import (  # noqa: E402
     Quoted,
     SymbolLibraryConflict,
+    SymbolLibraryError,
     _atomic_write,
     dump_sexpr,
     generate_project_library_symbol,
     parse_sexpr,
+    reload_project_symbol_library,
 )
 
 DEVICE_LIBRARY = r'''
@@ -161,7 +163,10 @@ class ProjectLibraryTests(unittest.TestCase):
 
         root = self.read_library(entry.library_path)
         self.assertEqual(root[0].value, "kicad_symbol_lib")
-        generator = next(node for node in root if isinstance(node, list) and node[0].value == "generator")
+        generator = next(
+            node for node in root
+            if isinstance(node, list) and node[0].value == "generator"
+        )
         self.assertEqual(generator[1].value, "kicad_symbol_editor")
         symbol = next(node for node in root if isinstance(node, list) and node[0].value == "symbol")
         self.assertEqual(symbol[1].value, "R_C60489")
@@ -190,7 +195,15 @@ class ProjectLibraryTests(unittest.TestCase):
             node for node in self._walk(symbol)
             if isinstance(node, list) and node and node[0].value == "pin"
         ]
-        self.assertEqual([next(child[1].value for child in pin if isinstance(child, list) and child[0].value == "number") for pin in pins], ["1", "2"])
+        pin_numbers = [
+            next(
+                child[1].value
+                for child in pin
+                if isinstance(child, list) and child[0].value == "number"
+            )
+            for pin in pins
+        ]
+        self.assertEqual(pin_numbers, ["1", "2"])
 
         user_properties = {
             node[1].value: node for node in symbol
@@ -201,12 +214,20 @@ class ProjectLibraryTests(unittest.TestCase):
         }
         self.assertEqual(len(user_properties), 5)
         ids = [
-            next(child[1].value for child in node if isinstance(child, list) and child[0].value == "id")
+            next(
+                child[1].value
+                for child in node
+                if isinstance(child, list) and child[0].value == "id"
+            )
             for node in user_properties.values()
         ]
         self.assertEqual(len(ids), len(set(ids)))
         for node in user_properties.values():
-            effects = next(child for child in node if isinstance(child, list) and child[0].value == "effects")
+            effects = next(
+                child
+                for child in node
+                if isinstance(child, list) and child[0].value == "effects"
+            )
             self.assertIn("hide", [child.value for child in effects if hasattr(child, "value")])
 
         table_text = self.table.read_text(encoding="utf-8")
@@ -264,12 +285,18 @@ class ProjectLibraryTests(unittest.TestCase):
     def test_preserves_user_library_table_and_uses_suffix_for_unowned_file_conflict(self):
         self.table.write_text(TABLE_WITH_USER_ENTRY, encoding="utf-8")
         user_file = self.project / "JLCPCB_Generated.kicad_sym"
-        user_file.write_text('(kicad_symbol_lib (version 7) (generator "user"))\\n', encoding="utf-8")
+        user_file.write_text(
+            '(kicad_symbol_lib (version 7) (generator "user"))\\n',
+            encoding="utf-8",
+        )
 
         entry = self.generate()
 
         self.assertEqual(entry.nickname, "JLCPCB_Generated_1")
-        self.assertEqual(user_file.read_text(encoding="utf-8"), '(kicad_symbol_lib (version 7) (generator "user"))\\n')
+        self.assertEqual(
+            user_file.read_text(encoding="utf-8"),
+            '(kicad_symbol_lib (version 7) (generator "user"))\\n',
+        )
         table = self.table.read_text(encoding="utf-8")
         self.assertIn("UserLibrary", table)
         self.assertIn("JLCPCB_Generated_1", table)
@@ -277,8 +304,18 @@ class ProjectLibraryTests(unittest.TestCase):
     def test_refuses_to_overwrite_modified_generated_symbol(self):
         first = self.generate()
         root = self.read_library(first.library_path)
-        symbol = next(node for node in root if isinstance(node, list) and node and node[0].value == "symbol")
-        value = next(node for node in symbol if isinstance(node, list) and node[0].value == "property" and node[1].value == "Value")
+        symbol = next(
+            node for node in root
+            if isinstance(node, list) and node and node[0].value == "symbol"
+        )
+        value = next(
+            node for node in symbol
+            if (
+                isinstance(node, list)
+                and node[0].value == "property"
+                and node[1].value == "Value"
+            )
+        )
         value[2] = Quoted("manually edited")
         first.library_path.write_text(dump_sexpr(root), encoding="utf-8")
         before = first.library_path.read_bytes()
@@ -288,13 +325,59 @@ class ProjectLibraryTests(unittest.TestCase):
 
         self.assertEqual(first.library_path.read_bytes(), before)
 
+    def test_reload_success_uses_project_scope_and_waits_for_library(self):
+        entry = self.generate()
+        reload_calls = []
+        wait_calls = []
+
+        def reload_library(**kwargs):
+            reload_calls.append(kwargs)
+
+        def wait_for_libraries(**kwargs):
+            wait_calls.append(kwargs)
+            return [SimpleNamespace(nickname=entry.nickname, error_message="")]
+
+        kicad = SimpleNamespace(
+            reload_library=reload_library,
+            wait_for_libraries=wait_for_libraries,
+        )
+        reload_project_symbol_library(kicad, entry)
+
+        self.assertEqual(
+            reload_calls,
+            [{"type": 1, "scope": 2, "nicknames": [entry.nickname]}],
+        )
+        self.assertEqual(
+            wait_calls,
+            [{"types": [1], "scope": 2, "timeout_s": 60.0}],
+        )
+
+    def test_reload_error_explains_first_use_reopen_and_retry(self):
+        entry = self.generate()
+
+        def reload_library(**_kwargs):
+            raise RuntimeError(f"Library {entry.nickname!r} not found")
+
+        kicad = SimpleNamespace(reload_library=reload_library)
+        with self.assertRaises(SymbolLibraryError) as caught:
+            reload_project_symbol_library(kicad, entry)
+
+        message = str(caught.exception).casefold()
+        self.assertIn("table entry were saved", message)
+        self.assertIn("no schematic instance was placed", message)
+        self.assertIn("reopen it", message)
+        self.assertIn("run jlcpcb add component from lcsc again", message)
+
     def test_refuses_ambiguous_drafts_and_missing_stock_symbol(self):
         with self.assertRaisesRegex(Exception, "Device:R or Device:C"):
             self.generate(resistor_draft(kind="unknown", symbol_hint=""))
         with self.assertRaisesRegex(Exception, "reliable value"):
             self.generate(resistor_draft(footprint=""))
         missing = self.project / "Missing.kicad_sym"
-        missing.write_text(DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "OTHER"'), encoding="utf-8")
+        missing.write_text(
+            DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "OTHER"'),
+            encoding="utf-8",
+        )
         with self.assertRaisesRegex(Exception, "does not contain"):
             generate_project_library_symbol(self.project, resistor_draft(), device_library=missing)
 

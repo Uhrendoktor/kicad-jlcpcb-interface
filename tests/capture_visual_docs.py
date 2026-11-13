@@ -20,21 +20,22 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
+    ComponentDraft,
     apply_component_draft_fields,
     build_component_draft,
     symbol_library_id,
     update_schematic_symbol,
+)
+from kicad_jlcpcb.library import (  # noqa: E402
+    generate_project_library_symbol,
+    parse_sexpr,
+    reload_project_symbol_library,
 )
 from kicad_jlcpcb.model import (  # noqa: E402
     find_linked_components,
     find_selected_component,
     iter_schematic_symbols,
 )
-from kicad_jlcpcb.library import (
-    generate_project_library_symbol,
-    parse_sexpr,
-    reload_project_symbol_library,
-)  # noqa: E402
 from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 
@@ -435,7 +436,40 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         '(sheet_instances (path "/" (page "1"))))\n',
         encoding="utf-8",
     )
-    (work_dir / "jlcpcb-live-demo.kicad_pro").write_text("{}\n", encoding="utf-8")
+    project_file = work_dir / "jlcpcb-live-demo.kicad_pro"
+    project_file.write_text("{}\n", encoding="utf-8")
+
+    # Project symbol tables are read when Eeschema opens a project. Pre-register
+    # the project-local nickname here so the live IPC test exercises the supported
+    # reload path for adding another symbol to an already-loaded project library.
+    seed_draft = ComponentDraft(
+        lcsc="C999999",
+        kind="resistor",
+        symbol_hint="Device:R",
+        reference_prefix="R",
+        value="1k",
+        footprint="Resistor_SMD:R_0402_1005Metric",
+        datasheet_url="",
+        manufacturer="Fixture",
+        mpn="IPC-RELOAD-SEED",
+        description="Project-local library reload fixture",
+        category="Resistors",
+        attributes=(),
+        confidence="high",
+        warnings=(),
+        source_label="CI fixture",
+    )
+    seeded_library = generate_project_library_symbol(
+        project_file,
+        seed_draft,
+        device_library=_find_symbol_library(),
+    )
+    if not seeded_library.created or not seeded_library.table_path.is_file():
+        raise RuntimeError("The live IPC fixture could not pre-register its project library.")
+    print(
+        f"live-project-library-preload=passed nickname={seeded_library.nickname}",
+        flush=True,
+    )
 
     env = os.environ.copy()
     for key in (
@@ -678,13 +712,17 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             or sorted(generated_pin_numbers) != ["1", "2"]
         ):
             raise RuntimeError(
-                "The generated library symbol is missing required metadata or stock two-pin topology."
+                "The generated library symbol is missing required metadata "
+                "or stock two-pin topology."
             )
         generated_svg = work_dir / "generated-project-passive.svg"
-        _export_symbol(cli, generated_library.library_path, generated_library.symbol_name, generated_svg)
+        _export_symbol(
+            cli, generated_library.library_path, generated_library.symbol_name, generated_svg
+        )
         if not generated_svg.is_file() or generated_svg.stat().st_size < 250:
             raise RuntimeError("KiCad CLI did not export the generated project-local symbol.")
-        if generated_library.nickname not in generated_library.table_path.read_text(encoding="utf-8"):
+        table_text = generated_library.table_path.read_text(encoding="utf-8")
+        if generated_library.nickname not in table_text:
             raise RuntimeError("The project symbol table does not register the generated library.")
         saved_schematic = (work_dir / "jlcpcb-live-demo.kicad_sch").read_text(encoding="utf-8")
         if generated_library.library_id not in saved_schematic:
@@ -695,7 +733,8 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             "live-project-library-generation=passed "
             f"library_id={generated_library.library_id} "
             f"symbol_file={generated_library.library_path.name} "
-            f"pins={','.join(sorted(generated_pin_numbers))} cli_svg={generated_svg.stat().st_size}",
+            f"pins={','.join(sorted(generated_pin_numbers))} "
+            f"cli_svg={generated_svg.stat().st_size}",
             flush=True,
         )
 
