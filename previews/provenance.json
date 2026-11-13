@@ -9,12 +9,12 @@
     "component-browser-filtered.png": "32739f613484d6ada970bc2236227f4c6150594d28ff571c092a5551fef42c60",
     "component-browser-initial.png": "7b8134e987af57d068b236023204214fa5435d91add670595667f5b6ac3e9749",
     "component-browser-light.png": "7b8134e987af57d068b236023204214fa5435d91add670595667f5b6ac3e9749",
-    "component-browser-selected.png": "41ffba1d86f4e2d48c1b953d4bbe85bd3e34492578f9a99c75fb8defacba8612",
+    "component-browser-selected.png": "dab3a21fffa71a920559bcdfcf7a412a16e2b00c226d8603d89295227697b489",
     "component-properties-dark.png": "1e72f8d12cc3db6ad1e6bb237c77b6f80229c6569ba3bb6d96cbb59ce231ae6e",
     "component-properties-light.png": "0b9867e077a0ee094ea100c67ac5b28c4b421e388c02e207bfe4d427133f64b2",
     "component-properties-selected.png": "0b9867e077a0ee094ea100c67ac5b28c4b421e388c02e207bfe4d427133f64b2",
-    "jlcpcb-capacitor-symbol.svg": "f92e7a17243ee05b7e95cc5b80a591270838548199ce0a43d0a9fd7ab6ac78a3",
-    "jlcpcb-resistor-symbol.svg": "6700eadf42c384b314e793827a36a26867e96a398e5c93b58c2549c05fbf7cd8",
+    "jlcpcb-capacitor-symbol.svg": "e0b92668dbdb49b711e37f2d802ad1770918e5e73fcd7fdafafee519f6920684",
+    "jlcpcb-resistor-symbol.svg": "d6ae3a4113f07bfde4eba518780dd7bbb645ac13e9f72fc102c4a65aa0ffc67c",
     "populate-component-applied.png": "0a9fbad2a03dc8646f758a40a2bb9ade6939e897c4088705ff5d393396075aff",
     "populate-component-confirmation.png": "1a790b8ed80c3992b9d30b50e57c3aaafb59068fad4f7e5d46a9be31eceb9afc",
     "populate-component-dark.png": "63401a0f69c7beca5dd2408f9eb49172cbc19a48e966a545aa6987bd2f050faf",
@@ -25,7 +25,7 @@
     "schematic-properties-opened.png": "a6673f24df615405e1cef00022a1c41457a7d36f34d6e328cb1de3375e4afc10"
   },
   "kicad_cli_version": "10.99.0",
-  "source_commit": "dde8fbc59fb630fc9529bbf670ac90f7042a4348",
-  "workflow_run_id": "43527970833",
-  "workflow_run_number": "206"
+  "source_commit": "0359d5f72248077bc13043b8142842d97ca010d1",
+  "workflow_run_id": "43529360339",
+  "workflow_run_number": "210"
 }
