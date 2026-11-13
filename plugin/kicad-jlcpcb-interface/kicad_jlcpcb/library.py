@@ -273,6 +273,8 @@ def _make_symbol(template: list[Sexp], draft) -> list[Sexp]:
         ("Datasheet", draft.datasheet_url),
         ("Description", draft.description),
     ):
+        if field_name == "Description" and _property(symbol, field_name) is None:
+            continue
         _set_property(symbol, field_name, field_value)
 
     template_property = _property(symbol, "Description") or _property(symbol, "Datasheet")
@@ -579,7 +581,7 @@ def generate_project_library_symbol(
         source_root = parse_sexpr(source_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, SymbolLibraryError) as exc:
         raise SymbolLibraryError(
-            f"Could not parse KiCad symbol library {source_nickname if False else library_nickname} "
+            f"Could not parse KiCad symbol library {library_nickname} "
             f"at {source_path}: {exc}"
         ) from exc
     if _head(source_root) != "kicad_symbol_lib":
@@ -591,11 +593,12 @@ def generate_project_library_symbol(
         )
     candidate = _make_symbol(stock_symbol, draft)
     reference_property = _property(stock_symbol, "Reference")
-    reference_prefix = (
-        str(draft.reference_prefix or _string_value(reference_property[2]) if reference_property and len(reference_property) >= 3 else draft.reference_prefix or "U")
-        .strip()
-        .upper()
+    source_prefix = (
+        _string_value(reference_property[2])
+        if reference_property is not None and len(reference_property) >= 3
+        else ""
     )
+    reference_prefix = str(draft.reference_prefix or source_prefix or "U").strip().upper()
     symbol_name = _symbol_name(draft.kind, draft.lcsc, reference_prefix)
 
     table_path = project_dir / "sym-lib-table"
