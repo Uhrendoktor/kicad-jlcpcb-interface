@@ -170,6 +170,9 @@ class ComponentPopulator:
             height=15,
             selectmode="browse",
         )
+        self.fields_tree.tag_configure(
+            "stripe-alt", background=self.palette["surface_alt"]
+        )
         self.fields_tree.heading("field", text="KiCad property")
         self.fields_tree.heading("value", text="Proposed value")
         self.fields_tree.column("field", width=180, minwidth=130, stretch=False)
@@ -290,11 +293,23 @@ class ComponentPopulator:
     def _render_draft(self, draft: ComponentDraft, cached: bool) -> None:
         self.fields_tree.delete(*self.fields_tree.get_children())
         self.fields_tree.insert(
-            "", "end", values=("Suggested symbol type", draft.symbol_hint or "Not identified")
+            "",
+            "end",
+            values=("Suggested symbol type", draft.symbol_hint or "Not identified"),
         )
-        self.fields_tree.insert("", "end", values=("Inference confidence", draft.confidence))
-        for name, value in draft.proposed_fields:
-            self.fields_tree.insert("", "end", values=(name, value))
+        self.fields_tree.insert(
+            "",
+            "end",
+            values=("Inference confidence", draft.confidence),
+            tags=("stripe-alt",),
+        )
+        for index, (name, value) in enumerate(draft.proposed_fields):
+            self.fields_tree.insert(
+                "",
+                "end",
+                values=(name, value),
+                tags=("stripe-alt",) if index % 2 == 0 else (),
+            )
         notes = list(draft.warnings)
         if self.create_mode:
             notes = [
