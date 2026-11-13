@@ -192,8 +192,8 @@ Use this mode when the part is not yet present in the schematic. The add-on crea
 2. Launch **JLCPCB Add or Update Passive** from the active Schematic Editor.
 3. Enter either an LCSC code (for example, `C60489`) or a resistor/capacitor value (for example, `10k`, `4k7`, `470R`, `100nF`, `0.1uF` or `4.7uF`), then choose **Search catalogue**.
 4. For a value search, review the exact-value matches. Basic listings are ranked first; Extended listings are retained as alternatives. Select a row to inspect its proposed Value, package, footprint, voltage/tolerance attributes, metadata and warnings. An LCSC-code lookup reviews that single catalogue record.
-5. Choose **Place at cursor in KiCad** or **Use X/Y coordinates (mm)**. Cursor placement is selected by default when the action was launched from Eeschema on an X11 desktop with `xdotool`; otherwise use coordinates.
-6. Confirm **Generate and place passive**. In cursor mode, the add-on opens KiCad's native Add Symbol chooser, selects the generated symbol, and returns to Eeschema with it attached to the mouse pointer. Left-click to place it or press Escape to cancel. Coordinate mode places the instance at the entered position.
+5. Review the generated part and confirm the proposed fields. Add mode always uses KiCad's native Add Symbol chooser and mouse placement; there is no X/Y coordinate mode.
+6. Confirm **Generate and place passive**. The add-on opens KiCad's native Add Symbol chooser, selects the generated symbol, and returns to Eeschema with it attached to the mouse pointer. Left-click to place it or press Escape to cancel.
 
 The proposal includes the catalogue match and placement controls so you can confirm both the selected part and where it will enter the design:
 
@@ -210,8 +210,8 @@ For a supported resistor or capacitor, the add-on:
 - Adds hidden LCSC, Manufacturer, MPN, `JLCPCB Library Type` (Basic/Extended), category and selected attribute properties.
 - Writes or extends `JLCPCB_Generated.kicad_sym` in the project directory.
 - Registers the project library in `sym-lib-table` using a project-relative KiCad project variable URI.
-- Reloads the project library before opening KiCad's native chooser or placing an instance at the X/Y coordinates.
-- Lets KiCad assign the reference in cursor mode; coordinate mode chooses the next free R or C reference.
+- Reloads the project library before opening KiCad's native Add Symbol chooser.
+- Lets KiCad assign the reference while the generated symbol is attached to the cursor.
 
 The symbol ID is deterministic for the LCSC part, so an existing generated symbol is reused rather than duplicated. The generator protects unowned files and refuses to overwrite a generated symbol that has been manually modified. The library writer uses atomic file replacement and a backup when extending an existing generated library.
 
@@ -231,7 +231,7 @@ The existing generated symbol is detected and reused; placement can continue whe
 
 Value search only returns exact nominal-value matches that can be confidently classified as resistors or capacitors and mapped to one of the reviewed SMD footprints (0201, 0402, 0603, 0805, 1206, 1210, 1812, 2010 or 2512). It does not compare voltage rating, tolerance, power rating, temperature coefficient, dielectric or manufacturer equivalence. Review those fields and the datasheet before generating a symbol.
 
-Cursor placement uses the native Eeschema Add Symbol hotkey `A` through `xdotool`. It requires the action to have been launched while the Eeschema window was focused on an X11 desktop. Check Eeschema Preferences → Hotkeys if the native chooser does not open. X/Y placement remains available when cursor handoff cannot be used.
+Add mode is cursor-only. It uses the native Eeschema Add Symbol hotkey `A` through `xdotool` and requires the action to have been launched while the Eeschema window was focused on an X11 desktop. If that requirement is not met, automatic add mode is disabled with an explanation; there is no X/Y coordinate fallback. Check Eeschema Preferences → Hotkeys if the native chooser does not open.
 
 The generated footprint association is a KiCad footprint-library reference, not a footprint generator. Always inspect the symbol and PCB footprint. The generator preserves stock two-pin passive topology; it does not infer component-specific pin mapping or arbitrary electrical behavior.
 

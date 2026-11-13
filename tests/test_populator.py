@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import queue
 import sys
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +13,7 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.draft import symbol_library_id  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
+    ComponentPopulator,
     resolve_passive_action_target,
     resolve_passive_library_id,
     resolve_selected_symbol,
@@ -239,6 +242,64 @@ class PassiveActionModeResolutionTests(unittest.TestCase):
         schematic = SimpleNamespace(get_symbols=lambda: [selected], document=object())
         with self.assertRaisesRegex(ValueError, "not an editable schematic symbol"):
             resolve_passive_action_target(schematic, FakeKiCad({}), [selected])
+
+
+
+class TkCleanupResource:
+    def __init__(self, name, events, root):
+        self.name = name
+        self.events = events
+        self.root = root
+
+    def __del__(self):
+        self.events.append(
+            (self.name, threading.get_ident(), self.root.destroyed)
+        )
+
+
+class TkCleanupRoot:
+    def __init__(self, events):
+        self.events = events
+        self.destroyed = False
+
+    def after_cancel(self, _callback_id):
+        pass
+
+    def destroy(self):
+        self.destroyed = True
+        self.events.append(("root-destroyed", threading.get_ident(), True))
+
+
+class TkCleanupExecutor:
+    def shutdown(self, *, wait, cancel_futures):
+        pass
+
+
+class ComponentPopulatorCleanupTests(unittest.TestCase):
+    def test_releases_tk_variables_on_ui_thread_before_destroy(self):
+        events = []
+        root = TkCleanupRoot(events)
+        populator = object.__new__(ComponentPopulator)
+        populator.closed = False
+        populator._poll_id = "poll-id"
+        populator.root = root
+        populator.executor = TkCleanupExecutor()
+        populator.lookup_future = None
+        populator.results = queue.Queue()
+
+        variable_names = ("lcsc_var", "status_var", "symbol_var", "confidence_var")
+        for name in variable_names:
+            setattr(populator, name, TkCleanupResource(name, events, root))
+
+        ComponentPopulator.close(populator)
+
+        self.assertEqual({event[0] for event in events[:-1]}, set(variable_names))
+        self.assertTrue(
+            all(event[1] == threading.get_ident() for event in events[:-1])
+        )
+        self.assertTrue(all(not event[2] for event in events[:-1]))
+        self.assertEqual(events[-1][0], "root-destroyed")
+        self.assertTrue(root.destroyed)
 
 
 if __name__ == "__main__":

@@ -57,7 +57,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends software-properties-common
           sudo add-apt-repository --yes ppa:kicad/kicad-dev-nightly
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends kicad-nightly python3.12-venv python3-tk python3-pil python3-pil.imagetk kicad-nightly-symbols xvfb xauth xdotool
+          sudo apt-get install -y --no-install-recommends kicad-nightly python3.12-venv python3-tk python3-pil python3-pil.imagetk kicad-nightly-symbols xvfb xauth xdotool x11-utils
           CLI="$(command -v kicad-cli-nightly || command -v kicad-cli || true)"
           if [[ -z "$CLI" ]]; then
             echo "::error::KiCad CLI was not installed"
@@ -85,11 +85,12 @@ jobs:
             "${RUNNER_TEMP}/kicad-visual-venv/bin/python" tests/capture_visual_docs.py --output-dir "$OUTPUT_DIR"
 
       - name: Upload generated visual documentation bundle
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: kicad-jlcpcb-visual-docs
           path: ${{ runner.temp }}/kicad-jlcpcb-visual-docs
-          if-no-files-found: error
+          if-no-files-found: ignore
           compression-level: 1
 
   publish-visual-docs:
