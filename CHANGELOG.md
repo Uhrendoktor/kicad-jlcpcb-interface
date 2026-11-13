@@ -6,7 +6,7 @@
 - Add catalogue search by LCSC code, manufacturer part number and free-text keyword while retaining exact-value filtering for supported resistor/capacitor value queries. Common R/C/L, diode, LED, fuse and crystal categories receive cautious symbol suggestions; ambiguous parts require a manual KiCad `Library:Symbol` choice.
 - Generalize project-local symbol generation to copy standalone stock KiCad symbol definitions with their original pin numbers, electrical types, units and graphics. IC pin maps are never inferred from catalogue text. Footprints are optional and can be selected/edited manually when no reviewed mapping exists.
 - Make Value and Footprint editable during both update and add review. Preserve uncertain/unknown fields rather than fabricating symbol identities, footprints or pin assignments. Add tests for non-passive classification, arbitrary symbol metadata updates, and multi-pin IC symbol copies.
-- Retain Eeschema cursor placement through KiCad's native Add Symbol chooser, with explicit X/Y placement as a fallback.
+- Make Add mode cursor-only through KiCad's native Add Symbol chooser; remove manual X/Y placement.
 - Scan LCSC-linked symbols across the complete schematic hierarchy.
 - Navigate to a symbol's sheet, zoom to it and select it through KiCad's `FocusOnItems` IPC command.
 - Use the configured cache TTL to distinguish recent offline cache results from stale catalogue data.

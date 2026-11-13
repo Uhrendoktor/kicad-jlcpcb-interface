@@ -179,7 +179,7 @@ Use this mode when the component is not yet in the schematic. The add-on creates
 3. Search by LCSC code, manufacturer part number, device name or another keyword. Passive-value queries such as 10k, 4k7, 470R, 100nF and 4.7uF use exact-value candidate filtering; other free-text searches show catalogue candidates to review.
 4. Select a catalogue row when the search returns multiple parts. Review the suggested symbol, Value, package, Footprint, metadata and warnings.
 5. In **Component details**, accept or edit the suggested KiCad Library:Symbol. When the part is not confidently classified, enter a stock ID manually, for example Amplifier_Operational:LM358. Edit Value and optional Footprint if the catalogue suggestion is incomplete. Reference prefix can also be edited.
-6. Choose **Place at cursor in KiCad** or **Use X/Y coordinates (mm)**, then confirm **Generate and place component**.
+6. Confirm **Generate and place component**. KiCad opens its native Add Symbol chooser, selects the generated project-local copy and returns to Eeschema with the symbol attached to the mouse cursor. Click in the schematic to place it or press Escape to cancel. Add mode has no X/Y coordinate fallback.
 
 The inferred stock-symbol suggestions currently cover common resistors, capacitors, inductors, diodes, LEDs, fuses and crystals. Package mappings are deliberately narrower: the UI leaves Footprint blank when no reviewed mapping exists, and lets you enter a KiCad footprint identifier yourself. Unknown/ambiguous part categories remain at **Choose manually** rather than guessing an IC pinout.
 
@@ -192,7 +192,7 @@ For the selected KiCad Library:Symbol, the add-on:
 - Refuses symbols that extend another library symbol, because the generator copies a standalone definition rather than resolving inherited definitions. Choose a standalone stock symbol instead.
 - Writes the selected Value, optional Footprint, Datasheet and Description plus hidden LCSC, Manufacturer, MPN, category and catalogue attribute properties.
 - Writes or extends the project-local JLCPCB_Generated.kicad_sym library and registers it in sym-lib-table using a project-relative KiCad project variable URI.
-- Reloads the project library before opening KiCad's native chooser or placing an instance at the entered X/Y coordinates.
+- Reloads the project library before opening KiCad's native Add Symbol chooser.
 
 The generated symbol ID uses the selected reference prefix and LCSC part number, so repeat generation for the same part can reuse the existing project-local symbol. The generator protects unowned files and refuses to overwrite a generated symbol that has been manually modified. The library writer uses atomic file replacement and creates a backup when extending an existing generated library.
 
@@ -212,7 +212,7 @@ The existing generated symbol is detected and reused; placement can continue whe
 
 Passive-value search only accepts exact nominal-value matches for supported resistor/capacitor queries. It does not compare voltage rating, tolerance, power rating, temperature coefficient, dielectric or manufacturer equivalence. General keyword matches are ranked catalogue candidates, not declared drop-in replacements. Review the selected part's details and datasheet.
 
-Cursor placement uses the native Eeschema Add Symbol hotkey A through xdotool. It requires the action to have been launched while the Eeschema window was focused on an X11 desktop. Check Eeschema Preferences → Hotkeys if the native chooser does not open. X/Y placement remains available when cursor handoff cannot be used.
+Add mode is cursor-only. It uses the native Eeschema Add Symbol hotkey `A` through `xdotool` and requires the action to have been launched while the Eeschema window was focused on an X11 desktop. If that requirement is not met, add mode is disabled with an explanation; there is no X/Y coordinate fallback. Check Eeschema Preferences → Hotkeys if the native chooser does not open.
 
 The optional Footprint field is a KiCad footprint-library reference, not a footprint generator. A symbol can be created without a footprint, but it will need a suitable footprint before PCB layout. Always inspect the symbol/footprint pair and verify pin numbers, electrical types, package dimensions and ratings against the manufacturer datasheet.
 ## Catalogue data, cache and privacy

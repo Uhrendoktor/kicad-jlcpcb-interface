@@ -100,7 +100,7 @@ The same review screen handles both tasks. Uncertain symbol and footprint choice
       <p>Search by LCSC code or free text, accept a suggested stock symbol or enter a KiCad Library:Symbol, and review the value and optional footprint before placement.</p>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
-        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Catalogue candidates and project-local symbol placement options." width="320">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Catalogue candidates before cursor-only project-local symbol placement." width="320">
       </picture>
     </td>
   </tr>
@@ -108,7 +108,7 @@ The same review screen handles both tasks. Uncertain symbol and footprint choice
 
 When no catalogue-to-symbol mapping is available, enter the stock KiCad identifier (for example, Amplifier_Operational:LM358). The selected symbol definition is copied into the project-local library with its original pins, units and graphics. This does not validate that the chosen symbol matches the actual orderable part: check pin numbers and electrical types against the manufacturer datasheet. Symbols that extend another library symbol must be replaced with a standalone KiCad symbol choice.
 
-For add mode, placement can use KiCad's native Add Symbol chooser at the cursor on X11 when xdotool is available, or explicit X/Y coordinates in millimetres. The generated project-local symbol can be reused on subsequent runs. Multiple selections are rejected; clear the selection to add a new component.
+Add mode is cursor-only: KiCad's native Add Symbol chooser attaches the generated project-local copy to the mouse pointer. Launch the action from the focused Eeschema window on an X11 desktop with `xdotool` installed; there is no X/Y coordinate fallback. Multiple selections are rejected; clear the selection to add a new component.
 
 > **First use in a project:** when the generated-library table entry does not yet exist, the open Eeschema session may not recognize the new library immediately. The library and table entry are saved, but no instance is placed. Close and reopen the project, then repeat the same add-mode search; the existing generated symbol is reused.
 
@@ -118,7 +118,7 @@ For detailed field behavior and troubleshooting, see the **[User guide](docs/use
 - **Conservative symbol handling.** Update mode works on one editable selected symbol of any component family and never replaces its graphics, library identity or pin mapping. Add mode suggests common generic symbols (resistor, capacitor, inductor, diode, LED, fuse and crystal) and can clone a manually selected standalone KiCad symbol. A suggestion is not a verified manufacturer pinout.
 - **Reviewable footprints.** Reviewed mappings cover common SMD resistor/capacitor/inductor sizes, selected LED sizes and diode packages. Other packages remain blank until entered by the user. Footprints are optional for symbol generation, but required before normal PCB layout.
 - **Search behavior.** Add mode supports LCSC-code lookup, keyword search by MPN/device name, and exact nominal-value matching for supported resistor/capacitor values. Other keyword matches are candidates to review, not guaranteed electrical equivalents.
-- **Placement.** Cursor placement uses KiCad's native Add Symbol chooser through xdotool on X11 when launched from a focused Eeschema window. Explicit X/Y placement is available as a fallback.
+- **Placement.** Add mode uses KiCad's native Add Symbol chooser through `xdotool` on X11 when launched from a focused Eeschema window. The generated symbol follows the cursor; coordinate placement is not supported.
 - **No pin-map or PCB asset generation.** The add-on does not infer IC pin assignments/electrical types, create copper footprints or generate 3D models. It copies the symbol pin definitions the user selected; verify symbol and footprint compatibility against the datasheet before board use or ordering.
 - **Supplier data.** Catalogue detail and search use JLCPCB website endpoints that are not a supported public components API and may change. Source/freshness labels distinguish direct JLCPCB results, community fallbacks and cached snapshots.
 - **Indicative availability.** Stock and unit prices are snapshots, not a quote, reservation or purchase guarantee. Related MPN-search results are comparison candidates, not guaranteed drop-in replacements.
