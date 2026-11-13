@@ -89,12 +89,17 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertIn(
             [
-                "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
+                "xdotool", "type", "--clearmodifiers", "--window", "0x200",
+                "--delay", "12", "R_C60489",
             ],
             runner.commands,
         )
         self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
+            [
+                "xdotool", "key", "--clearmodifiers", "--window", "0x200",
+                "Return",
+            ],
+            runner.commands,
         )
         chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
         filter_focus = [
