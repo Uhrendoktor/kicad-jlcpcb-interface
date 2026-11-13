@@ -1,4 +1,4 @@
-"""Conservative field inference and IPC write-back for simple LCSC passives."""
+"""Conservative catalogue field inference and IPC write-back for KiCad components."""
 
 from __future__ import annotations
 
