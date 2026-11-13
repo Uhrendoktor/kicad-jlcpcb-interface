@@ -371,9 +371,21 @@ def _classify(details: JlcPartDetails) -> str:
         if value not in (None, "")
     }
     checks = (
-        ("resistor", bool(attributes & _ATTRIBUTE_ALIASES["resistor"]) or re.search(r"\bresistors?\b|\bresistance\b", text)),
-        ("capacitor", bool(attributes & _ATTRIBUTE_ALIASES["capacitor"]) or re.search(r"\bcapacitors?\b|\bcapacitance\b", text)),
-        ("inductor", bool(attributes & _ATTRIBUTE_ALIASES["inductor"]) or re.search(r"\binductors?\b|\binductance\b", text)),
+        (
+            "resistor",
+            bool(attributes & _ATTRIBUTE_ALIASES["resistor"])
+            or bool(re.search(r"\bresistors?\b|\bresistance\b", text)),
+        ),
+        (
+            "capacitor",
+            bool(attributes & _ATTRIBUTE_ALIASES["capacitor"])
+            or bool(re.search(r"\bcapacitors?\b|\bcapacitance\b", text)),
+        ),
+        (
+            "inductor",
+            bool(attributes & _ATTRIBUTE_ALIASES["inductor"])
+            or bool(re.search(r"\binductors?\b|\binductance\b", text)),
+        ),
         ("led", bool(re.search(r"\bleds?\b|light emitting diode", text))),
         ("diode", bool(re.search(r"\bdiodes?\b|\brectifiers?\b|\btvs\b|\bzener\b", text))),
         ("fuse", bool(re.search(r"\bfuses?\b|\bpolyfuse\b", text))),
@@ -387,8 +399,18 @@ def _classify(details: JlcPartDetails) -> str:
 
 def _inductance_value(raw: str) -> str:
     """Normalize explicit inductance to a KiCad value such as 10uH."""
-    candidate = str(raw or "").strip().replace("µ", "u").replace("μ", "u").replace(" ", "")
-    match = re.fullmatch(r"(?P<num>\d+(?:\.\d+)?)(?P<scale>[pnumkKMG]?)(?:H)?", candidate, re.IGNORECASE)
+    candidate = (
+        str(raw or "")
+        .strip()
+        .replace("µ", "u")
+        .replace("μ", "u")
+        .replace(" ", "")
+    )
+    match = re.fullmatch(
+        r"(?P<num>\d+(?:\.\d+)?)(?P<scale>[pnumkKMG]?)(?:H)?",
+        candidate,
+        re.IGNORECASE,
+    )
     if not match:
         return ""
     number = _format_number(match.group("num"))
@@ -406,11 +428,19 @@ def _footprint(kind: str, package: str) -> str:
     if match and kind in {"resistor", "capacitor", "inductor"}:
         imperial = match.group(1)
         metric = _PACKAGE_MAP[imperial]
-        library = {"resistor": "Resistor_SMD", "capacitor": "Capacitor_SMD", "inductor": "Inductor_SMD"}[kind]
+        library = {
+            "resistor": "Resistor_SMD",
+            "capacitor": "Capacitor_SMD",
+            "inductor": "Inductor_SMD",
+        }[kind]
         prefix = {"resistor": "R", "capacitor": "C", "inductor": "L"}[kind]
         return f"{library}:{prefix}_{imperial}_{metric}Metric"
     if kind == "led":
-        led_package = re.search(r"(?<![A-Z0-9])(0603|0805|1206)(?![A-Z0-9])", candidate, re.IGNORECASE)
+        led_package = re.search(
+            r"(?<![A-Z0-9])(0603|0805|1206)(?![A-Z0-9])",
+            candidate,
+            re.IGNORECASE,
+        )
         if led_package:
             imperial = led_package.group(1)
             metric = _PACKAGE_MAP[imperial]
@@ -468,7 +498,9 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
             "Library:Symbol before creating a new project-local symbol."
         )
     elif not value:
-        warnings.append("A reliable component value could not be inferred; Value is left unchanged.")
+        warnings.append(
+            "A reliable component value could not be inferred; Value is left unchanged."
+        )
     if not footprint:
         warnings.append(
             f"Package {details.package or '(missing)'} has no reviewed footprint mapping. "
@@ -550,7 +582,11 @@ def apply_component_draft_fields(
             f"Expected library ID {expected} does not identify this LCSC draft; "
             f"the selected symbol is {actual_library_id}."
         )
-    if not expected and draft.symbol_hint and not _library_id_matches_draft(actual_library_id, draft):
+    if (
+        not expected
+        and draft.symbol_hint
+        and not _library_id_matches_draft(actual_library_id, draft)
+    ):
         raise ValueError(
             f"Proposal requires {draft.symbol_hint}, but the selected symbol is "
             f"{actual_library_id or 'an unknown library symbol'}."
