@@ -26,11 +26,19 @@ The repository publishes screenshots, an animated Eeschema sequence and KiCad-na
 </p>
 
 <p align="center">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png" alt="Native confirmation dialog explaining that symbol graphics, pins and electrical mapping are unchanged" width="80%">
+</p>
+
+<p align="center">
   <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Populate Selected Symbol after confirmed IPC field update" width="80%">
 </p>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png" alt="Add Component from LCSC proposal with X and Y coordinates" width="80%">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png" alt="Native confirmation dialog describing project-local symbol generation and placement" width="80%">
 </p>
 
 <p align="center">
@@ -59,8 +67,8 @@ The visual capture runs the production application windows, not separately drawn
 | Component Overview | Captures unfiltered, filtered and selected-row states. Verifies live JLCPCB detail source, product image, MPN alternatives and the completed cost/stock summary. |
 | Component Properties | Opens the focused properties window from a selected linked Eeschema symbol and captures its loaded catalogue view. |
 | Properties controls | Calls Select in schematic and Select same part on sheet; verifies the Eeschema selection; copies the LCSC ID and verifies the clipboard; invokes LCSC search, supplier product, datasheet and MPN-result actions and checks that each opens an HTTPS URL. |
-| Populate Selected Symbol | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, captures the proposal, checks the final confirmation wording, confirms the action and reads updated Value, Footprint, LCSC and MPN fields back from the schematic hierarchy. Captures the post-action state. |
-| Add Component from LCSC | Clears the Eeschema selection, drives the actual lookup/review window with X/Y placement values, captures the proposal, checks the final confirmation wording, confirms generation and placement, then verifies the resulting reference, project-local library ID, value, footprint and linked custom fields through IPC. Captures the completion state. |
+| Populate Selected Symbol | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, captures the proposal and the native confirmation messagebox, checks the confirmation wording, accepts the action and reads updated Value, Footprint, LCSC and MPN fields back from the schematic hierarchy. Captures the post-action state. |
+| Add Component from LCSC | Clears the Eeschema selection, drives the actual lookup/review window with X/Y placement values, captures the proposal and native confirmation messagebox, checks the confirmation wording, accepts generation and placement, then verifies the resulting reference, project-local library ID, value, footprint and linked custom fields through IPC. Captures the completion state. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 
 The capture asserts both the proposed part and data provenance: the Populate dialog requires a fresh direct response for LCSC C60489 and verifies its 10 kΩ / 0402 interpretation; the Add dialog independently fetches LCSC C105637 and verifies its 1 kΩ / 0402 interpretation. Both screenshots fail closed rather than silently falling back to cached data. The proposal/result screenshots document those controlled examples; the actual supplier facts are those returned at capture time.
