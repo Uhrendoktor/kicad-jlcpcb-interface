@@ -11,6 +11,7 @@
 - Recursively remove expiring signed URLs from persisted catalogue records.
 - Capture and verify the live Properties controls, Populate review/write-back dialog and Add Component review/library-placement dialog in the visual CI fixture.
 - Add a complete user guide and a refreshed README with generated screenshots for all four schematic actions.
+- Follow the desktop light/dark appearance across ttk and classic Tk widgets, with a `KICAD_JLCPCB_THEME=system|light|dark` override; capture all four windows in both palettes.
 
 ## 0.1.0 — 2026-11-12
 
