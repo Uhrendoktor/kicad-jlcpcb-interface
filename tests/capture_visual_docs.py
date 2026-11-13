@@ -1070,6 +1070,57 @@ def _capture_live_selection_workflow(
                     root, output_dir / "component-properties-selected.png"
                 )
                 _capture_desktop(output_dir / "schematic-properties-opened.png")
+
+                # Exercise the same callbacks wired to the properties window's
+                # selection, clipboard, supplier-link and MPN-result controls.
+                browser.select_selected()
+                one_selected = list(schematic.get_selection())
+                if [str(item.reference) for item in one_selected] != ["R1"]:
+                    raise RuntimeError(
+                        "Select in schematic did not select only the focused R1 symbol."
+                    )
+                browser.select_same_part_on_sheet()
+                same_part = sorted(
+                    str(item.reference) for item in schematic.get_selection()
+                )
+                if same_part != ["R1", "R3"]:
+                    raise RuntimeError(
+                        "Select same part on sheet did not select both C60489 instances: "
+                        f"{same_part!r}"
+                    )
+                browser.copy_part_id()
+                if browser.root.clipboard_get() != "C60489":
+                    raise RuntimeError("Copy part ID did not copy C60489 to the clipboard.")
+
+                opened_urls = []
+                original_open = browser_module.webbrowser.open_new_tab
+                browser_module.webbrowser.open_new_tab = (
+                    lambda url: opened_urls.append(str(url))
+                )
+                try:
+                    browser.search_lcsc()
+                    browser.open_product_page()
+                    browser.open_datasheet()
+                    alternative_ids = list(browser._alternative_by_iid)
+                    if not alternative_ids:
+                        raise RuntimeError("The MPN alternatives table has no selectable rows.")
+                    browser.alternatives_tree.selection_set(alternative_ids[0])
+                    browser.open_selected_alternative()
+                finally:
+                    browser_module.webbrowser.open_new_tab = original_open
+                if len(opened_urls) != 4 or any(
+                    not url.startswith("https://") for url in opened_urls
+                ):
+                    raise RuntimeError(
+                        "Search/product/datasheet/MPN actions did not open four HTTPS URLs: "
+                        f"{opened_urls!r}"
+                    )
+                print(
+                    "live-properties-controls=passed "
+                    "select-one=R1 select-same=R1,R3 clipboard=C60489 "
+                    "https-links=4",
+                    flush=True,
+                )
                 captured = True
                 browser.close()
                 return
