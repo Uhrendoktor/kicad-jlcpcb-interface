@@ -367,6 +367,13 @@ class ComponentPopulator:
 
     def lookup(self) -> None:
         query = self.lcsc_var.get().strip()
+        if not query:
+            self.messagebox.showerror(
+                "Search term required",
+                "Enter an LCSC code, manufacturer part number, component name or passive value.",
+                parent=self.root,
+            )
+            return
         mode = "lcsc"
         request_value = query
         if self.create_mode and not is_lcsc_lookup_query(query):
@@ -869,6 +876,8 @@ class ComponentPopulator:
         reference = str(getattr(self.symbol, "reference", "") or "selected symbol")
         warning = (
             f"Apply {len(draft.proposed_fields)} proposed field(s) to {reference}?\n\n"
+            f"Value: {draft.value or '(keep existing)'}\n"
+            f"Footprint: {draft.footprint or '(keep existing)'}\n\n"
             "Existing fields with the same names will be updated; unrelated custom fields "
             "are preserved.\n\n"
             "The selected symbol's graphics, pins, units and electrical pin mapping will "
@@ -883,7 +892,8 @@ class ComponentPopulator:
             changed = apply_component_draft_fields(
                 self.symbol,
                 draft,
-                expected_library_id=self.library_id or "selected-symbol",
+                expected_library_id=self.library_id or None,
+                allow_symbol_mismatch=True,
             )
             update_schematic_symbol(self.schematic, self.symbol)
             self.schematic.save()
