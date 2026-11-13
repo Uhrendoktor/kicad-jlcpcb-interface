@@ -344,6 +344,290 @@ def _library_is_owned(root: list[Sexp]) -> bool:
     return True
 
 
+def _root_symbol(root: list[Sexp], name: str) -> list[Sexp] | None:
+    matches = [
+        item for item in _direct(root, "symbol")
+        if len(item) >= 2 and _string_value(item[1]) == name
+    ]
+    if len(matches) > 1:
+        raise SymbolLibraryConflict(f"Library contains duplicate symbol {name!r}.")
+    return matches[0] if matches else None
+
+
+def _symbol_lcsc(symbol: list[Sexp]) -> str:
+    item = _property(symbol, "LCSC")
+    return _string_value(item[2]) if item is not None and len(item) >= 3 else ""
+
+
+def _table_entry(table: list[Sexp], nickname: str) -> list[Sexp] | None:
+    matches = []
+    for item in _direct(table, "lib"):
+        name = _find_direct(item, "name")
+        if name is not None and len(name) >= 2 and _string_value(name[1]) == nickname:
+            matches.append(item)
+    if len(matches) > 1:
+        raise SymbolLibraryConflict(
+            f"The project symbol table contains duplicate {nickname!r} entries."
+        )
+    return matches[0] if matches else None
+
+
+def _entry_text(entry: list[Sexp] | None, field: str) -> str:
+    node = _find_direct(entry, field) if entry is not None else None
+    return _string_value(node[1]) if node is not None and len(node) >= 2 else ""
+
+
+def _uri_path(project_dir: Path, uri: str) -> Path | None:
+    raw = str(uri or "").strip()
+    if not raw:
+        return None
+    raw = raw.replace("${KIPRJMOD}", str(project_dir))
+    if "$" + "{" in raw:
+        return None
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute():
+        candidate = project_dir / candidate
+    return candidate.resolve(strict=False)
+
+
+def _choose_target(project_dir: Path, table: list[Sexp]):
+    for suffix in range(100):
+        nickname = _LIBRARY_BASENAME if suffix == 0 else f"{_LIBRARY_BASENAME}_{suffix}"
+        path = project_dir / f"{nickname}.kicad_sym"
+        entry = _table_entry(table, nickname)
+        if entry is not None:
+            if _entry_text(entry, "type") != "KiCad":
+                continue
+            if _uri_path(project_dir, _entry_text(entry, "uri")) != path.resolve(strict=False):
+                continue
+        if path.is_symlink():
+            continue
+        if path.exists():
+            try:
+                root = parse_sexpr(path.read_text(encoding="utf-8"))
+            except (OSError, SymbolLibraryError, UnicodeError):
+                continue
+            if not isinstance(root, list) or _head(root) != "kicad_symbol_lib":
+                continue
+            if not _library_is_owned(root):
+                continue
+        return nickname, path, entry
+    raise SymbolLibraryConflict(
+        "Could not allocate a free project-local JLCPCB symbol-library nickname."
+    )
+
+
+def _project_directory(project_or_path) -> Path:
+    raw = getattr(project_or_path, "path", project_or_path)
+    if raw is None or not str(raw).strip():
+        raise SymbolLibraryError(
+            "The active KiCad project has no saved path. Save the project before generating a library."
+        )
+    path = Path(str(raw)).expanduser()
+    if path.is_file() or path.suffix.casefold() in {".kicad_pro", ".kicad_sch"}:
+        path = path.parent
+    path = path.resolve(strict=False)
+    if not path.is_dir():
+        raise SymbolLibraryError(f"The active project directory does not exist: {path}")
+    return path
+
+
+def find_device_symbol_library(kicad=None, explicit: str | Path | None = None) -> Path:
+    """Locate KiCad's installed Device.kicad_sym without depending on a global table."""
+    candidates: list[Path] = []
+    if explicit is not None:
+        candidates.append(Path(explicit).expanduser())
+    for key in ("KICAD_SYMBOL_DIR", "KICAD10_SYMBOL_DIR", "KICAD11_SYMBOL_DIR"):
+        value = os.environ.get(key, "").strip()
+        if value:
+            candidates.append(Path(value).expanduser())
+    if kicad is not None:
+        try:
+            candidates.extend(
+                Path(value).expanduser()
+                for value in kicad.get_paths().values() if value
+            )
+        except Exception:
+            pass
+    candidates.extend(
+        Path(value)
+        for value in (
+            "/usr/share/kicad-nightly/symbols",
+            "/usr/share/kicad/symbols",
+            "/usr/local/share/kicad/symbols",
+            "/Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols",
+        )
+    )
+    seen: set[Path] = set()
+    for candidate in candidates:
+        candidate = candidate.resolve(strict=False)
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if candidate.is_file() and candidate.name == "Device.kicad_sym":
+            return candidate
+        for possible in (
+            candidate / "Device.kicad_sym",
+            candidate / "symbols" / "Device.kicad_sym",
+        ):
+            if possible.is_file():
+                return possible.resolve()
+    raise SymbolLibraryError(
+        "Could not locate KiCad's Device.kicad_sym. Set KICAD_SYMBOL_DIR to the "
+        "folder containing the stock KiCad symbol libraries."
+    )
+
+
+def _load_table(path: Path) -> list[Sexp]:
+    if not path.exists():
+        return [Atom("sym_lib_table"), [Atom("version"), Atom("7")]]
+    if path.is_symlink():
+        raise SymbolLibraryConflict("Refusing to modify a symlinked project sym-lib-table.")
+    try:
+        root = parse_sexpr(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SymbolLibraryError) as exc:
+        raise SymbolLibraryError(f"Could not read project symbol table {path}: {exc}") from exc
+    if _head(root) != "sym_lib_table":
+        raise SymbolLibraryError(f"Project symbol table {path} has an invalid root node.")
+    if _find_direct(root, "version") is None:
+        root.insert(1, [Atom("version"), Atom("7")])
+    return root
+
+
+def _atomic_write(path: Path, content: str, *, backup: bool) -> None:
+    if path.is_symlink():
+        raise SymbolLibraryConflict(f"Refusing to replace symlinked file {path}.")
+    if backup and path.exists():
+        backup_path = path.with_name(path.name + ".bak")
+        suffix = 1
+        while backup_path.exists():
+            backup_path = path.with_name(path.name + f".bak.{suffix}")
+            suffix += 1
+        shutil.copy2(path, backup_path)
+
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+            if not content.endswith("\n"):
+                handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+        try:
+            dir_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def generate_project_library_symbol(
+    project_or_path, draft, *, device_library: str | Path | None = None, kicad=None
+) -> GeneratedLibrarySymbol:
+    """Create or reuse a safe project-local symbol cloned from KiCad's stock R/C."""
+    project_dir = _project_directory(project_or_path)
+    if draft.symbol_hint not in {"Device:R", "Device:C"}:
+        raise SymbolLibraryError(
+            "Only inferred generic Device:R or Device:C parts can be generated."
+        )
+    if not draft.value or not draft.footprint:
+        raise SymbolLibraryError(
+            "A reliable value and reviewed stock footprint are required for symbol generation."
+        )
+    device_path = find_device_symbol_library(kicad, device_library)
+    try:
+        device_root = parse_sexpr(device_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SymbolLibraryError) as exc:
+        raise SymbolLibraryError(f"Could not parse KiCad Device library {device_path}: {exc}") from exc
+    if _head(device_root) != "kicad_symbol_lib":
+        raise SymbolLibraryError("KiCad Device symbol library has an invalid root node.")
+    source_name = draft.symbol_hint.split(":", 1)[1]
+    stock_symbol = _root_symbol(device_root, source_name)
+    if stock_symbol is None:
+        raise SymbolLibraryError(
+            f"KiCad's Device library does not contain the required {source_name!r} symbol."
+        )
+    candidate = _make_symbol(stock_symbol, draft)
+    symbol_name = _symbol_name(draft.kind, draft.lcsc)
+
+    table_path = project_dir / "sym-lib-table"
+    table = _load_table(table_path)
+    nickname, library_path, entry = _choose_target(project_dir, table)
+
+    library_existed = library_path.exists()
+    if library_existed:
+        try:
+            library_root = parse_sexpr(library_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, SymbolLibraryError) as exc:
+            raise SymbolLibraryConflict(
+                f"Could not safely inspect existing generated library {library_path}: {exc}"
+            ) from exc
+        if _head(library_root) != "kicad_symbol_lib" or not _library_is_owned(library_root):
+            raise SymbolLibraryConflict(
+                f"Existing file {library_path} is not owned by this generator; it was left untouched."
+            )
+    else:
+        library_root = _root_header(device_root)
+
+    existing_symbol = _root_symbol(library_root, symbol_name)
+    already_present = False
+    library_changed = False
+    if existing_symbol is not None:
+        if _symbol_lcsc(existing_symbol) != draft.lcsc:
+            raise SymbolLibraryConflict(
+                f"Symbol {nickname}:{symbol_name} exists but its LCSC ownership field "
+                "does not match. It was not overwritten."
+            )
+        if dump_sexpr(existing_symbol) != dump_sexpr(candidate):
+            raise SymbolLibraryConflict(
+                f"Generated symbol {nickname}:{symbol_name} already exists but its content "
+                "has changed. It was not overwritten; inspect the existing project symbol."
+            )
+        already_present = True
+    else:
+        library_root.append(candidate)
+        library_changed = True
+
+    entry_added = entry is None
+    if entry_added:
+        table.append(
+            [
+                Atom("lib"),
+                [Atom("name"), Quoted(nickname)],
+                [Atom("type"), Quoted("KiCad")],
+                [Atom("uri"), Quoted("${KIPRJMOD}/" + library_path.name)],
+                [Atom("options"), Quoted("")],
+                [Atom("descr"), Quoted(_LIBRARY_DESCRIPTION)],
+            ]
+        )
+
+    if library_changed:
+        _atomic_write(library_path, dump_sexpr(library_root), backup=library_existed)
+    if entry_added:
+        _atomic_write(table_path, dump_sexpr(table), backup=table_path.exists())
+
+    return GeneratedLibrarySymbol(
+        project_directory=project_dir,
+        nickname=nickname,
+        symbol_name=symbol_name,
+        library_id=f"{nickname}:{symbol_name}",
+        library_path=library_path,
+        table_path=table_path,
+        created=library_changed,
+        already_present=already_present,
+    )
+
+
+
 def reload_project_symbol_library(kicad, generated: GeneratedLibrarySymbol) -> None:
     """Reload the generated project library in the active Eeschema session."""
     try:
@@ -366,6 +650,3 @@ def reload_project_symbol_library(kicad, generated: GeneratedLibrarySymbol) -> N
             f"KiCad reported an error while loading {generated.nickname!r}: "
             + "; ".join(errors)
         )
-
-
-def _root_symbol
