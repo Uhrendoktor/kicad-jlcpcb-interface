@@ -105,7 +105,23 @@ def start_native_symbol_placement(
     # integration test: when Add Symbol opens, the chooser's default focus is
     # its Filter entry. Type the exact library symbol name and accept it.
     # Do not move the modal window or inject pointer events; those can disturb
-    # the native chooser's own focus management.
+    # the native chooser's own focus management. Its Filter field is only ready
+    # after the symbol catalog is indexed, which is reflected in the window
+    # title's loaded-item count.
+    chooser_ready = False
+    chooser_title = ""
+    for _ in range(150):
+        chooser_title = send("getwindowname", chooser_id)
+        if "(" in chooser_title and any(char.isdigit() for char in chooser_title):
+            chooser_ready = True
+            break
+        pause(0.1)
+    if not chooser_ready:
+        raise RuntimeError(
+            "KiCad's native symbol chooser did not finish loading its catalog "
+            f"within 15 seconds: {chooser_title!r}."
+        )
+    pause(0.2)
     send("type", "--clearmodifiers", "--delay", "15", symbol_name)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:

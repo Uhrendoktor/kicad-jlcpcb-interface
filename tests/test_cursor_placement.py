@@ -16,8 +16,9 @@ from kicad_jlcpcb.cursor_placement import (  # noqa: E402
 
 
 class FakeRunner:
-    def __init__(self, outputs=()):
+    def __init__(self, outputs=(), window_names=()):
         self.outputs = list(outputs)
+        self.window_names = list(window_names)
         self.commands = []
 
     def __call__(self, arguments, **_kwargs):
@@ -36,6 +37,13 @@ class FakeRunner:
         if command == "getwindowclassname":
             return SimpleNamespace(stdout="eeschema", returncode=0)
         if command == "getwindowname":
+            if arguments[-1] == "0x200":
+                value = (
+                    self.window_names.pop(0)
+                    if self.window_names
+                    else "Choose Symbol (22936 items loaded)"
+                )
+                return SimpleNamespace(stdout=value, returncode=0)
             return SimpleNamespace(stdout="Schematic Editor", returncode=0)
         return SimpleNamespace(stdout="", returncode=0)
 
@@ -71,7 +79,10 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     def test_starts_native_chooser_and_returns_with_symbol_on_cursor(self):
-        runner = FakeRunner(["0x200", "0x100"])
+        runner = FakeRunner(
+            ["0x200", "0x100"],
+            ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
+        )
         pauses = []
 
         def pause(seconds):
@@ -93,6 +104,14 @@ class CursorPlacementTests(unittest.TestCase):
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "15", "R_C60489"
         ]
+        chooser_title_command = ["xdotool", "getwindowname", "0x200"]
+        loaded_index = runner.commands.index(type_command)
+        title_index = runner.commands.index(chooser_title_command)
+        self.assertLess(title_index, loaded_index)
+        self.assertGreaterEqual(
+            sum(command == chooser_title_command for command in runner.commands[:loaded_index]),
+            2,
+        )
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         self.assertLess(
             runner.commands.index(type_command),
