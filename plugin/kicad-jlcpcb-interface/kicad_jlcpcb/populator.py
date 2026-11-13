@@ -633,7 +633,10 @@ class ComponentPopulator:
                 )
                 reload_project_symbol_library(self.kicad, generated)
                 self.generated_library_symbol = generated
-                self.root.iconify()
+                # Withdraw instead of merely iconifying: under headless Xvfb
+                # no window manager may honor the iconify hint, leaving this
+                # Tk window mapped above KiCad's native modal chooser.
+                self.root.withdraw()
                 iconified = True
                 start_native_symbol_placement(
                     self.editor_window_id, generated.symbol_name

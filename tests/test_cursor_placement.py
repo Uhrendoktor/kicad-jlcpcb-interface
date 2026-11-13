@@ -105,34 +105,23 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
         chooser_title_command = ["xdotool", "getwindowname", "0x200"]
-        geometry_command = ["xdotool", "getwindowgeometry", "--shell", "0x200"]
-        filter_move = ["xdotool", "mousemove", "--sync", "110", "377"]
-        filter_click = ["xdotool", "click", "1"]
-        clear_command = [
-            "xdotool", "key", "--clearmodifiers", "--window", "0x200", "ctrl+a"
-        ]
         type_command = [
-            "xdotool", "type", "--clearmodifiers", "--window", "0x200",
-            "--delay", "15", "R_C60489",
+            "xdotool", "type", "--clearmodifiers", "--delay", "15", "R_C60489"
         ]
-        return_command = [
-            "xdotool", "key", "--clearmodifiers", "--window", "0x200", "Return"
-        ]
+        return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         loaded_index = runner.commands.index(type_command)
-        self.assertIn(clear_command, runner.commands)
-        self.assertLess(runner.commands.index(filter_click), runner.commands.index(clear_command))
-        self.assertLess(runner.commands.index(clear_command), loaded_index)
         title_index = runner.commands.index(chooser_title_command)
-        geometry_index = runner.commands.index(geometry_command)
-        move_index = runner.commands.index(filter_move)
-        click_index = runner.commands.index(filter_click)
-        self.assertLess(title_index, geometry_index)
-        self.assertLess(geometry_index, move_index)
-        self.assertLess(move_index, click_index)
-        self.assertLess(click_index, loaded_index)
+        self.assertLess(title_index, loaded_index)
         self.assertGreaterEqual(
             sum(command == chooser_title_command for command in runner.commands[:loaded_index]),
             2,
+        )
+        self.assertNotIn(
+            ["xdotool", "getwindowgeometry", "--shell", "0x200"],
+            runner.commands,
+        )
+        self.assertFalse(
+            any(command[1] in {"click", "mousemove"} for command in runner.commands)
         )
         self.assertLess(
             runner.commands.index(type_command),

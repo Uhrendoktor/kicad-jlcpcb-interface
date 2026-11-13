@@ -136,36 +136,11 @@ def start_native_symbol_placement(
         raise RuntimeError(
             f"Could not read KiCad's native symbol chooser position: {geometry!r}"
         ) from exc
-    # The catalog-ready state is important: before it finishes loading, the
-    # wxGTK Filter text control ignores clicks and keyboard events.
-    send(
-        "mousemove", "--sync", str(window_x + 80), str(window_y + 17)
-    )
-    send("click", "1")
-    if os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip():
-        pointer = send("getmouselocation", "--shell")
-        focused = send("getwindowfocus")
-        xwininfo = shutil.which("xwininfo")
-        tree = ""
-        if xwininfo:
-            result = command_runner(
-                [xwininfo, "-id", chooser_id, "-tree"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=5,
-            )
-            tree = str(getattr(result, "stdout", "") or "").strip()
-        print(
-            f"chooser-window-debug=pointer={pointer!r} "
-            f"focus={focused!r} tree={tree[:6000]!r}",
-            flush=True,
-        )
-    send("key", "--clearmodifiers", "--window", chooser_id, "ctrl+a")
-    send(
-        "type", "--clearmodifiers", "--window", chooser_id,
-        "--delay", "15", symbol_name,
-    )
+    # KiCad's native chooser gives its Filter control focus when it opens.
+    # Keep that native focus path intact: the parent Tk review window has been
+    # withdrawn before this function is called, so it cannot retain a mapped
+    # window or focus/grab in a headless X11 session.
+    send("type", "--clearmodifiers", "--delay", "15", symbol_name)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         try:
@@ -182,7 +157,7 @@ def start_native_symbol_placement(
                 f"chooser-search-debug=failed error={type(exc).__name__}: {exc}",
                 flush=True,
             )
-    send("key", "--clearmodifiers", "--window", chooser_id, "Return")
+    send("key", "--clearmodifiers", "Return")
     pause(0.6)
     focused_id = send("getwindowfocus")
     if focused_id != str(editor_window_id):
