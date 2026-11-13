@@ -40,8 +40,6 @@ from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
     resolve_passive_action_target,
-    resolve_passive_library_id,
-    resolve_selected_symbol,
 )
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 from kicad_jlcpcb.theme import apply_tk_theme  # noqa: E402
