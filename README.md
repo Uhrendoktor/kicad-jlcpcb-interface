@@ -17,7 +17,7 @@ KiCad JLCPCB Interface connects schematic symbols to JLCPCB/LCSC catalogue recor
 | Eeschema action | Use it to |
 | --- | --- |
 | **JLCPCB Component Overview** | Find LCSC-linked symbols across the schematic hierarchy, filter the list, inspect catalogue details, and estimate design cost and stock coverage. |
-| **JLCPCB Component Properties** | Inspect catalogue details for one selected linked symbol, including supplier image, price breaks and MPN search results. |
+| **JLCPCB Component Properties** | Open a separate window with catalogue details for one selected linked symbol, including supplier image, price breaks and MPN search results. |
 | **JLCPCB Populate Selected Symbol** | Review catalogue-derived fields, then update one compatible `Device:R` or `Device:C` placeholder after confirmation. Existing symbol graphics and pin mapping stay intact. |
 | **JLCPCB Add Component from LCSC** | Search by LCSC code or resistor/capacitor value, review matching parts, and create a reusable project-local symbol for placement. |
 
@@ -72,42 +72,50 @@ Save the project, clear the Eeschema selection, and open **JLCPCB Add Component 
 
 For the complete action-by-action instructions, catalogue field behavior and troubleshooting, see the **[User guide](docs/user-guide.md)**.
 
-## Interface preview
+## A look at the interface
 
-The screenshots and short animation are useful for different reasons: the animation shows a linked part being selected in Eeschema and opened in the properties view; the stills show the four action windows. They are kept in an optional gallery so the README stays focused on what the add-on does and how to install it.
-
-<details>
-<summary>View the Eeschema walkthrough and screenshots</summary>
+The short animation shows a linked schematic symbol being selected and its catalogue details opened. The screenshots show the four actions without taking over the page.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-workflow.gif" alt="Eeschema before and after selecting an LCSC-linked resistor, followed by its JLCPCB properties window" width="640">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-workflow.gif" alt="Selecting an LCSC-linked resistor in Eeschema and opening its JLCPCB properties" width="480">
 </p>
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-dark.png">
-    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-light.png" alt="Component overview with linked parts, design summary and catalogue details" width="49%">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-dark.png">
-    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-light.png" alt="Catalogue properties for a selected LCSC-linked resistor" width="49%">
-  </picture>
-</p>
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Browse linked parts</strong><br>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-dark.png">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-light.png" alt="Component overview with linked parts, design summary and catalogue details" width="320">
+      </picture>
+    </td>
+    <td align="center" width="50%">
+      <strong>Inspect a selected part</strong><br>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-dark.png">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-light.png" alt="Separate catalogue properties window for a selected LCSC-linked resistor" width="320">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <strong>Review fields to populate</strong><br>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Reviewing catalogue fields before populating a generic passive symbol" width="320">
+      </picture>
+    </td>
+    <td align="center">
+      <strong>Review a new component</strong><br>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Reviewing a new passive symbol and its placement options" width="320">
+      </picture>
+    </td>
+  </tr>
+</table>
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png">
-    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Reviewing catalogue fields before populating a generic passive symbol" width="49%">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
-    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Reviewing a new passive symbol and its placement options" width="49%">
-  </picture>
-</p>
-
-The windows follow the desktop light/dark appearance. Set `KICAD_JLCPCB_THEME=system|light|dark` before launching KiCad to override it. The screenshots and GIF are generated by CI from a real KiCad Eeschema process; catalogue details, stock, price breaks, MPN search results and product imagery are fetched from JLCPCB during capture. See [visual evidence and preview provenance](docs/visual-evidence.md).
-
-</details>
+The windows follow the desktop light/dark appearance. Set `KICAD_JLCPCB_THEME=system|light|dark` before launching KiCad to override it. All previews are generated by CI from a real KiCad Eeschema process; catalogue details, stock, price breaks, MPN search results and product imagery are fetched from JLCPCB during capture. See [visual evidence and preview provenance](docs/visual-evidence.md).
 
 ## Data, accuracy and limitations
 
