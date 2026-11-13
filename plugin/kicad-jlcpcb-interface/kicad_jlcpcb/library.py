@@ -314,7 +314,7 @@ def _make_symbol(template: list[Sexp], draft) -> list[Sexp]:
 def _root_header(template_root: list[Sexp]) -> list[Sexp]:
     version = _find_direct(template_root, "version")
     if version is None:
-        raise SymbolLibraryError("The KiCad Device library has no version node.")
+        raise SymbolLibraryError("The source KiCad symbol library has no version node.")
     return [
         Atom("kicad_symbol_lib"),
         copy.deepcopy(version),
@@ -323,7 +323,7 @@ def _root_header(template_root: list[Sexp]) -> list[Sexp]:
 
 
 def _library_is_owned(root: list[Sexp]) -> bool:
-    """Recognize only our explicitly marked generated passive symbols."""
+    """Recognize only our explicitly marked generated JLCPCB symbols."""
     generator = _find_direct(root, "generator")
     if (
         generator is None
