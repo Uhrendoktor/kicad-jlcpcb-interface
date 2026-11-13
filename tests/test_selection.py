@@ -173,8 +173,8 @@ class BrowserCleanupTests(unittest.TestCase):
         resource_events = [event for event in events if event[0] != "root-destroyed"]
         expected = {
             *direct_variables,
-            *(f"summary:{name}" for name in browser.summary_vars),
-            *(f"detail:{name}" for name in browser.detail_vars),
+            *(f"summary:{name}" for name in ("components", "parts", "total", "availability")),
+            *(f"detail:{name}" for name in ("reference", "value", "part")),
             "product-image",
         }
         released = {event[0] for event in resource_events}
