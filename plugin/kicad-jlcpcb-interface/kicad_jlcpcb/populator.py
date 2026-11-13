@@ -217,10 +217,21 @@ class ComponentPopulator:
         )
         self.status_var.set(f"Fetching {lcsc} from JLCPCB catalogue…")
         self.lookup_button.configure(state="disabled")
+        results_queue = self.results
         future = self.executor.submit(
             self.provider.lookup, lcsc, force_refresh=True
         )
-        future.add_done_callback(lambda completed: self.results.put((completed, lcsc)))
+
+        def enqueue_lookup_result(
+            completed: Future,
+            *,
+            result_queue=results_queue,
+            part_code=lcsc,
+        ) -> None:
+            # Keep the Tk dialog out of worker-thread completion callbacks.
+            result_queue.put((completed, part_code))
+
+        future.add_done_callback(enqueue_lookup_result)
 
     def _poll_results(self) -> None:
         if self.closed:
