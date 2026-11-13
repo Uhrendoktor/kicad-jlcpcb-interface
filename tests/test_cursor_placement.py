@@ -94,37 +94,22 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
         )
-        chooser_move = ["xdotool", "windowmove", "--sync", "0x200", "0", "0"]
-        chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
-        filter_focus = ["xdotool", "mousemove", "--sync", "211", "17"]
-        filter_click = ["xdotool", "click", "1"]
-        result_focus = ["xdotool", "mousemove", "--sync", "132", "81"]
-        result_click = ["xdotool", "click", "1"]
         type_command = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
+            "xdotool", "type", "--clearmodifiers", "--delay", "15", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
-        self.assertIn(chooser_move, runner.commands)
-        self.assertIn(chooser_focus, runner.commands)
         self.assertLess(
-            runner.commands.index(chooser_move),
-            runner.commands.index(chooser_focus),
+            runner.commands.index(type_command),
+            runner.commands.index(return_command),
         )
-        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_focus))
-        self.assertLess(runner.commands.index(filter_focus), runner.commands.index(type_command))
-        self.assertEqual(
-            runner.commands[runner.commands.index(filter_focus) + 1],
-            filter_click,
+        self.assertNotIn(
+            ["xdotool", "windowmove", "--sync", "0x200", "0", "0"],
+            runner.commands,
         )
-        self.assertLess(runner.commands.index(type_command), runner.commands.index(result_focus))
-        self.assertEqual(
-            runner.commands[runner.commands.index(result_focus) + 1],
-            result_click,
+        self.assertFalse(
+            any(command[1] in {"click", "mousemove"} for command in runner.commands)
         )
-        self.assertLess(runner.commands.index(result_focus), runner.commands.index(return_command))
-        self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
-        )
+        self.assertIn(0.6, pauses)
         self.assertFalse(
             any(
                 command[-1] in {"Tab", "Down"}

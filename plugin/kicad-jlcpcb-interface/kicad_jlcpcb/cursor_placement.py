@@ -101,42 +101,12 @@ def start_native_symbol_placement(
             "Preferences → Hotkeys and bind Add Symbol to A, then retry."
         )
 
-    # Place and activate the chooser at a known origin before using physical
-    # XTest pointer/key events. Some wxGTK builds ignore XSendEvent input to
-    # the composite chooser window and the original global coordinates can hit
-    # the root window rather than the Filter entry.
-    geometry = send("getwindowgeometry", "--shell", chooser_id)
-    dimensions = {
-        item.split("=", 1)[0]: item.split("=", 1)[1]
-        for line in geometry.splitlines()
-        for item in line.split()
-        if "=" in item
-    }
-    try:
-        width = int(dimensions["WIDTH"])
-        height = int(dimensions["HEIGHT"])
-    except (KeyError, ValueError) as exc:
-        raise RuntimeError(
-            f"Could not read KiCad's native symbol chooser geometry: {geometry!r}"
-        ) from exc
-    if width < 500 or height < 300:
-        raise RuntimeError(
-            f"KiCad's native symbol chooser is unexpectedly small: {width}x{height}"
-        )
-
-    filter_x = int(width * 0.24)
-    filter_y = max(10, int(height * 0.025))
-    result_x = int(width * 0.15)
-    result_y = int(height * 0.12)
-    send("windowmove", "--sync", chooser_id, "0", "0")
-    send("windowfocus", "--sync", chooser_id)
-    pause(0.15)
-    send("mousemove", "--sync", str(filter_x), str(filter_y))
-    send("click", "1")
-    send("key", "--clearmodifiers", "ctrl+a")
-    send("type", "--clearmodifiers", "--delay", "12", symbol_name)
-    pause(0.5)
-    pointer = send("getmouselocation", "--shell")
+    # Match the proven native Eeschema handoff used by the KiCad Blocks
+    # integration test: when Add Symbol opens, the chooser's default focus is
+    # its Filter entry. Type the exact library symbol name and accept it.
+    # Do not move the modal window or inject pointer events; those can disturb
+    # the native chooser's own focus management.
+    send("type", "--clearmodifiers", "--delay", "15", symbol_name)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         try:
@@ -144,32 +114,31 @@ def start_native_symbol_placement(
 
             ImageGrab.grab().save(debug_capture)
             print(
-                f"chooser-filter-debug=captured path={debug_capture!r} "
-                f"pointer={pointer!r} focus={send('getwindowfocus')!r}",
+                f"chooser-search-debug=captured path={debug_capture!r} "
+                f"focus={send('getwindowfocus')!r}",
                 flush=True,
             )
         except Exception as exc:
             print(
-                f"chooser-filter-debug=failed error={type(exc).__name__}: {exc}; "
-                f"pointer={pointer!r}",
+                f"chooser-search-debug=failed error={type(exc).__name__}: {exc}",
                 flush=True,
             )
-    # After filtering the exact generated symbol is the first result.
-    send("mousemove", "--sync", str(result_x), str(result_y))
-    send("click", "1")
     send("key", "--clearmodifiers", "Return")
-    for _ in range(30):
-        focused_id = send("getwindowfocus")
-        if (
-            focused_id
-            and focused_id != chooser_id
-            and send("getwindowpid", focused_id) == editor_pid
-        ):
-            # KiCad can return focus to a different child/canvas window from
-            # the one that was focused when the action was launched. The PID
-            # and chooser transition are more reliable than an exact XID match.
-            return
-        pause(0.1)
+    pause(0.6)
+    focused_id = send("getwindowfocus")
+    if focused_id != str(editor_window_id):
+        focused_pid = read_window("getwindowpid", focused_id) if focused_id else ""
+        focused_title = read_window("getwindowname", focused_id) if focused_id else ""
+        chooser_title = read_window("getwindowname", chooser_id)
+        raise RuntimeError(
+            "KiCad accepted the symbol chooser selection but did not return focus "
+            f"to Eeschema. Editor={editor_window_id!r}/{editor_pid!r}; "
+            f"chooser={chooser_id!r} ({chooser_title!r}); "
+            f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
+            "Check the native chooser and retry placement."
+        )
+    return
+
     def read_window(command: str, window_id: str) -> str:
         result = command_runner(
             [executable, command, str(window_id)],
