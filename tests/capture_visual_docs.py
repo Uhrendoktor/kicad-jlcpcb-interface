@@ -19,6 +19,11 @@ PLUGIN_ROOT = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN_ROOT))
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
+from kicad_jlcpcb.draft import (
+    apply_component_draft_fields,
+    build_component_draft,
+    update_schematic_symbol,
+)
 from kicad_jlcpcb.model import find_linked_components, find_selected_component  # noqa: E402
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 
@@ -557,7 +562,34 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             _update_schematic_item_checked(schematic, symbol)
             created[record["reference"]] = symbol
 
+        # Exercise the reviewable LCSC-to-fields path on a real selected Device:R
+        # symbol, then verify the changes by reading the hierarchy back from Eeschema.
+        draft_provider = JlcSearchProvider(work_dir / "draft-cache.sqlite3")
+        draft_details = draft_provider.lookup("C60489", force_refresh=True)
+        if (
+            draft_details is None
+            or draft_details.is_cached
+            or draft_details.stale
+            or not draft_details.source.startswith("JLCPCB parts-page endpoint")
+        ):
+            raise RuntimeError(
+                "LCSC field-population test requires a fresh direct JLCPCB detail record."
+            )
+        draft = build_component_draft(draft_details)
+        if (
+            draft.kind != "resistor"
+            or draft.value != "10k"
+            or draft.footprint != "Resistor_SMD:R_0402_1005Metric"
+        ):
+            raise RuntimeError(
+                "The live C60489 record did not produce the reviewed 10 kΩ/0402 resistor "
+                f"proposal: kind={draft.kind!r}, value={draft.value!r}, "
+                f"footprint={draft.footprint!r}."
+            )
+        apply_component_draft_fields(created["R1"], draft)
+        update_schematic_symbol(schematic, created["R1"])
         schematic.save()
+
         discovered = find_linked_components(schematic)
         expected = {item["lcsc"] for item in DEMO_PARTS}
         actual = {item.part_code for item in discovered}
@@ -572,6 +604,37 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
                 raise RuntimeError(
                     f"IPC-created MPN field was not readable for {record['reference']}."
                 )
+
+        resistor = next(item for item in discovered if item.reference == "R1")
+        if (
+            resistor.value != draft.value
+            or resistor.footprint != draft.footprint
+            or resistor.datasheet != draft.datasheet_url
+        ):
+            raise RuntimeError(
+                "KiCad hierarchy read-back did not retain the generated value, footprint "
+                "and datasheet fields."
+            )
+        raw_fields = {field.name: field for field in created["R1"].user_fields}
+        for name, expected_value in (
+            ("LCSC", "C60489"),
+            ("MPN", "RC0402JR-0710KL"),
+            ("Manufacturer", draft.manufacturer),
+            ("Description", draft.description),
+        ):
+            field = raw_fields.get(name)
+            if field is None or field.text.value != expected_value:
+                raise RuntimeError(
+                    f"KiCad IPC did not retain generated custom field {name!r}."
+                )
+        if raw_fields["Manufacturer"].visible:
+            raise RuntimeError("Generated metadata fields should not clutter the symbol drawing.")
+        print(
+            "live-lcsc-field-population=passed "
+            f"lcsc={draft.lcsc} kind={draft.kind} value={draft.value} "
+            f"footprint={draft.footprint} custom_fields={len(draft.custom_fields)}",
+            flush=True,
+        )
         return process, log_file, kicad, schematic, created, socket_path
     except Exception:
         if kicad is not None:

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add review-first LCSC field population for selected generic resistor/capacitor symbols, with conservative value/footprint inference and KiCad IPC write-back.
 - Scan LCSC-linked symbols across the complete schematic hierarchy.
 - Navigate to a symbol's sheet, zoom to it and select it through KiCad's `FocusOnItems` IPC command.
 - Use the configured cache TTL to distinguish recent offline cache results from stale catalogue data.
