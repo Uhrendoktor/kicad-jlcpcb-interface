@@ -78,7 +78,6 @@ class ComponentDraft:
             ("LCSC", self.lcsc),
             ("Manufacturer", self.manufacturer),
             ("MPN", self.mpn),
-            ("Description", self.description),
         ]
         if self.category:
             fields.append(("JLCPCB Category", self.category))
@@ -104,6 +103,8 @@ class ComponentDraft:
             fields.append(("Footprint", self.footprint))
         if self.datasheet_url:
             fields.append(("Datasheet", self.datasheet_url))
+        if self.description:
+            fields.append(("Description", self.description))
         fields.extend(self.custom_fields)
         return tuple(fields)
 
@@ -299,10 +300,29 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
     )
 
 
-def apply_component_draft_fields(symbol: Any, draft: ComponentDraft) -> tuple[str, ...]:
-    """Apply fields only when the selected symbol matches the inferred passive type."""
+def apply_component_draft_fields(
+    symbol: Any,
+    draft: ComponentDraft,
+    *,
+    expected_library_id: str | None = None,
+) -> tuple[str, ...]:
+    """Apply fields only after the selected/created symbol type is validated.
+
+    Existing selected symbols must expose their actual library ID. The direct
+    placement path may supply the explicit ID it just passed to
+    place_symbol_from_library(); a non-empty conflicting ID is still rejected.
+    """
     actual_library_id = symbol_library_id(symbol)
-    if not draft.symbol_hint or actual_library_id != draft.symbol_hint:
+    expected = str(expected_library_id or "").strip()
+    if expected and expected != draft.symbol_hint:
+        raise ValueError(
+            f"Expected library ID {expected} does not match draft type {draft.symbol_hint}."
+        )
+    if (
+        not draft.symbol_hint
+        or (actual_library_id and actual_library_id != draft.symbol_hint)
+        or (not actual_library_id and expected != draft.symbol_hint)
+    ):
         raise ValueError(
             f"Proposal requires {draft.symbol_hint or 'a known passive type'}, "
             f"but the selected symbol is {actual_library_id or 'an unknown library symbol'}."
@@ -323,6 +343,15 @@ def apply_component_draft_fields(symbol: Any, draft: ComponentDraft) -> tuple[st
         if text is not None:
             text.value = draft.datasheet_url
             changed.append("Datasheet")
+    if draft.description:
+        description_field = getattr(symbol, "description_field", None)
+        text = getattr(description_field, "text", None)
+        if text is None:
+            raise RuntimeError(
+                "KiCad did not expose the built-in symbol Description property."
+            )
+        text.value = draft.description
+        changed.append("Description")
 
     proto = symbol.proto
     raw_fields = list(getattr(proto, "user_fields", ()) or ())

@@ -25,7 +25,12 @@ from kicad_jlcpcb.draft import (  # noqa: E402
     symbol_library_id,
     update_schematic_symbol,
 )
-from kicad_jlcpcb.model import find_linked_components, find_selected_component  # noqa: E402
+from kicad_jlcpcb.model import (  # noqa: E402
+    find_linked_components,
+    find_selected_component,
+    iter_schematic_symbols,
+)
+from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 
 ASSET_NAMES = (
@@ -597,6 +602,19 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         update_schematic_symbol(schematic, created["R1"])
         schematic.save()
 
+        placed = place_component_from_draft(
+            schematic, draft, 240.0, 175.0
+        )
+        placed_library_id = symbol_library_id(placed)
+        if (
+            placed.reference != "R3"
+            or placed_library_id not in ("", "Device:R")
+            or placed.value != "10k"
+            or placed.footprint_field.text.value
+            != "Resistor_SMD:R_0402_1005Metric"
+        ):
+            raise RuntimeError("Direct LCSC placement did not create the expected R3 resistor.")
+
         discovered = find_linked_components(schematic)
         expected = {item["lcsc"] for item in DEMO_PARTS}
         actual = {item.part_code for item in discovered}
@@ -627,7 +645,6 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             ("LCSC", "C60489"),
             ("MPN", "RC0402JR-0710KL"),
             ("Manufacturer", draft.manufacturer),
-            ("Description", draft.description),
         ):
             field = raw_fields.get(name)
             if field is None or field.text.value != expected_value:
@@ -636,6 +653,63 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
                 )
         if raw_fields["Manufacturer"].visible:
             raise RuntimeError("Generated metadata fields should not clutter the symbol drawing.")
+        if created["R1"].description_field.text.value != draft.description:
+            raise RuntimeError("KiCad did not retain the native R1 Description property.")
+        placed_components = find_linked_components(schematic)
+        placed_reference = next(
+            (item for item in placed_components if item.reference == "R3"), None
+        )
+        if (
+            placed_reference is None
+            or placed_reference.part_code != "C60489"
+            or placed_reference.value != "10k"
+            or placed_reference.footprint != "Resistor_SMD:R_0402_1005Metric"
+            or placed_reference.datasheet != draft.datasheet_url
+            or placed_reference.manufacturer_part_number != draft.mpn
+        ):
+            raise RuntimeError(
+                "Direct LCSC placement did not preserve the linked value, footprint, "
+                "datasheet and MPN fields in the live schematic."
+            )
+        placed_symbol_readback = next(
+            (
+                item
+                for item in iter_schematic_symbols(schematic)
+                if item.reference == "R3"
+            ),
+            None,
+        )
+        if placed_symbol_readback is None:
+            raise RuntimeError(
+                "The direct-placed R3 symbol is missing from the schematic hierarchy."
+            )
+        raw_placed_fields = {
+            field.name: field for field in placed_symbol_readback.user_fields
+        }
+        for name, expected_value in (
+            ("LCSC", draft.lcsc),
+            ("MPN", draft.mpn),
+            ("Manufacturer", draft.manufacturer),
+        ):
+            field = raw_placed_fields.get(name)
+            if field is None or field.text.value != expected_value:
+                raise RuntimeError(
+                    f"Direct LCSC placement did not retain custom field {name!r}."
+                )
+        if placed_symbol_readback.description_field.text.value != draft.description:
+            raise RuntimeError(
+                "Direct LCSC placement did not retain the built-in Description property."
+            )
+        print(
+            "live-lcsc-direct-placement=passed "
+            f"reference={placed_reference.reference} "
+            f"part={placed_reference.part_code} value={placed_reference.value} "
+            f"footprint={placed_reference.footprint} "
+            f"datasheet={bool(placed_reference.datasheet)} "
+            f"mpn={placed_reference.manufacturer_part_number} "
+            f"custom_fields={len(raw_placed_fields)}",
+            flush=True,
+        )
         print(
             "live-lcsc-field-population=passed "
             f"lcsc={draft.lcsc} kind={draft.kind} value={draft.value} "
