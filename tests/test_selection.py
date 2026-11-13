@@ -171,15 +171,20 @@ class BrowserCleanupTests(unittest.TestCase):
         ComponentBrowser.close(browser)
 
         resource_events = [event for event in events if event[0] != "root-destroyed"]
-        expected = {
-            *direct_variables,
-            *(f"summary:{name}" for name in ("components", "parts", "total", "availability")),
-            *(f"detail:{name}" for name in ("reference", "value", "part")),
-            "product-image",
-        }
+        expected = set(direct_variables)
+        expected.update(
+            f"summary:{name}"
+            for name in ("components", "parts", "total", "availability")
+        )
+        expected.update(
+            f"detail:{name}" for name in ("reference", "value", "part")
+        )
+        expected.add("product-image")
         released = {event[0] for event in resource_events}
         self.assertEqual(released, expected)
-        self.assertTrue(all(event[1] == threading.get_ident() for event in resource_events))
+        self.assertTrue(
+            all(event[1] == threading.get_ident() for event in resource_events)
+        )
         self.assertTrue(all(not event[2] for event in resource_events))
         self.assertTrue(root.destroyed)
         self.assertEqual(events[-1][0], "root-destroyed")
