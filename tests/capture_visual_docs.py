@@ -26,6 +26,7 @@ from kicad_jlcpcb.draft import (  # noqa: E402
     update_schematic_symbol,
 )
 from kicad_jlcpcb.model import find_linked_components, find_selected_component  # noqa: E402
+from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 
 ASSET_NAMES = (
@@ -597,6 +598,18 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         update_schematic_symbol(schematic, created["R1"])
         schematic.save()
 
+        placed = place_component_from_draft(
+            schematic, draft, 240.0, 175.0
+        )
+        if (
+            placed.reference != "R3"
+            or symbol_library_id(placed) != "Device:R"
+            or placed.value != "10k"
+            or placed.footprint_field.text.value
+            != "Resistor_SMD:R_0402_1005Metric"
+        ):
+            raise RuntimeError("Direct LCSC placement did not create the expected R3 resistor.")
+
         discovered = find_linked_components(schematic)
         expected = {item["lcsc"] for item in DEMO_PARTS}
         actual = {item.part_code for item in discovered}
@@ -636,6 +649,26 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
                 )
         if raw_fields["Manufacturer"].visible:
             raise RuntimeError("Generated metadata fields should not clutter the symbol drawing.")
+        placed_components = find_linked_components(schematic)
+        placed_reference = next(
+            (item for item in placed_components if item.reference == "R3"), None
+        )
+        if (
+            placed_reference is None
+            or placed_reference.part_code != "C60489"
+            or placed_reference.value != "10k"
+            or placed_reference.footprint != "Resistor_SMD:R_0402_1005Metric"
+        ):
+            raise RuntimeError(
+                "Direct LCSC placement could not be read back from the live schematic."
+            )
+        print(
+            "live-lcsc-direct-placement=passed "
+            f"reference={placed_reference.reference} "
+            f"part={placed_reference.part_code} value={placed_reference.value} "
+            f"footprint={placed_reference.footprint}",
+            flush=True,
+        )
         print(
             "live-lcsc-field-population=passed "
             f"lcsc={draft.lcsc} kind={draft.kind} value={draft.value} "

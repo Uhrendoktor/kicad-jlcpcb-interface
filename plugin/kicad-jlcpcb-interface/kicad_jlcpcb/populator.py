@@ -16,6 +16,8 @@ from .draft import (
     update_schematic_symbol,
 )
 from .model import component_from_symbol
+from .placement import place_component_from_draft, next_component_reference
+from .placement import place_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
@@ -24,7 +26,14 @@ PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 class ComponentPopulator:
     """Small review-first UI; no library files or symbol geometry are written."""
 
-    def __init__(self, schematic: Any, symbol: Any, settings_directory: str | Path):
+    def __init__(
+        self,
+        schematic: Any,
+        symbol: Any | None,
+        settings_directory: str | Path,
+        *,
+        create_mode: bool = False,
+    ):
         import tkinter as tk
         from tkinter import messagebox, ttk
 
@@ -33,8 +42,13 @@ class ComponentPopulator:
         self.messagebox = messagebox
         self.schematic = schematic
         self.symbol = symbol
-        self.library_id = symbol_library_id(symbol)
-        if self.library_id not in SUPPORTED_PLACEHOLDERS:
+        self.create_mode = bool(create_mode)
+        if self.create_mode and symbol is not None:
+            raise ValueError("Create mode does not accept an existing symbol.")
+        if not self.create_mode and symbol is None:
+            raise ValueError("Select a generic Device:R or Device:C placeholder.")
+        self.library_id = symbol_library_id(symbol) if symbol is not None else ""
+        if not self.create_mode and self.library_id not in SUPPORTED_PLACEHOLDERS:
             raise ValueError(
                 "Select a generic Device:R or Device:C placeholder. "
                 f"The selected symbol resolves to {self.library_id or 'an unknown library ID'}."
@@ -53,20 +67,32 @@ class ComponentPopulator:
 
         self.root = tk.Tk()
         reference = str(getattr(symbol, "reference", "") or "selected symbol")
-        self.root.title(f"JLCPCB Populate Selected Symbol — {reference}")
-        self.root.geometry("860x780")
+        self.root.title(
+            "JLCPCB Add Component from LCSC"
+            if self.create_mode
+            else f"JLCPCB Populate Selected Symbol — {reference}"
+        )
+        self.root.geometry("940x800" if self.create_mode else "860x780")
         self.root.minsize(720, 620)
 
-        current = component_from_symbol(symbol)
+        current = component_from_symbol(symbol) if symbol is not None else None
         self.lcsc_var = tk.StringVar(value=current.part_code if current else "")
+        self.x_var = tk.StringVar(value="100.0")
+        self.y_var = tk.StringVar(value="100.0")
         self.status_var = tk.StringVar(
             value="Enter an LCSC part number and fetch its catalogue record."
         )
         self.symbol_var = tk.StringVar(
             value=(
-                f"{reference} · {self.library_id} · "
-                f"Value: {getattr(symbol, 'value', '') or '—'} · "
-                f"Footprint: {self._field_value(getattr(symbol, 'footprint_field', None)) or '—'}"
+                (
+                    "New generic passive · active sheet · placement in millimetres"
+                    if self.create_mode
+                    else (
+                        f"{reference} · {self.library_id} · "
+                        f"Value: {getattr(symbol, 'value', '') or '—'} · "
+                        f"Footprint: {self._field_value(getattr(symbol, 'footprint_field', None)) or '—'}"
+                    )
+                )
             )
         )
         self.confidence_var = tk.StringVar(value="No proposal loaded.")
@@ -75,14 +101,23 @@ class ComponentPopulator:
         outer.pack(fill="both", expand=True)
         ttk.Label(
             outer,
-            text="Populate selected symbol from LCSC",
+            text=(
+                "Add a new passive from LCSC"
+                if self.create_mode
+                else "Populate selected symbol from LCSC"
+            ),
             font=("TkDefaultFont", 15, "bold"),
         ).pack(anchor="w")
         ttk.Label(
             outer,
             text=(
                 "Fetch supplier data, review the proposed fields, then explicitly apply "
-                "them to the selected symbol."
+                (
+                    "them to the active schematic. A stock KiCad Device:R or Device:C symbol "
+                    "will be placed at the coordinates below."
+                    if self.create_mode
+                    else "them to the selected symbol."
+                )
             ),
             wraplength=800,
         ).pack(anchor="w", pady=(4, 12))
@@ -99,6 +134,11 @@ class ComponentPopulator:
             controls, text="Fetch and propose", command=self.lookup
         )
         self.lookup_button.pack(side="left")
+        if self.create_mode:
+            ttk.Label(controls, text="X (mm)").pack(side="left", padx=(16, 4))
+            ttk.Entry(controls, textvariable=self.x_var, width=9).pack(side="left")
+            ttk.Label(controls, text="Y (mm)").pack(side="left", padx=(8, 4))
+            ttk.Entry(controls, textvariable=self.y_var, width=9).pack(side="left")
 
         ttk.Label(
             outer,
@@ -135,7 +175,11 @@ class ComponentPopulator:
         ).pack(side="left", fill="x", expand=True)
         self.apply_button = ttk.Button(
             footer,
-            text="Apply reviewed fields to selected symbol",
+            text=(
+                "Place new symbol on schematic"
+                if self.create_mode
+                else "Apply reviewed fields to selected symbol"
+            ),
             command=self.apply,
             state="disabled",
         )
@@ -214,7 +258,11 @@ class ComponentPopulator:
             self.fields_tree.insert("", "end", values=(name, value))
         notes = list(draft.warnings)
         notes.append(f"Catalogue source: {draft.source_label}")
-        compatible = bool(draft.symbol_hint) and draft.symbol_hint == self.library_id
+        compatible = (
+            draft.symbol_hint in SUPPORTED_PLACEHOLDERS
+            if self.create_mode
+            else bool(draft.symbol_hint) and draft.symbol_hint == self.library_id
+        )
         if draft.symbol_hint and not compatible:
             notes.append(
                 f"The proposal requires {draft.symbol_hint}, but the selected symbol is "
@@ -222,8 +270,13 @@ class ComponentPopulator:
             )
         elif not draft.symbol_hint:
             notes.append(
-                "The part type is uncertain, so write-back is disabled. "
+                "The part type is uncertain, so automatic placement is disabled. "
                 "Complete the component manually."
+            )
+        if self.create_mode:
+            notes.append(
+                "This places KiCad's stock generic passive symbol; it does not generate "
+                "custom symbol graphics, pins, pad mappings or 3D models."
             )
         if cached:
             notes.append(
@@ -248,6 +301,55 @@ class ComponentPopulator:
 
     def apply(self) -> None:
         draft = self.draft
+        if self.create_mode:
+            if draft is None or draft.symbol_hint not in SUPPORTED_PLACEHOLDERS:
+                return
+            try:
+                x_position = float(self.x_var.get())
+                y_position = float(self.y_var.get())
+            except ValueError:
+                self.messagebox.showerror(
+                    "Invalid placement",
+                    "Enter numeric X and Y coordinates in millimetres.",
+                    parent=self.root,
+                )
+                return
+            reference = next_component_reference(self.schematic, draft)
+            warning = (
+                f"Place {reference} ({draft.symbol_hint}) for {draft.lcsc} at "
+                f"X={x_position:g} mm, Y={y_position:g} mm?\\n\\n"
+                "This uses KiCad's stock passive symbol and the reviewed catalogue fields. "
+                "It does not create new graphics, pins, pin electrical types, pad mapping "
+                "or 3D geometry. Verify the footprint and electrical suitability."
+            )
+            if not self.messagebox.askyesno(
+                "Confirm new schematic component", warning, parent=self.root
+            ):
+                return
+            try:
+                created = place_component_from_draft(
+                    self.schematic, draft, x_position, y_position
+                )
+            except Exception as exc:
+                self.status_var.set(f"KiCad placement failed: {exc}")
+                self.messagebox.showerror(
+                    "Component placement failed", str(exc), parent=self.root
+                )
+                return
+            self.symbol = created
+            self.library_id = symbol_library_id(created)
+            self.symbol_var.set(
+                f"Added {created.reference} · {self.library_id} · "
+                f"Value: {created.value} · "
+                f"Footprint: {self._field_value(created.footprint_field)}"
+            )
+            self.status_var.set(
+                f"Added and saved {created.reference} at "
+                f"X={x_position:g} mm, Y={y_position:g} mm. "
+                "Move it in Eeschema if needed and verify the footprint before board use."
+            )
+            self.apply_button.configure(state="disabled")
+            return
         if (
             draft is None
             or not draft.proposed_fields
@@ -300,6 +402,43 @@ class ComponentPopulator:
 
     def run(self) -> None:
         self.root.mainloop()
+
+
+def next_component_reference(schematic: Any, draft: ComponentDraft) -> str:
+    from .placement import next_component_reference as _next_reference
+
+    return _next_reference(schematic, draft)
+
+
+def run_component_creator() -> None:
+    """Open the LCSC-to-placement action when no symbol is selected."""
+    try:
+        from kipy import KiCad
+
+        kicad = KiCad()
+        schematic = kicad.get_schematic()
+        if schematic is None:
+            raise RuntimeError(
+                "No active schematic was found. Open a project in Eeschema."
+            )
+        if list(schematic.get_selection()):
+            raise ValueError(
+                "Clear the Eeschema selection before adding a new LCSC component."
+            )
+        settings_directory = Path(
+            kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
+        ).expanduser()
+        ComponentPopulator(
+            schematic, None, settings_directory, create_mode=True
+        ).run()
+    except Exception as exc:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror("JLCPCB Add Component from LCSC", str(exc), parent=root)
+        root.destroy()
 
 
 def run_component_populator() -> None:
