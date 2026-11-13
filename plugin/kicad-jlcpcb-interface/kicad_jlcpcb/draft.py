@@ -95,7 +95,6 @@ def _symbol_definition_pin_signature(definition: Any) -> tuple[Any, ...] | None:
             ):
                 continue
 
-            position = item.position
             item_proto = getattr(item, "proto", None)
             if item_proto is None:
                 return None
