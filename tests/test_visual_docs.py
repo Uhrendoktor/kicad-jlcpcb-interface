@@ -8,7 +8,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
+try:
+    from PIL import Image, ImageDraw
+except ImportError:
+    Image = None
+    ImageDraw = None
+
 from scripts.publish_visual_docs import ASSET_NAMES, verify_bundle
+from scripts.workflow_gif import BACKGROUND, FRAME_DURATIONS_MS, FRAME_NAMES, build_workflow_gif
 
 
 class VerifyVisualBundleTests(unittest.TestCase):
@@ -61,6 +68,42 @@ class VerifyVisualBundleTests(unittest.TestCase):
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "inventory mismatch"):
             verify_bundle(self.root, self.source_sha)
+
+
+
+@unittest.skipIf(Image is None, "Pillow is installed only in the visual capture job")
+class WorkflowGifTests(unittest.TestCase):
+    def test_generated_gif_keeps_background_and_frames_opaque(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="kicad-jlcpcb-workflow-gif-") as temporary:
+            root = Path(temporary)
+            colors = ((180, 50, 40), (40, 150, 70), (50, 80, 180))
+            for name, color in zip(FRAME_NAMES, colors, strict=True):
+                frame = Image.new("RGB", (96, 72), (0, 0, 0))
+                draw = ImageDraw.Draw(frame)
+                draw.rectangle((12, 12, 84, 60), fill=color)
+                # Black UI details inside the application window must survive
+                # background cleanup because they are not connected to an edge.
+                draw.rectangle((34, 26, 40, 32), fill=(0, 0, 0))
+                frame.save(root / name, format="PNG")
+                frame.close()
+
+            destination = build_workflow_gif(root)
+            with Image.open(destination) as gif:
+                self.assertEqual(gif.n_frames, len(FRAME_NAMES))
+                self.assertEqual(gif.info.get("loop"), 0)
+                for index, color in enumerate(colors):
+                    gif.seek(index)
+                    self.assertEqual(gif.disposal_method, 1)
+                    self.assertEqual(gif.info.get("duration"), FRAME_DURATIONS_MS[index])
+                    rendered = gif.convert("RGB")
+                    self.assertEqual(
+                        rendered.getpixel((95, 71)),
+                        BACKGROUND,
+                        f"frame {index} retained a black desktop corner",
+                    )
+                    self.assertEqual(rendered.getpixel((20, 20)), color)
+                    self.assertEqual(rendered.getpixel((36, 29)), (0, 0, 0))
+                    rendered.close()
 
 
 if __name__ == "__main__":

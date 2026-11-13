@@ -2,7 +2,9 @@
 
 This guide explains the three KiCad Schematic Editor actions, how to link symbols to LCSC records, how catalogue results are interpreted, and what the add-on deliberately does not automate.
 
-## 1. Before you begin
+<p><strong>On this page:</strong> <a href="#setup">Setup</a> · <a href="#link-a-symbol-to-an-lcsc-record">Link parts</a> · <a href="#jlcpcb-component-overview">Component Overview</a> · <a href="#jlcpcb-component-properties">Component Properties</a> · <a href="#jlcpcb-add-or-update-passive">Add or Update Passive</a> · <a href="#catalogue-data-cache-and-privacy">Catalogue data</a> · <a href="#troubleshooting">Troubleshooting</a> · <a href="#current-limits">Limits</a> · <a href="#developer-checks">Developer checks</a></p>
+
+## Setup
 
 ### Supported environment
 
@@ -57,7 +59,7 @@ The package is installed at:
 
 Do not pip-install plugin dependencies into KiCad's managed environment by hand. If its environment creation fails, use **Preferences → Plugins → right-click the add-on → Recreate Plugin Environment**.
 
-## 2. Link a symbol to an LCSC record
+## Link a symbol to an LCSC record
 
 The browser discovers schematic symbols through a custom property. The default property name is `LCSC`.
 
@@ -72,11 +74,11 @@ The `LCSC` field name is case-insensitive. In the browser, the **Part-link field
 
 An MPN field is optional. When present, the browser can compare JLCPCB keyword-search listings for that manufacturer part number. Recognized field names include `MPN` and common Manufacturer Part Number variants.
 
-## 3. JLCPCB Component Overview
+## JLCPCB Component Overview
 
 Launch **JLCPCB Component Overview** from Eeschema. It scans the schematic hierarchy and lists every symbol containing the configured part-link property.
 
-![Overview window with linked schematic components, filters, catalogue detail and the project summary](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-initial.png)
+<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-initial.png" alt="Overview window with linked schematic components, filters, catalogue detail and the project summary" width="680"></p>
 
 ### Find a component
 
@@ -111,11 +113,11 @@ Select a row and use the detail panel's actions:
 
 The selection action uses KiCad's `FocusOnItems` IPC command to focus a target sheet before selection. The helper is unit-tested for sheet-path handling; the visual demo currently exercises selection in the root-sheet fixture, not every multi-sheet editor interaction.
 
-## 4. JLCPCB Component Properties
+## JLCPCB Component Properties
 
 Launch **JLCPCB Component Properties** only after selecting exactly one schematic symbol in Eeschema. That symbol must carry a non-empty configured part-link custom property. The action opens a focused details window for the selected symbol. It does not add a tab to KiCad's native Symbol Properties dialog.
 
-![Focused JLCPCB properties view with supplier photo, catalogue data, MPN comparison and schematic fields](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-selected.png)
+<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-selected.png" alt="Focused JLCPCB properties view with supplier photo, catalogue data, MPN comparison and schematic fields" width="620"></p>
 
 ### Catalogue information
 
@@ -144,7 +146,7 @@ The source line distinguishes direct JLCPCB website responses, community-search 
 
 The direct JLCPCB detail and MPN endpoints are undocumented website endpoints, not a supported public components API. Their response formats and availability may change.
 
-## 5. JLCPCB Add or Update Passive
+## JLCPCB Add or Update Passive
 
 This single action handles two closely related tasks: adding catalogue data to an existing generic passive, or creating a new project-local passive symbol. It chooses the mode from the current Eeschema selection:
 
@@ -166,7 +168,7 @@ Use this mode when a generic resistor or capacitor is already placed in the sche
 
 The review screen lets you verify the values before they are written to the selected placeholder:
 
-![Screenshot showing the proposed catalogue fields for updating an existing generic resistor.](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-proposed.png)
+<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-proposed.png" alt="Proposed catalogue fields for updating an existing generic resistor" width="620"></p>
 
 The proposal may include Value, Footprint, Datasheet, Description, LCSC, Manufacturer, MPN, JLCPCB Category and selected catalogue attributes. Empty or uncertain values are not guessed. Existing custom fields with matching names are updated; unrelated fields are preserved. Newly created metadata fields are hidden in the schematic drawing.
 
@@ -195,7 +197,7 @@ Use this mode when the part is not yet present in the schematic. The add-on crea
 
 The proposal includes the catalogue match and placement controls so you can confirm both the selected part and where it will enter the design:
 
-![Screenshot showing catalogue matches and placement options before adding a reusable passive symbol.](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png)
+<p align="center"><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png" alt="Catalogue matches and placement options before adding a reusable passive symbol" width="620"></p>
 
 The first matching Basic part is preselected when one is available. Basic/Extended is JLCPCB's library classification; it is not a statement that a part is electrically interchangeable with another listing. Compare voltage rating, tolerance, dielectric, power rating, package and other attributes before generating the symbol.
 
@@ -233,7 +235,7 @@ Cursor placement uses the native Eeschema Add Symbol hotkey `A` through `xdotool
 
 The generated footprint association is a KiCad footprint-library reference, not a footprint generator. Always inspect the symbol and PCB footprint. The generator preserves stock two-pin passive topology; it does not infer component-specific pin mapping or arbitrary electrical behavior.
 
-## 6. Catalogue data, cache and privacy
+## Catalogue data, cache and privacy
 
 - The plugin stores component catalogue records in a SQLite cache beneath the KiCad plugin settings directory returned by its IPC API.
 - Live detail data is preferred. A community-search result or cached snapshot may be used as a fallback and is labelled accordingly.
@@ -243,7 +245,7 @@ The generated footprint association is a KiCad footprint-library reference, not 
 - The plugin contains no JLCPCB credentials. No private partner API is configured.
 - Price and stock are time-specific supplier responses, not order guarantees.
 
-## 7. Troubleshooting
+## Troubleshooting
 
 | Symptom | What to check |
 | --- | --- |
@@ -256,7 +258,7 @@ The generated footprint association is a KiCad footprint-library reference, not 
 | Add or Update Passive saved a library but did not place a part | Reopen the project and run the same LCSC action again. See [First generated library in a project](#first-generated-library-in-a-project). |
 | The add-on or its Python environment is missing | Check the IPC API and interpreter under **Preferences → Plugins**. Use **Recreate Plugin Environment** for a failed managed environment. Confirm that the installed directory matches the KiCad version directory. |
 
-## 8. Current limits
+## Current limits
 
 The add-on is an early prototype, with a deliberately conservative scope:
 
@@ -268,7 +270,7 @@ The add-on is an early prototype, with a deliberately conservative scope:
 - The installer and binary dependencies are validated for Linux x86_64 with KiCad 10.99 nightly / 11.0+ and CPython 3.12–3.14. Other platform combinations are not yet advertised as supported.
 - The visual CI fixture verifies the three action windows, both passive-component modes, live Eeschema selection and write-back in a root-sheet test project. Plugin-manager discovery and interactive cross-sheet navigation in a populated hierarchical GUI project remain separate validation items.
 
-## 9. Developer checks
+## Developer checks
 
 From the repository root:
 
