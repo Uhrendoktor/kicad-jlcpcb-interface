@@ -129,7 +129,12 @@ def start_native_symbol_placement(
     # separate top-level window. Its X11 focus XID reports an interior widget
     # origin, so use the measured screen coordinates of the visible Filter
     # field in the controlled Eeschema fixture.
-    send("mousemove", "--sync", "170", "276")
+    # Address pointer coordinates relative to the Eeschema parent window.
+    # The chooser's reported XID is an embedded modal panel, and XTest global
+    # motion can resolve to the root window in a headless session.
+    send(
+        "mousemove", "--sync", "--window", str(editor_window_id), "170", "276"
+    )
     send("click", "1")
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
