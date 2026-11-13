@@ -106,7 +106,7 @@ The two review screens below show the outcomes of that same action: enriching an
   </tr>
 </table>
 
-With no selection the action can place at the cursor through KiCad's native Add Symbol chooser on X11 when `xdotool` is available, or use explicit X/Y coordinates in millimetres. Multiple selections and unsupported selected symbols are rejected; clear the selection to add a new part.
+With no selection, the action adds a reusable passive through KiCad's native Add Symbol chooser and attaches it to the mouse cursor. Add mode requires launching from the focused Eeschema window on an X11 desktop with `xdotool` installed; there is no coordinate-placement fallback. Multiple selections and unsupported selected symbols are rejected.
 
 > **First use in a project:** when the generated-library table entry does not yet exist, the open Eeschema session may not recognize the new library immediately. The library and table entry are saved, but no instance is placed. Close and reopen the project, then repeat the same add-mode search; the existing generated symbol is reused.
 
@@ -116,7 +116,7 @@ For detailed instructions, field behavior and troubleshooting, see the **[User g
 
 - **Conservative symbol handling.** Update mode accepts stock generic `Device:R` and `Device:C` placeholders. Add mode generates symbols from KiCad's stock resistor/capacitor graphics and two-pin electrical topology; arbitrary IC pin maps and electrical pin types are not inferred.
 - **Value-based search.** Add mode accepts nominal values such as `10k`, `4k7`, `100nF` and `4.7uF`. Results are filtered to exact electrical-value matches with a supported footprint. Basic listings are ranked first; Extended listings remain available as alternatives.
-- **Placement.** Cursor placement uses KiCad's native Add Symbol chooser through `xdotool` on X11 when launched from a focused Eeschema window. Explicit X/Y placement is available as a fallback.
+- **Placement.** Add mode is cursor-only: KiCad's native Add Symbol chooser is driven through `xdotool` on X11 when launched from a focused Eeschema window. Coordinate placement is not supported.
 - **No PCB asset generation.** The add-on does not create copper footprints, pad mappings or 3D models. Verify the selected footprint and electrical suitability before board use or ordering.
 - **Supplier data.** Catalogue detail and search use JLCPCB website endpoints that are not a supported public components API and may change. Source/freshness labels distinguish direct JLCPCB results, community fallbacks and cached snapshots.
 - **Indicative availability.** Stock and unit prices are snapshots, not a quote, reservation or purchase guarantee. Related MPN-search results are comparison candidates, not guaranteed drop-in replacements.

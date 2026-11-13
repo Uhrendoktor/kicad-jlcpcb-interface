@@ -5,7 +5,7 @@
 - Consolidate passive population and creation into one **JLCPCB Add or Update Passive** action. With one stock generic `Device:R` or `Device:C` selected it updates reviewed catalogue fields without changing graphics or pin mapping; with no selection it creates or reuses a project-local symbol and places it. Multiple and unsupported selections are rejected.
 - Generate reusable project-local passive symbols from reviewed LCSC drafts by cloning KiCad's stock resistor/capacitor topology, preserving their two pins, writing native and hidden custom fields, registering the project library and placing linked instances. The first generated-library entry requires reopening the project and retrying once so Eeschema loads the new table row.
 - Search for resistor/capacitor values as well as LCSC codes; filter JLCPCB keyword results to exact nominal-value matches, rank Basic listings first, and expose Extended candidates as alternatives.
-- Place generated passives at the Eeschema cursor through KiCad's native Add Symbol chooser, retaining explicit X/Y placement as a fallback.
+- Make generated passive placement cursor-only through KiCad's native Add Symbol chooser; remove the manual X/Y coordinate-placement path.
 - Scan LCSC-linked symbols across the complete schematic hierarchy.
 - Navigate to a symbol's sheet, zoom to it and select it through KiCad's `FocusOnItems` IPC command.
 - Use the configured cache TTL to distinguish recent offline cache results from stale catalogue data.

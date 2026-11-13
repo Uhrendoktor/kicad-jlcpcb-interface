@@ -101,7 +101,7 @@ The two modes share one review-first dialog. Select a generic resistor or capaci
     </tr>
     <tr>
       <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png" alt="Confirmation describing project-local passive-symbol generation and placement" width="420"></td>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed.png" alt="Add-mode dialog after a generated project-local passive symbol was placed in the schematic" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-cursor.png" alt="Eeschema with the generated project-local passive symbol attached to the mouse cursor" width="420"></td>
     </tr>
   </table>
 </details>
@@ -131,7 +131,7 @@ The visual capture runs the production application windows, not separately drawn
 | Component Properties | Opens the focused properties window from a selected linked Eeschema symbol and captures its loaded catalogue view. |
 | Properties controls | Calls Select in schematic and Select same part on sheet; verifies the Eeschema selection; copies the LCSC ID and verifies the clipboard; invokes LCSC search, supplier product, datasheet and MPN-result actions and checks that each opens an HTTPS URL. |
 | Add or Update Passive — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, captures the proposal and the native confirmation messagebox, checks the confirmation wording, accepts the action and reads updated Value, Footprint, LCSC and MPN fields back from the schematic hierarchy. Captures the post-action state. |
-| Add or Update Passive — add mode | Clears the Eeschema selection, drives the actual lookup/review window with X/Y placement values, captures the proposal and native confirmation messagebox, checks the confirmation wording, accepts generation and placement, then verifies the resulting reference, project-local library ID, value, footprint and linked custom fields through IPC. Captures the completion state. |
+| Add or Update Passive — add mode | Clears the Eeschema selection, drives the actual lookup/review window, captures the proposal and native confirmation messagebox, verifies the cursor-placement wording, accepts generation, checks that the generated project-local symbol is attached to Eeschema's cursor, captures the live desktop, and presses Escape to leave the fixture unchanged. |
 | Theme pairs | Captures the overview, properties and both Add or Update Passive modes in both light and dark palettes, reusing each live widget tree. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 
@@ -141,7 +141,7 @@ The capture asserts both modes of the unified action and their data provenance: 
 
 The demo schematic is populated through the live KiCad IPC API with controlled example references, values, LCSC links and MPN fields. The first resistor is initially a placeholder; the fixture then exercises the same conservative draft builder and IPC write-back used by update mode.
 
-For generated-library coverage, the fixture seeds a project-local `JLCPCB_Generated` table entry and a `C60489` resistor *before* Eeschema starts. This lets the add mode fetch a second part (`C105637`), extend the already-loaded library, and place the new linked symbol without hitting the first-use table-registration limitation. The test checks the generated library's native fields, hidden custom metadata, stock two-pin topology, project table entry, schematic library ID and KiCad CLI export. Separately, a unit test covers the first-use reload failure and verifies that the error explains the saved table row and the required close/reopen/retry workflow.
+For generated-library coverage, the fixture seeds a project-local `JLCPCB_Generated` table entry and a `C60489` resistor *before* Eeschema starts. This lets add mode fetch a second part (`C105637`), extend the already-loaded library, and select the generated symbol in the native chooser without hitting the first-use table-registration limitation. The test checks the generated library's native fields, hidden custom metadata, stock two-pin topology, project table entry, generated symbol ID and KiCad CLI export. Separately, a unit test covers the first-use reload failure and verifies that the error explains the saved table row and the required close/reopen/retry workflow.
 
 The properties-control capture checks:
 
@@ -156,7 +156,7 @@ The visual fixture exercises these navigation controls on the root sheet. Hierar
 
 The schematic's reference/value/LCSC/MPN fields are test inputs. Product descriptions, manufacturer, package, attributes, stock, price ladder, MPN search rows and the product photo are fetched from JLCPCB during the visual job. The image is downloaded from a supplier HTTPS URL; it is not generated artwork.
 
-The workflow fails closed if it cannot obtain fresh direct JLCPCB detail data for the selected fixture, an image, stock/price, purchasable MPN-search results or the expected exact-MPN listing. The `manifest.json` records the source commit, KiCad CLI renderer version, asset inventory and SHA-256 hashes. Catalogue values and product availability are snapshots, not a binding quote or stock reservation.
+The workflow also fails closed when native cursor handoff cannot be completed. It fails closed if it cannot obtain fresh direct JLCPCB detail data for the selected fixture, an image, stock/price, purchasable MPN-search results or the expected exact-MPN listing. The `manifest.json` records the source commit, KiCad CLI renderer version, asset inventory and SHA-256 hashes. Catalogue values and product availability are snapshots, not a binding quote or stock reservation.
 
 The JLCPCB detail and MPN search requests use undocumented supplier website endpoints, not an official public components API. Successful capture verifies only the response shape available at that run; it does not guarantee that the supplier endpoints remain stable.
 
@@ -171,7 +171,7 @@ Pull-request runs upload the generated directory as the `kicad-jlcpcb-visual-doc
 On Ubuntu, install the same classes of system dependencies used by CI, then run:
 
 ```bash
-sudo apt-get install kicad-nightly kicad-nightly-symbols python3.12-venv python3-tk python3-pil python3-pil.imagetk xvfb xauth xdotool
+sudo apt-get install kicad-nightly kicad-nightly-symbols python3.12-venv python3-tk python3-pil python3-pil.imagetk xvfb xauth xdotool x11-utils
 python3.12 -m venv --system-site-packages .venv-visual
 .venv-visual/bin/pip install -r plugin/kicad-jlcpcb-interface/requirements.txt
 xvfb-run -a -s "-screen 0 1920x1500x24" \
