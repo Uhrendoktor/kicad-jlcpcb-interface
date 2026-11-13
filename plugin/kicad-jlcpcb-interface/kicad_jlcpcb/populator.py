@@ -352,12 +352,11 @@ class ComponentPopulator:
         if self.create_mode and not is_lcsc_lookup_query(query):
             try:
                 parse_passive_value_query(query)
-            except ValueError as exc:
-                self.messagebox.showerror(
-                    "Unsupported search", str(exc), parent=self.root
-                )
-                return
-            mode = "value"
+                mode = "value"
+            except ValueError:
+                # Generic keywords (MPNs, device names, electrical ratings) still
+                # return a reviewable candidate list instead of being rejected.
+                mode = "keyword"
         else:
             try:
                 request_value = normalize_lcsc_code(query)
@@ -381,11 +380,13 @@ class ComponentPopulator:
         self.status_var.set(
             f"Searching JLCPCB for exact-value {query} matches…"
             if mode == "value"
+            else f"Searching JLCPCB catalogue for {query}…"
+            if mode == "keyword"
             else f"Fetching {request_value} from JLCPCB catalogue…"
         )
         self.lookup_button.configure(state="disabled")
         results_queue = self.results
-        if mode == "value":
+        if mode in {"value", "keyword"}:
             future = self.executor.submit(
                 self.provider.search_by_keyword, request_value
             )
@@ -418,12 +419,21 @@ class ComponentPopulator:
                 except Exception as exc:
                     self.status_var.set(f"Catalogue search failed: {exc}")
                     continue
-                if mode == "value":
-                    try:
-                        matches = exact_passive_candidates(query, result)
-                    except ValueError as exc:
-                        self.status_var.set(f"Could not interpret {query!r}: {exc}")
-                        continue
+                if mode in {"value", "keyword"}:
+                    if mode == "value":
+                        try:
+                            matches = exact_passive_candidates(query, result)
+                        except ValueError as exc:
+                            self.status_var.set(f"Could not interpret {query!r}: {exc}")
+                            continue
+                    else:
+                        matches_by_id = {}
+                        for details in result:
+                            if details.is_buyable is False:
+                                continue
+                            candidate_draft = build_component_draft(details)
+                            matches_by_id[details.lcsc] = (details, candidate_draft)
+                        matches = list(matches_by_id.values())
                     for index, (details, draft) in enumerate(matches):
                         iid = f"candidate-{index}"
                         library_class = (
@@ -454,8 +464,8 @@ class ComponentPopulator:
                         )
                     if not matches:
                         self.status_var.set(
-                            f"No exact-value, supported SMD passive found for {query}. "
-                            "Try an LCSC code or a more specific value."
+                            f"No catalogue matches found for {query}. Try an LCSC code, "
+                            "manufacturer part number or broader search term."
                         )
                         continue
                     first = self.candidate_tree.get_children()[0]
@@ -463,8 +473,13 @@ class ComponentPopulator:
                     self.candidate_tree.focus(first)
                     self._on_candidate_selected()
                     self.status_var.set(
-                        f"Found {len(matches)} exact-value part(s) for {query}; "
-                        "Basic listings are ranked first. Select a row to review it."
+                        (
+                            f"Found {len(matches)} exact-value part(s) for {query}; "
+                            "Basic listings are ranked first."
+                            if mode == "value"
+                            else f"Found {len(matches)} catalogue candidate(s) for {query}."
+                        )
+                        + " Select a row to review its symbol and footprint suggestions."
                     )
                     continue
 
@@ -857,6 +872,9 @@ class ComponentPopulator:
             "status_var",
             "symbol_var",
             "confidence_var",
+            "symbol_hint_var",
+            "footprint_var",
+            "reference_prefix_var",
         ):
             variable = getattr(self, name, None)
             setattr(self, name, None)
