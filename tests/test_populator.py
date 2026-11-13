@@ -11,6 +11,7 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.draft import symbol_library_id  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
+    resolve_component_action_target,
     resolve_passive_action_target,
     resolve_passive_library_id,
     resolve_selected_symbol,
@@ -174,6 +175,49 @@ class SelectedSymbolResolutionTests(unittest.TestCase):
 
 
 
+
+
+class ComponentActionModeResolutionTests(unittest.TestCase):
+    def editable(self, identifier: str, reference: str, library: str, name: str):
+        result = symbol(identifier, reference, library=library, name=name)
+        result.value = "old"
+        result.user_fields = []
+        result.proto = FakeProto()
+        result.footprint_field = object()
+        return result
+
+    def test_no_selection_selects_create_mode(self):
+        target, library_id, create_mode = resolve_component_action_target(
+            SimpleNamespace(), []
+        )
+        self.assertIsNone(target)
+        self.assertEqual(library_id, "")
+        self.assertTrue(create_mode)
+
+    def test_any_editable_stock_or_custom_symbol_can_be_updated(self):
+        selected = self.editable(
+            "symbol-id-1", "U1", "Amplifier_Operational", "LM358"
+        )
+        schematic = SimpleNamespace(get_symbols=lambda: [selected])
+        target, library_id, create_mode = resolve_component_action_target(
+            schematic, [selected]
+        )
+        self.assertIs(target, selected)
+        self.assertEqual(library_id, "Amplifier_Operational:LM358")
+        self.assertFalse(create_mode)
+
+    def test_multiple_component_selection_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Select exactly one schematic symbol"):
+            resolve_component_action_target(
+                SimpleNamespace(), [object(), object()]
+            )
+
+    def test_non_symbol_selection_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "not an editable schematic symbol"):
+            resolve_component_action_target(
+                SimpleNamespace(get_symbols=lambda: []),
+                [SimpleNamespace(reference="graphic")],
+            )
 
 
 class PassiveActionModeResolutionTests(unittest.TestCase):
