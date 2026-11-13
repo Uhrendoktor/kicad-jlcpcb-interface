@@ -550,8 +550,12 @@ class ComponentPopulator:
         self.fields_tree.insert(
             "",
             "end",
-            values=("Suggested symbol type", draft.symbol_hint or "Not identified"),
+            values=("Suggested symbol type", draft.symbol_hint or "Choose manually"),
         )
+        if self.create_mode:
+            self.symbol_hint_var.set(draft.symbol_hint)
+            self.footprint_var.set(draft.footprint)
+            self.reference_prefix_var.set(draft.reference_prefix)
         self.fields_tree.insert(
             "",
             "end",
@@ -580,32 +584,41 @@ class ComponentPopulator:
                 else "unclassified"
             )
             notes.append(f"JLCPCB library class: {library_class}.")
-        compatible = (
-            draft.symbol_hint in SUPPORTED_PLACEHOLDERS
+        selected_hint = (
+            self.symbol_hint_var.get().strip()
             if self.create_mode
-            else bool(draft.symbol_hint) and draft.symbol_hint == self.library_id
+            else self.library_id
         )
-        complete_for_placement = bool(draft.value and draft.footprint)
-        if draft.symbol_hint and not compatible and not self.create_mode:
+        compatible = (
+            ":" in selected_hint if self.create_mode else self.symbol is not None
+        )
+        complete_for_placement = bool(draft.value or self.selected_details)
+        if (
+            not self.create_mode
+            and draft.symbol_hint
+            and self.library_id
+            and draft.symbol_hint != self.library_id
+        ):
             notes.append(
-                f"The proposal requires {draft.symbol_hint}, but the selected symbol is "
-                f"{self.library_id}; no values can be applied to this symbol."
+                f"Catalogue classification suggests {draft.symbol_hint}, but the selected "
+                f"symbol is {self.library_id}. Its pins and graphics will be preserved; "
+                "review Value and Footprint carefully before applying."
             )
-        elif not draft.symbol_hint:
+        if self.create_mode and not selected_hint:
             notes.append(
-                "The part type is uncertain, so automatic placement is disabled. "
-                "Complete the component manually."
+                "No stock symbol was confidently mapped. Enter the KiCad Library:Symbol "
+                "identifier for the schematic symbol you want to copy into this project."
             )
         if self.create_mode:
             notes.append(
-                "This creates a project-local reusable symbol by cloning KiCad's stock "
-                "passive graphics and two-pin electrical topology. It does not infer "
-                "arbitrary pin maps, copper footprints or 3D models."
+                "A project-local copy of the selected KiCad symbol will be generated. "
+                "Its original pin numbers, pin types, units and graphics are preserved; "
+                "the tool does not infer an IC pin map or create PCB copper geometry."
             )
-            if compatible and not complete_for_placement:
+            if not self.footprint_var.get().strip():
                 notes.append(
-                    "A reliable Value and supported Footprint are both required for "
-                    "automatic placement; this draft is incomplete."
+                    "No footprint is selected. The symbol can still be placed, but it will "
+                    "need a footprint before PCB layout."
                 )
         if cached:
             notes.append(
@@ -634,15 +647,43 @@ class ComponentPopulator:
         )
         self.apply_button.configure(state="normal" if can_apply else "disabled")
 
+    def _refresh_readiness(self, _event=None) -> None:
+        if self.closed or not self.create_mode or self.draft is None:
+            return
+        hint = self.symbol_hint_var.get().strip()
+        ready = ":" in hint and bool(self.draft.proposed_fields) and bool(
+            self.draft.value or self.selected_details
+        )
+        self.apply_button.configure(state="normal" if ready else "disabled")
+        if not ready and hint:
+            self.status_var.set("Enter a valid KiCad Library:Symbol and review the proposed fields.")
+
     def apply(self) -> None:
         draft = self.draft
         if self.create_mode:
-            if (
-                draft is None
-                or draft.symbol_hint not in SUPPORTED_PLACEHOLDERS
-                or not draft.value
-                or not draft.footprint
-            ):
+            if draft is None:
+                return
+            selected_hint = self.symbol_hint_var.get().strip() or draft.symbol_hint
+            selected_footprint = self.footprint_var.get().strip()
+            selected_prefix = self.reference_prefix_var.get().strip() or draft.reference_prefix
+            selected_value = draft.value or str(
+                getattr(self.selected_details, "manufacturer_part_number", "") or
+                getattr(self.selected_details, "lcsc", "") or ""
+            ).strip()
+            draft = replace(
+                draft,
+                symbol_hint=selected_hint,
+                footprint=selected_footprint,
+                reference_prefix=selected_prefix,
+                value=selected_value,
+            )
+            if ":" not in draft.symbol_hint or not draft.value:
+                self.messagebox.showerror(
+                    "Component details incomplete",
+                    "Choose a KiCad Library:Symbol and confirm a component value or MPN. "
+                    "Footprint is optional and can be added later.",
+                    parent=self.root,
+                )
                 return
 
             at_cursor = self.placement_mode_var.get() == "cursor"
@@ -657,11 +698,11 @@ class ComponentPopulator:
             if at_cursor:
                 x_position = y_position = None
                 warning = (
-                    f"Generate a project-local {draft.symbol_hint} symbol for {draft.value} "
-                    f"({draft.lcsc}) and open KiCad's native Add Symbol chooser?\n\n"
-                    "The chosen symbol will follow the mouse cursor. Left-click in Eeschema "
-                    "to place it; press Escape to cancel placement. The reusable project "
-                    "library will remain generated either way."
+                    f"Copy {draft.symbol_hint} into the project-local library for "
+                    f"{draft.value} ({draft.lcsc}) and open KiCad's native Add Symbol chooser?\n\n"
+                    "The selected symbol's pin numbers and electrical types are retained; "
+                    "they are not inferred from the catalogue record. Verify pin mapping "
+                    "against the datasheet. Footprint is optional."
                 )
             else:
                 try:
@@ -689,11 +730,12 @@ class ComponentPopulator:
                     )
                     return
                 warning = (
-                    f"Generate a project-local symbol and place {reference} ({draft.symbol_hint}) "
-                    f"for {draft.lcsc} at X={x_position:g} mm, Y={y_position:g} mm?\n\n"
-                    "The reusable symbol clones KiCad's stock passive graphics and two-pin "
-                    "electrical topology. The project symbol table and .kicad_sym library "
-                    "will be updated. Verify the footprint and electrical suitability."
+                    f"Copy {draft.symbol_hint} into the project-local library and place "
+                    f"{reference} for {draft.lcsc} at X={x_position:g} mm, "
+                    f"Y={y_position:g} mm?\n\n"
+                    "The original KiCad symbol pin numbers, pin types, units and graphics "
+                    "are retained. The tool does not infer a manufacturer pin map. "
+                    "Verify electrical suitability; footprint is optional."
                 )
             if not self.messagebox.askyesno(
                 "Confirm new schematic component", warning, parent=self.root
@@ -727,6 +769,7 @@ class ComponentPopulator:
                     x_position,
                     y_position,
                     library_id=generated.library_id,
+                    reference_prefix=generated.reference_prefix,
                 )
             except Exception as exc:
                 if iconified and not self.closed:
@@ -747,24 +790,21 @@ class ComponentPopulator:
             self.status_var.set(
                 f"Generated {generated.library_path.name}, loaded {generated.library_id}, "
                 f"and placed {created.reference} at X={x_position:g} mm, "
-                f"Y={y_position:g} mm. Verify the footprint before board use."
+                f"Y={y_position:g} mm. Verify the pin mapping and add a footprint "
+                "before PCB layout if none was selected."
             )
             self.apply_button.configure(state="disabled")
             return
-        if (
-            draft is None
-            or not draft.proposed_fields
-            or draft.symbol_hint != self.library_id
-        ):
+        if draft is None or not draft.proposed_fields:
             return
         reference = str(getattr(self.symbol, "reference", "") or "selected symbol")
         warning = (
             f"Apply {len(draft.proposed_fields)} proposed field(s) to {reference}?\n\n"
             "Existing fields with the same names will be updated; unrelated custom fields "
             "are preserved.\n\n"
-            "The selected symbol's graphic, pins and electrical pin mapping will NOT be "
-            "changed. Make sure the selected placeholder is compatible with the suggested "
-            "Device:R or Device:C type."
+            "The selected symbol's graphics, pins, units and electrical pin mapping will "
+            "NOT be changed. Review the proposed Value and Footprint against the selected "
+            "symbol and part datasheet."
         )
         if not self.messagebox.askyesno(
             "Confirm component property update", warning, parent=self.root
@@ -772,7 +812,9 @@ class ComponentPopulator:
             return
         try:
             changed = apply_component_draft_fields(
-                self.symbol, draft, expected_library_id=self.library_id
+                self.symbol,
+                draft,
+                expected_library_id=self.library_id or "selected-symbol",
             )
             update_schematic_symbol(self.schematic, self.symbol)
             self.schematic.save()
