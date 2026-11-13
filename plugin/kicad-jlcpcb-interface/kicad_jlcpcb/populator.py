@@ -17,7 +17,7 @@ from .draft import (
     update_schematic_symbol,
 )
 from .model import component_from_symbol
-from .placement import next_component_reference, place_component_from_draft
+from .placement import place_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
