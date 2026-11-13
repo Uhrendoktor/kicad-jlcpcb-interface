@@ -52,6 +52,54 @@ def symbol_library_id(symbol: Any) -> str:
     return f"{library}:{name}" if library and name else ""
 
 
+def symbol_definition_matches_library(
+    symbol: Any,
+    kicad: Any,
+    library_id: str,
+    *,
+    document: Any | None = None,
+) -> bool:
+    """Match an instance's full embedded definition to a canonical library symbol.
+
+    KiCad may omit the instance's LIB_ID from the IPC protobuf when it resolves a
+    schematic-embedded symbol definition. In that case the instance still carries
+    the full definition. Removing only the top-level definition ID and comparing
+    the remaining protobuf is an exact graphics, pin, attributes and property
+    definition match; it is deliberately stricter than guessing from refdes/value.
+    """
+    definition = getattr(symbol, "definition", None)
+    instance_proto = getattr(definition, "proto", None)
+    if instance_proto is None:
+        return False
+
+    try:
+        if document is None:
+            library_symbol = kicad.get_library_symbol(library_id)
+        else:
+            library_symbol = kicad.get_library_symbol(library_id, document=document)
+    except Exception:
+        return False
+    library_proto = getattr(library_symbol, "proto", None)
+    if library_proto is None:
+        return False
+
+    def without_definition_id(message: Any) -> Any:
+        normalized = type(message)()
+        normalized.CopyFrom(message)
+        descriptor = getattr(normalized, "DESCRIPTOR", None)
+        fields = getattr(descriptor, "fields_by_name", {})
+        if "id" in fields:
+            normalized.ClearField("id")
+        return normalized
+
+    try:
+        return without_definition_id(instance_proto) == without_definition_id(
+            library_proto
+        )
+    except Exception:
+        return False
+
+
 @dataclass(frozen=True, slots=True)
 class ComponentDraft:
     """A reviewable proposal; it deliberately contains no symbol/pin geometry."""
