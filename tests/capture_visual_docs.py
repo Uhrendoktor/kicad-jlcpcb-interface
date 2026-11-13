@@ -43,6 +43,7 @@ from kicad_jlcpcb.populator import (  # noqa: E402
     resolve_selected_symbol,
 )
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
+from kicad_jlcpcb.theme import apply_tk_theme  # noqa: E402
 
 ASSET_NAMES = (
     "component-browser-initial.png",
@@ -61,6 +62,14 @@ ASSET_NAMES = (
     "schematic-properties-opened.png",
     "jlcpcb-capacitor-symbol.svg",
     "jlcpcb-resistor-symbol.svg",
+    "component-browser-light.png",
+    "component-browser-dark.png",
+    "component-properties-light.png",
+    "component-properties-dark.png",
+    "populate-component-light.png",
+    "populate-component-dark.png",
+    "add-component-light.png",
+    "add-component-dark.png",
 )
 
 # These are schematic inputs used by the visual demo. All catalogue fields,
@@ -904,7 +913,7 @@ def _drive_overview(
     schematic: Any, output_dir: Path, cache_dir: Path
 ) -> None:
     """Capture the production overview populated entirely from live provider calls."""
-    browser = browser_module.ComponentBrowser(schematic, cache_dir)
+    browser = browser_module.ComponentBrowser(schematic, cache_dir, theme="light")
     browser.root.geometry("1480x1250+20+20")
     root = browser.root
     failures: list[str] = []
@@ -974,6 +983,12 @@ def _drive_overview(
                 root.after(120, advance)
                 return
             if index == 0:
+                _capture_window(root, output_dir / "component-browser-light.png")
+                apply_tk_theme(root, "dark")
+                root.update()
+                _capture_window(root, output_dir / "component-browser-dark.png")
+                apply_tk_theme(root, "light")
+                root.update()
                 details = browser._catalogue_details
                 if details is None or details.is_cached or details.stale:
                     raise RuntimeError("Overview screenshot is not using fresh JLCPCB data.")
@@ -1039,7 +1054,7 @@ def _capture_live_selection_workflow(
     _capture_desktop(output_dir / "schematic-component-selected.png")
 
     browser = browser_module.ComponentBrowser(
-        schematic, cache_dir, selected_component=selected
+        schematic, cache_dir, selected_component=selected, theme="light"
     )
     browser.root.geometry("980x1400+940+20")
     root = browser.root
@@ -1075,6 +1090,16 @@ def _capture_live_selection_workflow(
                 _capture_window(
                     root, output_dir / "component-properties-selected.png"
                 )
+                _capture_window(
+                    root, output_dir / "component-properties-light.png"
+                )
+                apply_tk_theme(root, "dark")
+                root.update()
+                _capture_window(
+                    root, output_dir / "component-properties-dark.png"
+                )
+                apply_tk_theme(root, "light")
+                root.update()
                 _capture_desktop(output_dir / "schematic-properties-opened.png")
 
                 # Exercise the same callbacks wired to the properties window's
@@ -1153,6 +1178,8 @@ def _drive_populator_form(
     output_dir: Path,
     *,
     proposal_asset: str,
+    light_asset: str,
+    dark_asset: str,
     confirmation_asset: str,
     completed_asset: str,
     confirmation_title: str,
@@ -1201,6 +1228,12 @@ def _drive_populator_form(
                 raise RuntimeError("The LCSC review form contains no proposed fields.")
 
             _capture_window(root, output_dir / proposal_asset)
+            _capture_window(root, output_dir / light_asset)
+            apply_tk_theme(root, "dark")
+            root.update()
+            _capture_window(root, output_dir / dark_asset)
+            apply_tk_theme(root, "light")
+            root.update()
 
             original_askyesno = populator.messagebox.askyesno
             original_showerror = populator.messagebox.showerror
@@ -1394,6 +1427,7 @@ def _capture_passive_component_workflows(
         create_mode=False,
         kicad=kicad,
         library_id=resolved_library_id,
+        theme="light",
     )
 
     populate.root.geometry("860x780+960+30")
@@ -1421,6 +1455,8 @@ def _capture_passive_component_workflows(
         populate,
         output_dir,
         proposal_asset="populate-component-proposed.png",
+        light_asset="populate-component-light.png",
+        dark_asset="populate-component-dark.png",
         confirmation_asset="populate-component-confirmation.png",
         completed_asset="populate-component-applied.png",
         confirmation_title="Confirm component property update",
@@ -1451,6 +1487,7 @@ def _capture_passive_component_workflows(
         cache_dir / "add-ui-cache",
         create_mode=True,
         kicad=kicad,
+        theme="light",
     )
     create.root.geometry("940x800+960+30")
     create.lcsc_var.set("C105637")
@@ -1491,6 +1528,8 @@ def _capture_passive_component_workflows(
         create,
         output_dir,
         proposal_asset="add-component-proposed.png",
+        light_asset="add-component-light.png",
+        dark_asset="add-component-dark.png",
         confirmation_asset="add-component-confirmation.png",
         completed_asset="add-component-placed.png",
         confirmation_title="Confirm new schematic component",

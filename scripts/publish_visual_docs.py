@@ -27,6 +27,14 @@ ASSET_NAMES = {
     "schematic-properties-opened.png",
     "jlcpcb-capacitor-symbol.svg",
     "jlcpcb-resistor-symbol.svg",
+    "component-browser-light.png",
+    "component-browser-dark.png",
+    "component-properties-light.png",
+    "component-properties-dark.png",
+    "populate-component-light.png",
+    "populate-component-dark.png",
+    "add-component-light.png",
+    "add-component-dark.png",
 }
 BRANCH = "docs/previews"
 

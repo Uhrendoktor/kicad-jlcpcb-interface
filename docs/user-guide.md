@@ -14,6 +14,26 @@ The current installer target is:
 
 Other operating systems and CPU architectures are not validated yet. The KiCad IPC API must be enabled and configured to use a compatible Python interpreter.
 
+### Appearance
+
+The browser and passive review windows follow the desktop appearance where it can be detected: Windows app theme, macOS appearance, and Linux GTK/GNOME or KDE settings. ttk controls, tables, fields, scrollbars and the review-notes text area share the same palette.
+
+Override the detected appearance by setting `KICAD_JLCPCB_THEME` before starting KiCad:
+
+| Value | Behavior |
+| --- | --- |
+| `system` | Detect the desktop preference (default). |
+| `light` | Force the light palette. |
+| `dark` | Force the dark palette. |
+
+For example, on Linux:
+
+```bash
+KICAD_JLCPCB_THEME=dark kicad
+```
+
+The override is read when each window opens. Restart KiCad after changing the launch environment; no project or schematic settings are modified.
+
 ### Install
 
 From the repository root:

@@ -28,9 +28,17 @@ The animated preview shows a real Eeschema schematic before selection, after sel
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-initial.png" alt="Component overview with linked parts, design summary, supplier photo and catalogue facts" width="49%">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-selected.png" alt="Focused properties window for a selected 10 kilo-ohm resistor" width="49%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-dark.png">
+    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-light.png" alt="Component overview with linked parts, design summary, supplier photo and catalogue facts" width="49%">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-dark.png">
+    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-light.png" alt="Focused properties window for a selected 10 kilo-ohm resistor" width="49%">
+  </picture>
 </p>
+
+The windows follow the desktop light/dark appearance. Set `KICAD_JLCPCB_THEME=system|light|dark` before launching KiCad to override it.
 
 The two LCSC entry actions use a review screen rather than silently changing the schematic:
 
@@ -38,11 +46,17 @@ The two LCSC entry actions use a review screen rather than silently changing the
   <tr>
     <td align="center" width="50%">
       <strong>Populate an existing passive</strong><br>
-      <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-proposed.png" alt="Reviewing the proposed fields for a selected generic resistor" width="100%">
+      <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png">
+          <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Reviewing proposed fields for a selected generic resistor" width="100%">
+        </picture>
     </td>
     <td align="center" width="50%">
       <strong>Create a reusable project symbol</strong><br>
-      <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png" alt="Reviewing a new resistor proposal and its X and Y placement coordinates" width="100%">
+      <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
+          <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Reviewing a new resistor proposal and its X and Y placement coordinates" width="100%">
+        </picture>
     </td>
   </tr>
 </table>

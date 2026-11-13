@@ -19,6 +19,7 @@ from .model import (
     search_components,
 )
 from .provider import JlcPartDetails, JlcSearchProvider
+from .theme import apply_tk_theme
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -130,6 +131,8 @@ class ComponentBrowser:
         schematic: Any,
         settings_directory: str | Path,
         selected_component: SchematicComponent | None = None,
+        *,
+        theme: str | None = None,
     ):
         import tkinter as tk
         from tkinter import messagebox, ttk
@@ -166,6 +169,8 @@ class ComponentBrowser:
         self._closed = False
 
         self.root = tk.Tk()
+        self.palette = apply_tk_theme(self.root, theme)
+        self.theme = self.root._kicad_jlcpcb_theme
         self.root.title(
             "JLCPCB Component Properties"
             if selected_component is not None
@@ -227,7 +232,7 @@ class ComponentBrowser:
                 if self.selected_component is not None
                 else "JLCPCB Component Overview"
             ),
-            font=("TkDefaultFont", 16, "bold"),
+            style="Title.TLabel",
         ).grid(row=0, column=0, columnspan=5, sticky="w")
         ttk.Label(
             header,
@@ -236,6 +241,7 @@ class ComponentBrowser:
                 if self.selected_component is not None
                 else "Search linked parts, inspect catalogue details and estimate design cost."
             ),
+            style="Subtitle.TLabel",
         ).grid(row=1, column=0, columnspan=5, sticky="w", pady=(3, 12))
 
         if self.selected_component is None:
@@ -251,7 +257,7 @@ class ComponentBrowser:
             )
             field_entry = ttk.Entry(header, textvariable=self.field_var, width=20)
             field_entry.grid(row=2, column=3, sticky="e", padx=(0, 8))
-            ttk.Button(header, text="Refresh", command=self.refresh).grid(
+            ttk.Button(header, text="Refresh", command=self.refresh, style="Primary.TButton").grid(
                 row=2, column=4, sticky="e"
             )
             overview = ttk.LabelFrame(header, text="DESIGN OVERVIEW", padding=(10, 6))
@@ -265,14 +271,14 @@ class ComponentBrowser:
             )):
                 cell = ttk.Frame(overview, padding=(5, 2))
                 cell.grid(row=0, column=column, sticky="ew")
-                ttk.Label(cell, text=label, foreground="#667085").pack(anchor="w")
+                ttk.Label(cell, text=label, style="Section.TLabel").pack(anchor="w")
                 ttk.Label(
                     cell, textvariable=self.summary_vars[key],
                     font=("TkDefaultFont", 11, "bold")
                 ).pack(anchor="w", pady=(3, 0))
             ttk.Label(
                 overview, textvariable=self.summary_status_var,
-                foreground="#667085", wraplength=1150
+                style="Muted.TLabel", wraplength=1150
             ).grid(row=1, column=0, columnspan=4, sticky="w", padx=5, pady=(5, 0))
         else:
             ttk.Label(header, text="Part-link field").grid(
@@ -280,7 +286,9 @@ class ComponentBrowser:
             )
             field_entry = ttk.Entry(header, textvariable=self.field_var, width=24)
             field_entry.grid(row=2, column=1, sticky="w", padx=(0, 12))
-            ttk.Button(header, text="Refresh", command=self.refresh).grid(
+            ttk.Button(
+                header, text="Refresh", command=self.refresh, style="Primary.TButton"
+            ).grid(
                 row=2, column=2, sticky="w"
             )
         # In overview mode the linked-parts table needs little vertical space,
@@ -298,7 +306,7 @@ class ComponentBrowser:
             list_frame.columnconfigure(0, weight=1)
             list_frame.rowconfigure(1, weight=1)
             body.add(list_frame, weight=1)
-            ttk.Label(list_frame, text="LINKED SCHEMATIC COMPONENTS").grid(
+            ttk.Label(list_frame, text="LINKED SCHEMATIC COMPONENTS", style="Section.TLabel").grid(
                 row=0, column=0, sticky="w", pady=(0, 8)
             )
             columns = ("reference", "value", "part", "footprint", "sheet")
@@ -316,6 +324,7 @@ class ComponentBrowser:
                     key, width=width, minwidth=65,
                     stretch=key in {"value", "footprint", "sheet"}
                 )
+            self.tree.tag_configure("stripe-alt", background=self.palette["surface_alt"])
             self.tree.grid(row=1, column=0, sticky="nsew")
             scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
             scrollbar.grid(row=1, column=1, sticky="ns")
@@ -334,10 +343,15 @@ class ComponentBrowser:
         ttk.Label(
             detail_frame,
             text="COMPONENT SUMMARY",
-            font=("TkDefaultFont", 10, "bold"),
+            style="Section.TLabel",
         ).grid(row=0, column=0, columnspan=2, sticky="w")
 
-        detail_canvas = self.tk.Canvas(detail_frame, highlightthickness=0, borderwidth=0)
+        detail_canvas = self.tk.Canvas(
+            detail_frame,
+            highlightthickness=0,
+            borderwidth=0,
+            background=self.palette["background"],
+        )
         detail_canvas.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
         detail_scrollbar = ttk.Scrollbar(
             detail_frame, orient="vertical", command=detail_canvas.yview
@@ -441,6 +455,9 @@ class ComponentBrowser:
             self.alternatives_tree.column(
                 key, width=width, minwidth=55, stretch=key in {"mpn", "price"}
             )
+        self.alternatives_tree.tag_configure(
+            "stripe-alt", background=self.palette["surface_alt"]
+        )
         self.alternatives_tree.grid(row=0, column=0, sticky="ew")
         alt_scroll = ttk.Scrollbar(
             alternatives, orient="vertical", command=self.alternatives_tree.yview
@@ -453,7 +470,7 @@ class ComponentBrowser:
         ttk.Label(
             alternatives,
             textvariable=self.alternatives_status_var,
-            foreground="#667085",
+            style="Muted.TLabel",
             wraplength=850,
         ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
 
@@ -483,14 +500,14 @@ class ComponentBrowser:
         ttk.Label(
             content,
             textvariable=self.detail_vars["source"],
-            foreground="#667085",
+            style="Muted.TLabel",
             wraplength=850,
             justify="left",
         ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
         ttk.Label(
             content,
             textvariable=self.catalogue_status_var,
-            foreground="#667085",
+            style="Muted.TLabel",
             wraplength=850,
             justify="left",
         ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
@@ -498,7 +515,8 @@ class ComponentBrowser:
         actions = ttk.Frame(content)
         actions.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         ttk.Button(
-            actions, text="Select in schematic", command=self.select_selected
+            actions, text="Select in schematic", command=self.select_selected,
+            style="Primary.TButton"
         ).pack(side="left", padx=(0, 8))
         ttk.Button(
             actions,
@@ -579,6 +597,7 @@ class ComponentBrowser:
                     component.footprint,
                     component.sheet_path,
                 ),
+                tags=("stripe-alt",) if index % 2 else (),
             )
         if filtered:
             first = self.tree.get_children()[0]
@@ -947,6 +966,7 @@ class ComponentBrowser:
                 "",
                 "end",
                 iid=iid,
+                tags=("stripe-alt",) if index % 2 else (),
                 values=(
                     details.lcsc + ("  ✓" if details.lcsc == selected_lcsc else ""),
                     details.manufacturer_part_number or "—",
