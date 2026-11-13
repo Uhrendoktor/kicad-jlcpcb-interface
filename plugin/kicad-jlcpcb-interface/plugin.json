@@ -29,13 +29,13 @@
     },
     {
       "identifier": "passive-component",
-      "name": "JLCPCB Add or Update Passive",
-      "description": "With one stock Device:R or Device:C selected, review and populate its fields; with no selection, search by LCSC code or passive value and add a reusable project-local symbol.",
+      "name": "JLCPCB Add or Update Component",
+      "description": "With one symbol selected, review and populate catalogue fields without changing its pinout; with no selection, search by LCSC code or a free-text query, accept suggested mappings or choose a KiCad Library:Symbol and add a project-local copy.",
       "show-button": true,
       "scopes": [
         "schematic"
       ],
-      "entrypoint": "passive_component.py"
+      "entrypoint": "component_populator.py"
     }
   ]
 }
