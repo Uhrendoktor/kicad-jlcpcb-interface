@@ -277,6 +277,12 @@ class ComponentPopulator:
         for name, value in draft.proposed_fields:
             self.fields_tree.insert("", "end", values=(name, value))
         notes = list(draft.warnings)
+        if self.create_mode:
+            notes = [
+                note
+                for note in notes
+                if not note.startswith("This action only populates fields on the selected symbol.")
+            ]
         notes.append(f"Catalogue source: {draft.source_label}")
         compatible = (
             draft.symbol_hint in SUPPORTED_PLACEHOLDERS
