@@ -1154,6 +1154,9 @@ def _drive_populator_form(
     completed_asset: str,
     confirmation_title: str,
     required_confirmation_text: str,
+    expected_lcsc: str,
+    expected_value: str,
+    expected_footprint: str,
     validate_result,
 ) -> None:
     """Capture the real LCSC proposal form, confirm it, and verify the IPC result."""
@@ -1178,15 +1181,16 @@ def _drive_populator_form(
 
             draft = populator.draft
             if (
-                draft.lcsc != "C60489"
+                draft.lcsc != expected_lcsc
                 or draft.kind != "resistor"
-                or draft.value != "10k"
-                or draft.footprint != "Resistor_SMD:R_0402_1005Metric"
+                or draft.value != expected_value
+                or draft.footprint != expected_footprint
                 or "JLCPCB parts-page endpoint" not in draft.source_label
                 or "live response" not in draft.source_label
             ):
                 raise RuntimeError(
-                    "The LCSC form is not showing the expected fresh 10 kΩ/0402 draft: "
+                    "The LCSC form is not showing the expected fresh "
+                    f"{expected_value}/0402 draft for {expected_lcsc}: "
                     f"lcsc={draft.lcsc!r}, kind={draft.kind!r}, value={draft.value!r}, "
                     f"footprint={draft.footprint!r}, source={draft.source_label!r}"
                 )
@@ -1321,6 +1325,9 @@ def _capture_passive_component_workflows(
         required_confirmation_text=(
             "graphic, pins and electrical pin mapping will NOT be changed"
         ),
+        expected_lcsc="C60489",
+        expected_value="10k",
+        expected_footprint="Resistor_SMD:R_0402_1005Metric",
         validate_result=validate_populate_result,
     )
     print(
@@ -1344,7 +1351,7 @@ def _capture_passive_component_workflows(
         kicad=kicad,
     )
     create.root.geometry("940x800+960+30")
-    create.lcsc_var.set("C60489")
+    create.lcsc_var.set("C105637")
     create.x_var.set("205.0")
     create.y_var.set("160.0")
     create.lookup()
@@ -1354,8 +1361,8 @@ def _capture_passive_component_workflows(
         if (
             added is None
             or added.reference != "R4"
-            or symbol_library_id(added) != "JLCPCB_Generated:R_C60489"
-            or added.value != "10k"
+            or symbol_library_id(added) != "JLCPCB_Generated:R_C105637"
+            or added.value != "1k"
             or added.footprint_field.text.value
             != "Resistor_SMD:R_0402_1005Metric"
         ):
@@ -1369,9 +1376,9 @@ def _capture_passive_component_workflows(
         )
         if (
             linked is None
-            or linked.part_code != "C60489"
-            or linked.value != "10k"
-            or linked.manufacturer_part_number != "RC0402JR-0710KL"
+            or linked.part_code != "C105637"
+            or linked.value != "1k"
+            or linked.manufacturer_part_number != "RC0402JR-071KL"
         ):
             raise RuntimeError(
                 "The add-component UI action did not persist the LCSC metadata in the "
@@ -1387,11 +1394,14 @@ def _capture_passive_component_workflows(
         required_confirmation_text=(
             "clones KiCad's stock passive graphics and two-pin electrical topology"
         ),
+        expected_lcsc="C105637",
+        expected_value="1k",
+        expected_footprint="Resistor_SMD:R_0402_1005Metric",
         validate_result=validate_create_result,
     )
     print(
         "live-add-component-ui=passed reference=R4 "
-        "library_id=JLCPCB_Generated:R_C60489",
+        "library_id=JLCPCB_Generated:R_C105637",
         flush=True,
     )
 
