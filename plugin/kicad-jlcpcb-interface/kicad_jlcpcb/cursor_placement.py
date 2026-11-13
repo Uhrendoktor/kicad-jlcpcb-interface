@@ -101,10 +101,11 @@ def start_native_symbol_placement(
         )
 
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
-    pause(0.5)
-    # The text field filters the dialog but does not commit a result by itself.
-    # Tab moves focus into the filtered symbol list; Return chooses that result.
-    send("key", "--clearmodifiers", "Tab")
+    # Let KiCad's debounced filter populate the library tree. The chooser starts
+    # with focus in the filter box; Down selects the filtered tree result and
+    # Return commits the selected library symbol.
+    pause(0.6)
+    send("key", "--clearmodifiers", "Down")
     pause(0.1)
     send("key", "--clearmodifiers", "Return")
     for _ in range(30):
