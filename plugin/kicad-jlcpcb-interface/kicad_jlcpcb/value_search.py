@@ -30,7 +30,7 @@ def is_lcsc_lookup_query(query: str) -> bool:
     text = str(query or "").strip()
     if re.fullmatch(r"C\d{3,}", text, re.IGNORECASE):
         return True
-    if re.fullmatch(r"\d{5,}", text):
+    if re.fullmatch(r"\d{4,}", text):
         return True
     return bool(re.search(r"(?:^|[/=_-])C\d{3,}(?:[./?#&]|$)", text, re.IGNORECASE))
 
