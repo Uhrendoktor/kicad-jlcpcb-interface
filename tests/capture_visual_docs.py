@@ -40,6 +40,7 @@ from kicad_jlcpcb.model import (  # noqa: E402
 from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
+    resolve_passive_library_id,
     resolve_selected_symbol,
 )
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
@@ -1293,44 +1294,34 @@ def _capture_passive_component_workflows(
             "proto_identifiers": raw_identifiers,
         }
 
-    native_selection = schematic.get_selection_as_string()
-    native_document = schematic.get_as_string()
+    editable_symbol = resolve_selected_symbol(schematic, selected.symbol)
+    resolved_library_id = resolve_passive_library_id(
+        editable_symbol, kicad, document=schematic.document
+    )
     print(
-        "selected-symbol-ipc-debug="
+        "selected-symbol-resolution="
         + json.dumps(
             {
-                "selection": describe_symbol(selection_symbol),
-                "queried": describe_symbol(queried_symbol),
-                "placed": describe_symbol(symbols["R2"]),
-                "native_selection_lib_ids": re.findall(
-                    r'\\(lib_id\\s+"([^"]+)"', native_selection
-                ),
-                "native_document_r2_context": [
-                    native_document[max(0, match.start() - 120):match.end() + 120]
-                    for match in re.finditer(r'"R2"', native_document)
-                ][:4],
-                "native_document_lib_ids": re.findall(
-                    r'\\(lib_id\\s+"([^"]+)"', native_document
-                ),
+                "reference": str(editable_symbol.reference),
+                "raw_library_id": symbol_library_id(editable_symbol),
+                "resolved_library_id": resolved_library_id,
             },
             sort_keys=True,
         ),
         flush=True,
     )
-    editable_symbol = resolve_selected_symbol(schematic, selected.symbol)
-    if symbol_library_id(editable_symbol) != "Device:R":
-        # The live UI capture can still exercise the form with the object returned
-        # by the placement API, while the diagnostic above records what the
-        # selection/query payloads expose for the production resolver.
-        editable_symbol = symbols["R2"]
-    if symbol_library_id(editable_symbol) != "Device:R":
-        raise RuntimeError("The R2 fixture no longer identifies a generic resistor.")
+    if resolved_library_id != "Device:R":
+        raise RuntimeError(
+            "The selected R2 symbol did not match the canonical stock Device:R "
+            f"definition: {resolved_library_id!r}"
+        )
     populate = ComponentPopulator(
         schematic,
         editable_symbol,
         cache_dir / "populate-ui-cache",
         create_mode=False,
     )
+
     populate.root.geometry("860x780+960+30")
     populate.lcsc_var.set("C60489")
     populate.lookup()
