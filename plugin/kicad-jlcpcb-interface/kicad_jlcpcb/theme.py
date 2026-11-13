@@ -178,6 +178,9 @@ def _configure_classic_widgets(root: Any, palette: dict[str, str]) -> None:
                     highlightbackground=palette["border"],
                     highlightcolor=palette["accent"],
                 )
+            elif widget_class == "Treeview":
+                # Row tags carry explicit colours, so refresh them on live theme changes.
+                widget.tag_configure("stripe-alt", background=palette["surface_alt"])
             stack.extend(widget.winfo_children())
         except Exception:
             # Some platform-specific widgets do not expose every classic option.
@@ -271,7 +274,7 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
     )
     style.configure(
         "TLabelframe",
-        background=palette["surface"],
+        background=palette["background"],
         foreground=palette["foreground"],
         bordercolor=palette["border"],
         lightcolor=palette["border"],
