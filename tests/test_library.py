@@ -442,7 +442,7 @@ class ProjectLibraryTests(unittest.TestCase):
         self.assertIn("table entry were saved", message)
         self.assertIn("no schematic instance was placed", message)
         self.assertIn("reopen it", message)
-        self.assertIn("run jlcpcb add component from lcsc again", message)
+        self.assertIn("run jlcpcb add or update component again", message)
 
     def test_refuses_missing_symbol_choice_or_component_value(self):
         with self.assertRaisesRegex(Exception, "Library:Symbol"):
