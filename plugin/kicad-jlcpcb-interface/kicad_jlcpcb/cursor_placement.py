@@ -129,7 +129,6 @@ def start_native_symbol_placement(
     result_x = int(width * 0.15)
     result_y = int(height * 0.12)
     send("windowmove", "--sync", chooser_id, "0", "0")
-    send("windowactivate", "--sync", chooser_id)
     send("windowfocus", "--sync", chooser_id)
     pause(0.15)
     send("mousemove", "--sync", str(filter_x), str(filter_y))
