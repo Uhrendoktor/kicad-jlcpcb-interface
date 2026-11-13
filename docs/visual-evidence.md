@@ -75,7 +75,7 @@ The two modes share one review-first dialog. The screenshots below use resistor 
   </tr>
   <tr>
     <td>
-      <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-proposed.png" alt="Update-mode proposal showing confidence, fields and review notes before changing a selected passive" width="420">
+      <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-proposed.png" alt="Update-mode proposal showing confidence, fields and review notes before updating a selected schematic symbol" width="420">
     </td>
     <td>
       <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png" alt="Add-mode proposal showing catalogue matches and placement controls before generating a project-local symbol" width="420">
@@ -93,15 +93,15 @@ The two modes share one review-first dialog. The screenshots below use resistor 
     </tr>
     <tr>
       <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png" alt="Confirmation explaining that the selected placeholder's symbol graphics, pins and electrical mapping remain unchanged" width="420"></td>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Updated schematic fields after confirming the review for an existing generic passive" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Updated schematic fields after confirming the review for an existing selected component" width="420"></td>
     </tr>
     <tr>
       <th>Add confirmation</th>
       <th>Add result</th>
     </tr>
     <tr>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png" alt="Confirmation describing project-local passive-symbol generation and placement" width="420"></td>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed.png" alt="Add-mode dialog after a generated project-local passive symbol was placed in the schematic" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png" alt="Confirmation describing project-local KiCad symbol generation and placement" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed.png" alt="Add-mode dialog after a generated project-local component symbol was placed in the schematic" width="420"></td>
     </tr>
   </table>
 </details>
