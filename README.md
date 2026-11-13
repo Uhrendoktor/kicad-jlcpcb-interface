@@ -86,7 +86,7 @@ When a catalogue row needs closer inspection, **Select in schematic** takes you 
 | Nothing selected | **Add** | Search the catalogue, review the suggested symbol and fields, then create and place a project-local copy of a KiCad stock symbol. |
 | Multiple items or a non-symbol object | — | The action stops and asks you to select one symbol or clear the selection. |
 
-Both contexts use the same review-first dialog. Its heading and available controls adapt to the selection: update mode edits catalogue fields on the selected symbol; add mode also exposes the KiCad `Library:Symbol`, reference prefix and placement controls. Value and Footprint are editable, and Footprint is optional during symbol creation.
+Both contexts use the same review-first dialog, which shows inference confidence, catalogue source/freshness and warnings. Its heading and available controls adapt to the selection: update mode edits catalogue fields on the selected symbol; add mode also exposes the KiCad `Library:Symbol`, reference prefix and placement controls. Value and Footprint are editable, and Footprint is optional during symbol creation.
 
 The screenshots show the two contexts of that one action—not separate commands:
 
