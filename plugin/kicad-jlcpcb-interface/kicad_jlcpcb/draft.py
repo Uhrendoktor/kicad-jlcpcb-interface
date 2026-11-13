@@ -593,7 +593,12 @@ def apply_component_draft_fields(
             f"Proposal requires {draft.symbol_hint}, but the selected symbol is "
             f"{actual_library_id or 'an unknown library symbol'}."
         )
-    if not expected and not allow_symbol_mismatch and not actual_library_id and not draft.symbol_hint:
+    if (
+        not expected
+        and not allow_symbol_mismatch
+        and not actual_library_id
+        and not draft.symbol_hint
+    ):
         raise ValueError("The selected symbol's library identity could not be determined.")
     changed: list[str] = []
     if draft.value:
