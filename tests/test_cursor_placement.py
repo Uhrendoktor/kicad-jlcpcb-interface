@@ -114,15 +114,16 @@ class CursorPlacementTests(unittest.TestCase):
             )
         )
 
-    def test_accepts_return_to_another_eeschema_child_window(self):
+    def test_rejects_focus_return_to_a_different_eeschema_child_window(self):
         runner = FakeRunner(["0x200", "0x300"])
-        start_native_symbol_placement(
-            "0x100",
-            "R_C60489",
-            xdotool="xdotool",
-            command_runner=runner,
-            pause=lambda _seconds: None,
-        )
+        with self.assertRaisesRegex(RuntimeError, "did not return focus to Eeschema"):
+            start_native_symbol_placement(
+                "0x100",
+                "R_C60489",
+                xdotool="xdotool",
+                command_runner=runner,
+                pause=lambda _seconds: None,
+            )
         self.assertIn(["xdotool", "getwindowpid", "0x300"], runner.commands)
 
     def test_reports_missing_native_chooser(self):
