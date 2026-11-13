@@ -30,7 +30,7 @@ def symbol(identifier: str, reference: str, library: str = "Device", name: str =
 class FakeProto:
     DESCRIPTOR = SimpleNamespace(fields_by_name={"id": object(), "shape": object()})
 
-    def __init__(self, identifier: str, shape: str):
+    def __init__(self, identifier: str = "", shape: str = ""):
         self.id = identifier
         self.shape = shape
 
