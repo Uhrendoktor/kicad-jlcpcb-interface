@@ -57,7 +57,6 @@ class VerifyVisualBundleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "inventory mismatch"):
             verify_bundle(self.root, self.source_sha)
 
-
     def test_workflow_evidence_uses_a_static_screenshot(self) -> None:
         self.assertIn("schematic-properties-opened.png", ASSET_NAMES)
         self.assertFalse(any(name.lower().endswith(".gif") for name in ASSET_NAMES))
