@@ -53,12 +53,15 @@ def resistor_draft():
 
 
 class FakeSymbol:
-    def __init__(self, reference="R3"):
+    def __init__(self, reference="R3", *, expose_definition=True):
         self.reference = reference
         self.value = "R"
-        self.definition = SimpleNamespace(
-            id=SimpleNamespace(library="Device", name="R")
+        definition_id = (
+            SimpleNamespace(library="Device", name="R")
+            if expose_definition
+            else SimpleNamespace(library="", name="")
         )
+        self.definition = SimpleNamespace(id=definition_id)
         self.footprint_field = SimpleNamespace(text=SimpleNamespace(value=""))
         self.datasheet_field = SimpleNamespace(text=SimpleNamespace(value=""))
         self.proto = SimpleNamespace(
@@ -68,8 +71,9 @@ class FakeSymbol:
 
 
 class FakeSchematic:
-    def __init__(self, references=("R1", "R2", "C1")):
+    def __init__(self, references=("R1", "R2", "C1"), *, expose_definition=True):
         self.symbols = [SimpleNamespace(reference=value) for value in references]
+        self.expose_definition = expose_definition
         self.created = None
         self.saved = False
         self.place_request = None
@@ -79,7 +83,7 @@ class FakeSchematic:
 
     def place_symbol_from_library(self, lib_id, position, reference=None):
         self.place_request = (lib_id, position, reference)
-        self.created = FakeSymbol(reference)
+        self.created = FakeSymbol(reference, expose_definition=self.expose_definition)
         self.symbols.append(self.created)
         return self.created
 
@@ -167,6 +171,20 @@ class PlacementTests(unittest.TestCase):
         self.assertEqual(fields["MPN"].text.text, "RC0402JR-0710KL")
         self.assertFalse(fields["LCSC"].visible)
         self.assertTrue(schematic.saved)
+        update.assert_called_once_with(schematic, created)
+
+    def test_placement_uses_requested_library_id_when_ipc_wrapper_is_unhydrated(self):
+        schematic = FakeSchematic(expose_definition=False)
+        with patch("kicad_jlcpcb.placement.update_schematic_symbol") as update:
+            created = place_component_from_draft(
+                schematic, resistor_draft(), 140.0, 110.0
+            )
+
+        self.assertEqual(created.reference, "R3")
+        self.assertEqual(created.value, "10k")
+        self.assertEqual(created.footprint_field.text.value, "Resistor_SMD:R_0402_1005Metric")
+        fields = {field.name: field for field in created.proto.user_fields}
+        self.assertEqual(fields["LCSC"].text.text, "C60489")
         update.assert_called_once_with(schematic, created)
 
     def test_rejects_ambiguous_or_partially_inferred_drafts(self):

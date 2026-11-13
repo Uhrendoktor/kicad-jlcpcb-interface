@@ -67,7 +67,9 @@ def place_component_from_draft(
         Vector2.from_xy_mm(x_position, y_position),
         reference=reference,
     )
-    changed = apply_component_draft_fields(symbol, draft)
+    changed = apply_component_draft_fields(
+        symbol, draft, expected_library_id=draft.symbol_hint
+    )
     if not changed:
         raise RuntimeError("The catalogue draft did not produce any fields to apply.")
     update_schematic_symbol(schematic, symbol)

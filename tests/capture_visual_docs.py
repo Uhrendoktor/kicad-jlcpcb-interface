@@ -601,9 +601,10 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         placed = place_component_from_draft(
             schematic, draft, 240.0, 175.0
         )
+        placed_library_id = symbol_library_id(placed)
         if (
             placed.reference != "R3"
-            or symbol_library_id(placed) != "Device:R"
+            or placed_library_id not in ("", "Device:R")
             or placed.value != "10k"
             or placed.footprint_field.text.value
             != "Resistor_SMD:R_0402_1005Metric"

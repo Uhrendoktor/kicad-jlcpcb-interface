@@ -365,7 +365,7 @@ class ComponentPopulator:
                 )
                 return
             self.symbol = created
-            self.library_id = symbol_library_id(created)
+            self.library_id = symbol_library_id(created) or draft.symbol_hint
             self.symbol_var.set(
                 f"Added {created.reference} · {self.library_id} · "
                 f"Value: {created.value} · "
