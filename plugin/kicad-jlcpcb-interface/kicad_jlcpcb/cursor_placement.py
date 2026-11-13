@@ -100,10 +100,47 @@ def start_native_symbol_placement(
             "Preferences → Hotkeys and bind Add Symbol to A, then retry."
         )
 
-    # The native chooser accepts type-to-search in its focused filter/list.
-    # The exact generated name narrows the results to the symbol to place.
+    # Focusing the top-level dialog does not focus its search widget on all
+    # wxWidgets builds. Click the native Filter field before typing so the
+    # generated symbol is actually used to narrow the chooser's library tree.
+    geometry = send("getwindowgeometry", "--shell", chooser_id)
+    dimensions = {
+        item.split("=", 1)[0]: item.split("=", 1)[1]
+        for line in geometry.splitlines()
+        for item in line.split()
+        if "=" in item
+    }
+    try:
+        width = int(dimensions["WIDTH"])
+        height = int(dimensions["HEIGHT"])
+    except (KeyError, ValueError) as exc:
+        raise RuntimeError(
+            f"Could not read KiCad's native symbol chooser geometry: {geometry!r}"
+        ) from exc
+    if width < 500 or height < 300:
+        raise RuntimeError(
+            f"KiCad's native symbol chooser is unexpectedly small: {width}x{height}"
+        )
+
+    filter_x = int(width * 0.24)
+    filter_y = max(10, int(height * 0.025))
+    result_x = int(width * 0.15)
+    result_y = int(height * 0.12)
+    send(
+        "mousemove", "--sync", "--window", chooser_id,
+        str(filter_x), str(filter_y),
+    )
+    send("click", "1")
+    send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
+    # Filtering leaves the exact symbol as the first row. Select that row
+    # explicitly instead of relying on whichever chooser control has focus.
+    send(
+        "mousemove", "--sync", "--window", chooser_id,
+        str(result_x), str(result_y),
+    )
+    send("click", "1")
     send("key", "--clearmodifiers", "Return")
     for _ in range(30):
         focused_id = send("getwindowfocus")
