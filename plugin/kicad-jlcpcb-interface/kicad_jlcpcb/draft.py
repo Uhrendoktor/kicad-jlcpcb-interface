@@ -39,8 +39,27 @@ _ATTRIBUTE_ALIASES = {
         "resistorvalue",
     },
     "capacitor": {"capacitance", "capacitancevalue", "nominalcapacitance"},
+    "inductor": {"inductance", "inductancevalue", "nominalinductance"},
 }
-SUPPORTED_PLACEHOLDERS = {"Device:R", "Device:C"}
+_SYMBOL_HINTS = {
+    "resistor": "Device:R",
+    "capacitor": "Device:C",
+    "inductor": "Device:L",
+    "diode": "Device:D",
+    "led": "Device:LED",
+    "fuse": "Device:Fuse",
+    "crystal": "Device:Crystal",
+}
+_REFERENCE_PREFIXES = {
+    "resistor": "R",
+    "capacitor": "C",
+    "inductor": "L",
+    "diode": "D",
+    "led": "D",
+    "fuse": "F",
+    "crystal": "Y",
+}
+SUPPORTED_PLACEHOLDERS = set(_SYMBOL_HINTS.values())
 
 
 def symbol_library_id(symbol: Any) -> str:
@@ -343,32 +362,70 @@ def _value_from_description(description: str, kind: str) -> str:
 
 
 def _classify(details: JlcPartDetails) -> str:
-    resistance = bool(_attribute(details, _ATTRIBUTE_ALIASES["resistor"]))
-    capacitance = bool(_attribute(details, _ATTRIBUTE_ALIASES["capacitor"]))
+    """Classify only when catalogue attributes or terminology provide a clear match."""
     text = f"{details.category} {details.description}".casefold()
-    says_resistor = bool(re.search(r"\bresistors?\b|\bresistance\b", text))
-    says_capacitor = bool(re.search(r"\bcapacitors?\b|\bcapacitance\b", text))
-    resistor = resistance or says_resistor
-    capacitor = capacitance or says_capacitor
-    if resistor == capacitor:
-        return "unknown"
-    return "resistor" if resistor else "capacitor"
+    attributes = {
+        _normalize_key(name)
+        for name, value in details.attributes.items()
+        if value not in (None, "")
+    }
+    checks = (
+        ("resistor", bool(attributes & _ATTRIBUTE_ALIASES["resistor"]) or re.search(r"\bresistors?\b|\bresistance\b", text)),
+        ("capacitor", bool(attributes & _ATTRIBUTE_ALIASES["capacitor"]) or re.search(r"\bcapacitors?\b|\bcapacitance\b", text)),
+        ("inductor", bool(attributes & _ATTRIBUTE_ALIASES["inductor"]) or re.search(r"\binductors?\b|\binductance\b", text)),
+        ("led", bool(re.search(r"\bleds?\b|light emitting diode", text))),
+        ("diode", bool(re.search(r"\bdiodes?\b|\brectifiers?\b|\btvs\b|\bzener\b", text))),
+        ("fuse", bool(re.search(r"\bfuses?\b|\bpolyfuse\b", text))),
+        ("crystal", bool(re.search(r"\bcrystals?\b|\bresonators?\b", text))),
+    )
+    matches = [kind for kind, matched in checks if matched]
+    if "led" in matches:
+        matches = [kind for kind in matches if kind != "diode"]
+    return matches[0] if len(matches) == 1 else "unknown"
+
+
+def _inductance_value(raw: str) -> str:
+    """Normalize explicit inductance to a KiCad value such as 10uH."""
+    candidate = str(raw or "").strip().replace("µ", "u").replace("μ", "u").replace(" ", "")
+    match = re.fullmatch(r"(?P<num>\d+(?:\.\d+)?)(?P<scale>[pnumkKMG]?)(?:H)?", candidate, re.IGNORECASE)
+    if not match:
+        return ""
+    number = _format_number(match.group("num"))
+    scale = {"K": "k"}.get(match.group("scale"), match.group("scale"))
+    return f"{number}{scale}H"
 
 
 def _footprint(kind: str, package: str) -> str:
-    """Return only footprints from the explicitly reviewed common SMD package map."""
+    """Return a footprint only for package/type combinations with reviewed mappings."""
+    candidate = str(package or "").strip()
     match = re.search(
         r"(?<!\d)(0201|0402|0603|0805|1206|1210|1812|2010|2512)(?!\d)",
-        str(package or ""),
+        candidate,
     )
-    if not match:
-        return ""
-    imperial = match.group(1)
-    metric = _PACKAGE_MAP[imperial]
-    if kind == "resistor":
-        return f"Resistor_SMD:R_{imperial}_{metric}Metric"
-    if kind == "capacitor":
-        return f"Capacitor_SMD:C_{imperial}_{metric}Metric"
+    if match and kind in {"resistor", "capacitor", "inductor"}:
+        imperial = match.group(1)
+        metric = _PACKAGE_MAP[imperial]
+        library = {"resistor": "Resistor_SMD", "capacitor": "Capacitor_SMD", "inductor": "Inductor_SMD"}[kind]
+        prefix = {"resistor": "R", "capacitor": "C", "inductor": "L"}[kind]
+        return f"{library}:{prefix}_{imperial}_{metric}Metric"
+    if kind == "led":
+        led_package = re.search(r"(?<![A-Z0-9])(0603|0805|1206)(?![A-Z0-9])", candidate, re.IGNORECASE)
+        if led_package:
+            imperial = led_package.group(1)
+            metric = _PACKAGE_MAP[imperial]
+            return f"LED_SMD:LED_{imperial}_{metric}Metric"
+    if kind == "diode":
+        diode_packages = {
+            "SOD-323": "Diode_SMD:D_SOD-323",
+            "SOD-123": "Diode_SMD:D_SOD-123",
+            "SMA": "Diode_SMD:D_SMA",
+            "SMB": "Diode_SMD:D_SMB",
+            "SMC": "Diode_SMD:D_SMC",
+        }
+        normalized = re.sub(r"\s+", "", candidate).upper()
+        for package_name, footprint in diode_packages.items():
+            if package_name in normalized:
+                return footprint
     return ""
 
 
@@ -387,39 +444,47 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
     elif kind == "capacitor":
         raw_value = _attribute(details, _ATTRIBUTE_ALIASES["capacitor"])
         value = _capacitance_value(raw_value) if raw_value else ""
+    elif kind == "inductor":
+        raw_value = _attribute(details, _ATTRIBUTE_ALIASES["inductor"])
+        value = _inductance_value(raw_value) if raw_value else ""
+    elif kind != "unknown":
+        value = str(details.manufacturer_part_number or "").strip()
     else:
         value = ""
-    if not value and kind != "unknown":
+    if not value and kind in {"resistor", "capacitor"}:
         value = _value_from_description(details.description, kind)
 
     footprint = _footprint(kind, details.package)
     datasheet_url = _https_url(details.datasheet_url)
     warnings = [
-        "This action only populates fields on the selected symbol. It does not replace "
-        "symbol graphics, pin numbers, electrical pin types or pin mapping. Use a "
-        "compatible Device:R or Device:C placeholder."
+        "For an update, the selected symbol's graphics, pins and electrical mapping are "
+        "preserved. For a new part, the chosen KiCad library symbol is copied as-is; "
+        "verify its pin numbers and electrical meaning against the datasheet."
     ]
     if kind == "unknown":
         warnings.append(
-            "Catalogue data does not identify a supported resistor or capacitor; "
-            "Value and Footprint are left unchanged."
+            "No confident stock-symbol mapping was found. Choose the correct KiCad "
+            "Library:Symbol before creating a new project-local symbol."
         )
     elif not value:
+        warnings.append("A reliable component value could not be inferred; Value is left unchanged.")
+    if not footprint:
         warnings.append(
-            "A reliable resistance/capacitance value could not be inferred; "
-            "Value is left unchanged."
+            f"Package {details.package or '(missing)'} has no reviewed footprint mapping. "
+            "Footprint is left blank; enter a KiCad footprint or leave it for later."
         )
-    if kind != "unknown" and not footprint:
+    if kind not in _SYMBOL_HINTS:
+        warnings.append("The schematic symbol must be selected manually.")
+    elif kind in {"diode", "led", "fuse", "crystal"}:
         warnings.append(
-            f"Package {details.package or '(missing)'} is not in the reviewed SMD "
-            "footprint map; Footprint is left unchanged."
+            "The suggested symbol is a generic template, not a verified manufacturer pinout."
         )
     if not datasheet_url:
         warnings.append("The catalogue record has no valid HTTPS datasheet URL.")
 
-    if kind != "unknown" and value and footprint:
+    if kind in _SYMBOL_HINTS and value and footprint:
         confidence = "high"
-    elif kind != "unknown":
+    elif kind in _SYMBOL_HINTS:
         confidence = "partial"
     else:
         confidence = "metadata only"
@@ -435,8 +500,8 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
     return ComponentDraft(
         lcsc=normalize_lcsc_code(details.lcsc),
         kind=kind,
-        symbol_hint={"resistor": "Device:R", "capacitor": "Device:C"}.get(kind, ""),
-        reference_prefix={"resistor": "R", "capacitor": "C"}.get(kind, ""),
+        symbol_hint=_SYMBOL_HINTS.get(kind, ""),
+        reference_prefix=_REFERENCE_PREFIXES.get(kind, ""),
         value=value,
         footprint=footprint,
         datasheet_url=datasheet_url,
@@ -457,19 +522,16 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
 
 
 def _library_id_matches_draft(library_id: str, draft: ComponentDraft) -> bool:
-    """Accept a stock symbol or this LCSC part's deterministic project-library ID."""
-    if library_id == draft.symbol_hint:
+    """Accept the selected stock symbol or a generated symbol for this LCSC part."""
+    if library_id and library_id == draft.symbol_hint:
         return True
     parts = str(library_id or "").split(":", 1)
     if len(parts) != 2:
         return False
-    prefix = {"resistor": "R", "capacitor": "C"}.get(draft.kind)
-    if prefix is None:
-        return False
-    expected_name = f"{prefix}_{normalize_lcsc_code(draft.lcsc)}"
+    expected_suffix = f"_{normalize_lcsc_code(draft.lcsc)}"
     return (
         re.fullmatch(r"JLCPCB_Generated(?:_\d+)?", parts[0]) is not None
-        and parts[1] == expected_name
+        and parts[1].endswith(expected_suffix)
     )
 
 
@@ -482,20 +544,17 @@ def apply_component_draft_fields(
     """Apply fields only after validating the exact symbol/library identity."""
     actual_library_id = symbol_library_id(symbol)
     expected = str(expected_library_id or "").strip()
-    if expected and not _library_id_matches_draft(expected, draft):
+    if expected and actual_library_id and expected != actual_library_id:
         raise ValueError(
-            f"Expected library ID {expected} does not identify this LCSC {draft.lcsc} draft."
+            f"Expected library ID {expected}, but the selected symbol is {actual_library_id}."
         )
-    required_id = expected or draft.symbol_hint
-    if (
-        not required_id
-        or (actual_library_id and actual_library_id != required_id)
-        or (not actual_library_id and required_id != draft.symbol_hint)
-    ):
+    if not expected and draft.symbol_hint and not _library_id_matches_draft(actual_library_id, draft):
         raise ValueError(
-            f"Proposal requires {required_id or 'a known passive type'}, "
-            f"but the selected symbol is {actual_library_id or 'an unknown library symbol'}."
+            f"Proposal suggests {draft.symbol_hint}, but the selected symbol is "
+            f"{actual_library_id or 'an unknown library symbol'}."
         )
+    if not expected and not actual_library_id and not draft.symbol_hint:
+        raise ValueError("The selected symbol's library identity could not be determined.")
     changed: list[str] = []
     if draft.value:
         symbol.value = draft.value
