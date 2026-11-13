@@ -1,4 +1,4 @@
-"""Safe project-local KiCad symbol-library generation for reviewed LCSC passives."""
+"""Safe project-local KiCad symbol-library generation for reviewed LCSC components."""
 
 from __future__ import annotations
 
