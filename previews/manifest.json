@@ -1,20 +1,20 @@
 {
   "assets": {
-    "component-browser-filtered.png": "f31c93d3737151691d2ea1a112932a935eabf00c38ac62238257a6331b3ea52b",
-    "component-browser-initial.png": "733a18443845abbf69a5f3596a7f2012b5161df285d2284720194c8fce6459b3",
-    "component-browser-selected.png": "b36e7a11d15ae450a9a04173257b6d7f74271d8766649ce46d9254fe793c10e1",
-    "component-browser-workflow.gif": "bacc6d48f4df57532bee0a0e3a89b91aa993e2f22a4e9adfc6b324fbb32ae1c3",
-    "component-properties-selected.png": "66d7c0f0b6aa5539192ba852ae5aaf084125de6e57bfe657ab9fce4eb7ffa649",
-    "jlcpcb-capacitor-symbol.svg": "26981e318e4cb4d148899e26f2e678f3cf11b8c8232499079298842a17dcdfd9",
-    "jlcpcb-resistor-symbol.svg": "80f2e908f6ca6d69a587d53741b26ccb73d6bedc6aa7ffc7fa16b6f9d5f8e0f5",
+    "component-browser-filtered.png": "0527d6156e6f8bd43d76f16c91156abef62aa5cf318abb69ab818a1b44abf267",
+    "component-browser-initial.png": "d3c8d342e569bc357e94dfbf72b2b55342fd5105252b21f72d1fd7f413bc2e94",
+    "component-browser-selected.png": "208c5e4d674371ca181a808a80f2427eef2bd40aa0125deb9b8559ad1207b814",
+    "component-browser-workflow.gif": "fb2bf50274d98675b04399975c7b7706858d6fc51550a8b2a50b619bc5a7e5c7",
+    "component-properties-selected.png": "1bfd15f289072f5fe37e1dcd0f66f7f2b2f55462ce8278b53abfcecfb1c5c9f5",
+    "jlcpcb-capacitor-symbol.svg": "dd4c74a6c5167e05c6e725d65b4219633a08b4127c9881d9bf1c1f06ae9999aa",
+    "jlcpcb-resistor-symbol.svg": "1a66913e3dfac040e32bdc8f97221cb52429d467832fe140060f2e64241bbfc6",
     "schematic-before-selection.png": "205cfb9e7394ea0cad4dd91ae3069b8503d74cf2a1d39a9464f60a2668e0dc7e",
     "schematic-component-selected.png": "49d9e3ec8c903a6e02bac922377067e15a9e07857c7f45a88ac489627d465928",
-    "schematic-properties-opened.png": "5df172a57809e547ba0142cdbb13a68dd989d066cd11aff69c3d5db95ac0e43e"
+    "schematic-properties-opened.png": "4ea67164c79306f2a3385f1a8b75da0f7591802de18e0f0748a3b7c40b9b0718"
   },
   "catalogue_source": "live JLCPCB parts-page detail and MPN-search endpoints",
   "generator": "tests/capture_visual_docs.py",
   "kicad_cli_version": "10.99.0",
   "renderer": "live Eeschema IPC, production Tk browser and KiCad CLI",
   "schema_version": 1,
-  "source_sha": "78bd7e7a507fe6b2e4b3b6ba9b679dc33d5cc4c4"
+  "source_sha": "324d0be95d05c77952919c6b55d91e08f710ad04"
 }
