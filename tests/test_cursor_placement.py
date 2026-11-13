@@ -83,18 +83,23 @@ class CursorPlacementTests(unittest.TestCase):
             ],
             runner.commands,
         )
-        self.assertEqual(
-            sum(
-                command == ["xdotool", "key", "--clearmodifiers", "Tab"]
-                for command in runner.commands
-            ),
-            2,
-        )
-        self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "Down"], runner.commands
-        )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
+        )
+        self.assertLess(
+            runner.commands.index(
+                ["xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"]
+            ),
+            runner.commands.index(
+                ["xdotool", "key", "--clearmodifiers", "Return"]
+            ),
+        )
+        self.assertFalse(
+            any(
+                command[-1] in {"Tab", "Down"}
+                for command in runner.commands
+                if len(command) >= 4 and command[1] == "key"
+            )
         )
 
     def test_accepts_return_to_another_eeschema_child_window(self):

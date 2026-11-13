@@ -100,15 +100,10 @@ def start_native_symbol_placement(
             "Preferences → Hotkeys and bind Add Symbol to A, then retry."
         )
 
+    # The native chooser accepts type-to-search in its focused filter/list.
+    # The exact generated name narrows the results to the symbol to place.
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
-    # Let KiCad's debounced filter populate the library tree. Tab twice
-    # moves from the filter box through the sort control into the result tree.
-    # Down selects its first filtered row; Return activates that symbol.
     pause(0.6)
-    send("key", "--clearmodifiers", "Tab")
-    send("key", "--clearmodifiers", "Tab")
-    send("key", "--clearmodifiers", "Down")
-    pause(0.1)
     send("key", "--clearmodifiers", "Return")
     for _ in range(30):
         focused_id = send("getwindowfocus")
