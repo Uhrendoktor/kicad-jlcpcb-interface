@@ -62,36 +62,40 @@ The same production windows are captured in both palettes. In GitHub's light UI 
   <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-selected.png" alt="Selected component properties with catalogue image, stock, pricing and MPN results" width="80%">
 </p>
 
-### Populate and create dialogs
+### Add or Update Passive: review before either outcome
+
+Selecting a generic passive and clearing the Eeschema selection lead to different outcomes in the same action. These captures show what the user reviews and confirms before existing fields are updated or a new project-local symbol is generated.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-proposed.png" alt="Populate Selected Symbol proposal, confidence, fields and review notes" width="80%">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-proposed.png" alt="Update-mode proposal showing confidence, fields and review notes before changing a selected passive." width="80%">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png" alt="Native confirmation dialog explaining that symbol graphics, pins and electrical mapping are unchanged" width="80%">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png" alt="Confirmation explaining that the selected placeholder's symbol graphics, pins and electrical mapping remain unchanged." width="80%">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Populate Selected Symbol after confirmed IPC field update" width="80%">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Updated schematic fields after confirming the review for an existing generic passive." width="80%">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png" alt="Add Component from LCSC with catalogue match details and cursor or X/Y placement options" width="80%">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png" alt="Add-mode proposal showing catalogue matches and cursor or coordinate placement before generating a project-local symbol." width="80%">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png" alt="Native confirmation dialog describing project-local symbol generation and placement" width="80%">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png" alt="Confirmation describing project-local passive-symbol generation and placement." width="80%">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed.png" alt="Add Component dialog after the generated project-local symbol was placed" width="80%">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed.png" alt="Add-mode dialog after a generated project-local passive symbol was placed in the schematic." width="80%">
 </p>
 
-### Actual Eeschema selection flow
+### Verify a catalogue part in circuit context
+
+Use this sequence when catalogue details alone are not enough: select the linked component in Eeschema, then open its focused properties view to check which symbol the supplier record belongs to.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-workflow.gif" alt="Eeschema before selection, after IPC selection and with JLCPCB Component Properties open" width="900">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-workflow.gif" alt="Animation showing an LCSC-linked symbol before selection, after Eeschema selects it, and with its JLCPCB properties window open." width="900">
 </p>
 
 ### KiCad-native symbol previews
