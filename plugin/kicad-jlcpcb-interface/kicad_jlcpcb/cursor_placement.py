@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import time
-from typing import Callable
+from collections.abc import Callable
 
 
 def capture_eeschema_window_id(

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from decimal import Decimal, InvalidOperation
-from typing import Iterable
 
 from .draft import ComponentDraft, build_component_draft
 from .provider import JlcPartDetails

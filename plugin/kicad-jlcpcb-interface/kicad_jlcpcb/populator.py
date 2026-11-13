@@ -241,7 +241,10 @@ class ComponentPopulator:
             if not self.cursor_placement_available:
                 ttk.Label(
                     placement,
-                    text="Cursor mode needs this action launched from Eeschema on X11 with xdotool.",
+                    text=(
+                        "Cursor mode needs this action launched from Eeschema "
+                        "on X11 with xdotool."
+                    ),
                     style="Muted.TLabel",
                 ).pack(side="left", padx=(12, 0))
             self._update_placement_controls()
@@ -589,8 +592,8 @@ class ComponentPopulator:
             if at_cursor and not self.cursor_placement_available:
                 self.messagebox.showerror(
                     "Cursor placement unavailable",
-                    "Launch this action from the active Eeschema window on X11 with xdotool installed, "
-                    "or switch to X/Y coordinate placement.",
+                    "Launch this action from the active Eeschema window on X11 "
+                    "with xdotool installed, or switch to X/Y coordinate placement.",
                     parent=self.root,
                 )
                 return
