@@ -4,6 +4,49 @@ The repository publishes screenshots, an animated Eeschema sequence and KiCad-na
 
 ## Screenshot gallery
 
+### Desktop light and dark themes
+
+The same production windows are captured in both palettes. In GitHub's light UI the light capture is shown; in dark UI the paired dark capture is preferred.
+
+<table>
+  <tr>
+    <th>Component overview</th>
+    <th>Component properties</th>
+  </tr>
+  <tr>
+    <td>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-dark.png">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-light.png" alt="Component overview in light theme" width="100%">
+      </picture>
+    </td>
+    <td>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-dark.png">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-light.png" alt="Component properties in light theme" width="100%">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <th>Populate selected symbol</th>
+    <th>Add component from LCSC</th>
+  </tr>
+  <tr>
+    <td>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Populate review form in light theme" width="100%">
+      </picture>
+    </td>
+    <td>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Add component review form in light theme" width="100%">
+      </picture>
+    </td>
+  </tr>
+</table>
+
 ### Schematic overview and catalogue properties
 
 <p align="center">
@@ -60,7 +103,7 @@ The repository publishes screenshots, an animated Eeschema sequence and KiCad-na
 
 ## What is exercised
 
-The visual capture runs the production application windows, not separately drawn mockups.
+The visual capture runs the production application windows, not separately drawn mockups. It forces the light palette, reapplies the dark palette to each live root, and captures both states from the same widgets; this checks that theme changes update ttk and classic Tk controls without rebuilding the window.
 
 | Workflow | Live GUI / IPC evidence |
 | --- | --- |
@@ -69,6 +112,7 @@ The visual capture runs the production application windows, not separately drawn
 | Properties controls | Calls Select in schematic and Select same part on sheet; verifies the Eeschema selection; copies the LCSC ID and verifies the clipboard; invokes LCSC search, supplier product, datasheet and MPN-result actions and checks that each opens an HTTPS URL. |
 | Populate Selected Symbol | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, captures the proposal and the native confirmation messagebox, checks the confirmation wording, accepts the action and reads updated Value, Footprint, LCSC and MPN fields back from the schematic hierarchy. Captures the post-action state. |
 | Add Component from LCSC | Clears the Eeschema selection, drives the actual lookup/review window with X/Y placement values, captures the proposal and native confirmation messagebox, checks the confirmation wording, accepts generation and placement, then verifies the resulting reference, project-local library ID, value, footprint and linked custom fields through IPC. Captures the completion state. |
+| Theme pairs | Captures the overview, properties, Populate and Add windows in both light and dark palettes, reusing each live widget tree. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 
 The capture asserts both the proposed part and data provenance: the Populate dialog requires a fresh direct response for LCSC C60489 and verifies its 10 kΩ / 0402 interpretation; the Add dialog independently fetches LCSC C105637 and verifies its 1 kΩ / 0402 interpretation. Both screenshots fail closed rather than silently falling back to cached data. The proposal/result screenshots document those controlled examples; the actual supplier facts are those returned at capture time.
