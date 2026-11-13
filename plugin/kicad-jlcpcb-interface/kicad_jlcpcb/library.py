@@ -228,9 +228,13 @@ def _symbol_name(kind: str, lcsc: str, reference_prefix: str = "") -> str:
     ).strip().upper()
     code = str(lcsc or "").strip().upper()
     if not re.fullmatch(r"[A-Z][A-Z0-9]{0,7}", prefix):
-        raise SymbolLibraryError("The symbol reference prefix must be a short KiCad prefix such as R, D or U.")
+        raise SymbolLibraryError(
+            "The symbol reference prefix must be a short KiCad prefix such as R, D or U."
+        )
     if not re.fullmatch(r"C\d{3,}", code):
-        raise SymbolLibraryError("A validated LCSC part number is required to create a project symbol.")
+        raise SymbolLibraryError(
+            "A validated LCSC part number is required to create a project symbol."
+        )
     return f"{prefix}_{code}"
 
 
