@@ -180,7 +180,7 @@ class ComponentDraftTests(unittest.TestCase):
         self.assertEqual(symbol_library_id(SimpleNamespace()), "")
 
         resistor_draft = build_component_draft(details())
-        with self.assertRaisesRegex(ValueError, "proposal requires Device:R"):
+        with self.assertRaisesRegex(ValueError, "(?i)proposal requires Device:R"):
             apply_component_draft_fields(
                 SimpleNamespace(
                     definition=capacitor.definition,
