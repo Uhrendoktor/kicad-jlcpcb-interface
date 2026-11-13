@@ -108,8 +108,14 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(chooser_move, runner.commands)
         self.assertIn(chooser_activate, runner.commands)
         self.assertIn(chooser_focus, runner.commands)
-        self.assertLess(runner.commands.index(chooser_move), runner.commands.index(chooser_activate))
-        self.assertLess(runner.commands.index(chooser_activate), runner.commands.index(chooser_focus))
+        self.assertLess(
+            runner.commands.index(chooser_move),
+            runner.commands.index(chooser_activate),
+        )
+        self.assertLess(
+            runner.commands.index(chooser_activate),
+            runner.commands.index(chooser_focus),
+        )
         self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_focus))
         self.assertLess(runner.commands.index(filter_focus), runner.commands.index(type_command))
         self.assertEqual(
