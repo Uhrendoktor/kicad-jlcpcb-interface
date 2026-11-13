@@ -579,9 +579,15 @@ class ComponentPopulator:
             )
             if can_apply
             else (
-                "Launch this action from the focused Eeschema window on X11 with xdotool to enable add mode."
+                (
+                    "Launch this action from the focused Eeschema window on X11 with "
+                    "xdotool to enable add mode."
+                )
                 if self.create_mode and not self.cursor_placement_available
-                else "This proposal is incomplete or incompatible; automatic write-back is disabled."
+                else (
+                    "This proposal is incomplete or incompatible; automatic write-back "
+                    "is disabled."
+                )
             )
         )
         self.apply_button.configure(state="normal" if can_apply else "disabled")
