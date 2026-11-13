@@ -327,6 +327,7 @@ class ComponentDraftTests(unittest.TestCase):
         self.assertEqual(led.kind, "led")
         self.assertEqual(led.symbol_hint, "Device:LED")
         self.assertEqual(led.reference_prefix, "D")
+        self.assertEqual(led.confidence, "partial")
         self.assertEqual(led.value, "APT1608SURCK")
         self.assertEqual(led.footprint, "LED_SMD:LED_0603_1608Metric")
 
