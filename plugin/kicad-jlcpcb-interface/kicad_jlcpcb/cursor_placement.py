@@ -122,10 +122,26 @@ def start_native_symbol_placement(
             f"within 15 seconds: {chooser_title!r}."
         )
     pause(0.2)
-    # KiCad's native chooser gives its Filter control focus when it opens.
-    # Keep that native focus path intact: the parent Tk review window has been
-    # withdrawn before this function is called, so it cannot retain a mapped
-    # window or focus/grab in a headless X11 session.
+    # With the Tk review window withdrawn, click the actual wxSearchCtrl. The
+    # headless fixture does not focus this child control automatically, even
+    # though the chooser frame itself owns X11 focus.
+    geometry = send("getwindowgeometry", "--shell", chooser_id)
+    dimensions = {
+        item.split("=", 1)[0]: item.split("=", 1)[1]
+        for line in geometry.splitlines()
+        for item in line.split()
+        if "=" in item
+    }
+    try:
+        window_x = int(dimensions["X"])
+        window_y = int(dimensions["Y"])
+    except (KeyError, ValueError) as exc:
+        raise RuntimeError(
+            f"Could not read KiCad's native symbol chooser position: {geometry!r}"
+        ) from exc
+    send("mousemove", "--sync", str(window_x + 80), str(window_y + 17))
+    send("click", "1")
+    send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "15", symbol_name)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
