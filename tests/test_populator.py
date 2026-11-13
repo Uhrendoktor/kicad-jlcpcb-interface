@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.draft import symbol_library_id  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
+    ComponentPopulator,
     resolve_component_action_target,
     resolve_passive_action_target,
     resolve_passive_library_id,
@@ -283,6 +285,114 @@ class PassiveActionModeResolutionTests(unittest.TestCase):
         schematic = SimpleNamespace(get_symbols=lambda: [selected], document=object())
         with self.assertRaisesRegex(ValueError, "not an editable schematic symbol"):
             resolve_passive_action_target(schematic, FakeKiCad({}), [selected])
+
+
+
+class TkCleanupResource:
+    def __init__(self, name, events, root):
+        self.name = name
+        self.events = events
+        self.root = root
+
+    def __del__(self):
+        self.events.append(
+            (self.name, threading.get_ident(), self.root.destroyed)
+        )
+
+
+class TkCleanupRoot:
+    def __init__(self, events):
+        self.events = events
+        self.destroyed = False
+
+    def after_cancel(self, _callback_id):
+        pass
+
+    def destroy(self):
+        self.destroyed = True
+        self.events.append(("root-destroyed", threading.get_ident(), True))
+
+
+class TkCleanupExecutor:
+    def __init__(self, events, root):
+        self.events = events
+        self.root = root
+
+    def shutdown(self, *, wait, cancel_futures):
+        self.events.append(
+            (
+                "executor-shutdown",
+                threading.get_ident(),
+                self.root.destroyed,
+                wait,
+                cancel_futures,
+            )
+        )
+
+
+class ComponentPopulatorCleanupTests(unittest.TestCase):
+    def test_joins_worker_and_releases_tk_state_before_destroy(self):
+        events = []
+        root = TkCleanupRoot(events)
+        messagebox = object()
+        generated = object()
+        populator = object.__new__(ComponentPopulator)
+        populator.closed = False
+        populator._poll_id = "poll-id"
+        populator.root = root
+        populator.executor = TkCleanupExecutor(events, root)
+        populator.messagebox = messagebox
+        populator.create_mode = True
+        populator.generated_library_symbol = generated
+        populator.cursor_placement_started = True
+
+        resource_names = (
+            "lcsc_var",
+            "status_var",
+            "symbol_var",
+            "confidence_var",
+            "symbol_hint_var",
+            "value_var",
+            "footprint_var",
+            "reference_prefix_var",
+            "candidate_tree",
+            "apply_button",
+        )
+        for name in resource_names:
+            setattr(populator, name, TkCleanupResource(name, events, root))
+
+        ComponentPopulator.close(populator)
+
+        self.assertEqual(events[0][0], "executor-shutdown")
+        self.assertEqual(events[0][1], threading.get_ident())
+        self.assertFalse(events[0][2])
+        self.assertTrue(events[0][3])
+        self.assertTrue(events[0][4])
+        resource_events = events[1:-1]
+        self.assertEqual(
+            {event[0] for event in resource_events}, set(resource_names)
+        )
+        self.assertTrue(
+            all(event[1] == threading.get_ident() for event in resource_events)
+        )
+        self.assertTrue(all(not event[2] for event in resource_events))
+        self.assertEqual(events[-1][0], "root-destroyed")
+        self.assertTrue(root.destroyed)
+        self.assertTrue(populator.closed)
+        self.assertTrue(populator.create_mode)
+        self.assertIs(populator.messagebox, messagebox)
+        self.assertIs(populator.generated_library_symbol, generated)
+        self.assertTrue(populator.cursor_placement_started)
+        self.assertEqual(
+            set(populator.__dict__),
+            {
+                "closed",
+                "messagebox",
+                "create_mode",
+                "generated_library_symbol",
+                "cursor_placement_started",
+            },
+        )
 
 
 if __name__ == "__main__":

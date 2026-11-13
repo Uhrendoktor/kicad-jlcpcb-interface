@@ -215,7 +215,7 @@ For the selected KiCad Library:Symbol, the add-on:
 - Refuses symbols that extend another library symbol, because the generator copies a standalone definition rather than resolving inherited definitions. Choose a standalone stock symbol instead.
 - Writes the selected Value, optional Footprint, Datasheet and Description plus hidden LCSC, Manufacturer, MPN, category and catalogue attribute properties.
 - Writes or extends the project-local JLCPCB_Generated.kicad_sym library and registers it in sym-lib-table using a project-relative KiCad project variable URI.
-- Reloads the project library before opening KiCad's native chooser or placing an instance at the entered X/Y coordinates.
+- Reloads the project library before opening KiCad's native Add Symbol chooser.
 
 The generated symbol ID uses the selected reference prefix and LCSC part number, so repeat generation for the same part can reuse the existing project-local symbol. The generator protects unowned files and refuses to overwrite a generated symbol that has been manually modified. The library writer uses atomic file replacement and creates a backup when extending an existing generated library.
 
@@ -233,7 +233,7 @@ The existing generated symbol is detected and reused; placement can continue whe
 
 #### Placement and electrical checks
 
-Cursor placement uses the native Eeschema Add Symbol hotkey A through xdotool. It requires the action to have been launched while the Eeschema window was focused on an X11 desktop. Check Eeschema Preferences → Hotkeys if the native chooser does not open. X/Y placement remains available when cursor handoff cannot be used.
+Add mode is cursor-only. It uses the native Eeschema Add Symbol hotkey `A` through `xdotool` and requires the action to have been launched while the Eeschema window was focused on an X11 desktop. If that requirement is not met, add mode is disabled with an explanation; there is no X/Y coordinate fallback. Check Eeschema Preferences → Hotkeys if the native chooser does not open.
 
 The optional Footprint field is a KiCad footprint-library reference, not a footprint generator. A symbol can be created without a footprint, but it will need a suitable footprint before PCB layout. Always inspect the symbol/footprint pair and verify pin numbers, electrical types, package dimensions and ratings against the manufacturer datasheet.
 

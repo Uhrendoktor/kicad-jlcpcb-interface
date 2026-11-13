@@ -101,7 +101,7 @@ There is one Eeschema command and one review-dialog class. The action selects it
     </tr>
     <tr>
       <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png" alt="Confirmation describing project-local KiCad symbol generation and placement" width="420"></td>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed.png" alt="Add-mode dialog after a generated project-local component symbol was placed in the schematic" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-cursor.png" alt="Eeschema with the generated project-local component symbol attached to the mouse cursor" width="420"></td>
     </tr>
   </table>
 </details>
@@ -131,7 +131,7 @@ The visual capture runs the production application windows, not separately drawn
 | Component Properties | Opens the focused properties window from a selected linked Eeschema symbol and captures its loaded catalogue view. |
 | Properties controls | Calls Select in schematic and Select same part on sheet; verifies the Eeschema selection; copies the LCSC ID and verifies the clipboard; invokes LCSC search, supplier product, datasheet and MPN-result actions and checks that each opens an HTTPS URL. |
 | Add or Update Component — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, captures the proposal and the native confirmation messagebox, checks the confirmation wording, accepts the action and reads updated Value, Footprint, LCSC and MPN fields back from the schematic hierarchy. Captures the post-action state. |
-| Add or Update Component — add mode | Clears the Eeschema selection, drives the actual lookup/review window with X/Y placement values, captures the proposal and native confirmation messagebox, checks the confirmation wording, accepts generation and placement, then verifies the resulting reference, project-local library ID, value, footprint and linked custom fields through IPC. Captures the completion state. |
+| Add or Update Component — add mode | Clears the Eeschema selection, drives the actual lookup/review window, captures the proposal and native confirmation messagebox, verifies the cursor-placement wording, accepts generation, checks that the generated project-local symbol is attached to Eeschema's cursor, captures the live desktop, and presses Escape to leave the fixture unchanged. |
 | Theme pairs | Captures the overview, properties and both Add or Update Component modes in both light and dark palettes, reusing each live widget tree. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 
