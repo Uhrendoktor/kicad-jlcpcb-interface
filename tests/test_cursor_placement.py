@@ -25,6 +25,11 @@ class FakeRunner:
         command = arguments[1]
         if command == "getwindowpid":
             return SimpleNamespace(stdout="4242", returncode=0)
+        if command == "getwindowgeometry":
+            return SimpleNamespace(
+                stdout="WINDOW=0x200\nX=30\nY=360\nWIDTH=880\nHEIGHT=680\nSCREEN=0",
+                returncode=0,
+            )
         if command == "getwindowfocus":
             value = self.outputs.pop(0) if self.outputs else "0x100"
             return SimpleNamespace(stdout=value, returncode=0)
@@ -67,12 +72,17 @@ class CursorPlacementTests(unittest.TestCase):
 
     def test_starts_native_chooser_and_returns_with_symbol_on_cursor(self):
         runner = FakeRunner(["0x200", "0x100"])
+        pauses = []
+
+        def pause(seconds):
+            pauses.append(seconds)
+
         start_native_symbol_placement(
             "0x100",
             "R_C60489",
             xdotool="xdotool",
             command_runner=runner,
-            pause=lambda _seconds: None,
+            pause=pause,
         )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
@@ -86,6 +96,50 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
         )
+        filter_click = ["xdotool", "click", "1"]
+        chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
+        filter_focus = ["xdotool", "mousemove", "--sync", "241", "377"]
+        result_focus = ["xdotool", "mousemove", "--sync", "162", "441"]
+        type_command = [
+            "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
+        ]
+        return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
+        self.assertIn(chooser_focus, runner.commands)
+        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_focus))
+        self.assertLess(runner.commands.index(filter_focus), runner.commands.index(type_command))
+        self.assertEqual(
+            runner.commands[runner.commands.index(filter_focus) + 1],
+            filter_click,
+        )
+        self.assertLess(runner.commands.index(type_command), runner.commands.index(result_focus))
+        self.assertEqual(
+            runner.commands[runner.commands.index(result_focus) + 1],
+            filter_click,
+        )
+        self.assertLess(runner.commands.index(result_focus), runner.commands.index(return_command))
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
+        )
+        self.assertFalse(
+            any(
+                command[-1] in {"Tab", "Down"}
+                for command in runner.commands
+                if len(command) >= 4 and command[1] == "key"
+            )
+        )
+        self.assertIn(0.5, pauses)
+        self.assertNotIn(0.6, pauses)
+
+    def test_accepts_return_to_another_eeschema_child_window(self):
+        runner = FakeRunner(["0x200", "0x300"])
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+        self.assertIn(["xdotool", "getwindowpid", "0x300"], runner.commands)
 
     def test_reports_missing_native_chooser(self):
         runner = FakeRunner(["0x100"] * 55)

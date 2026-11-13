@@ -21,6 +21,7 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
+from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -58,7 +59,7 @@ ASSET_NAMES = (
     "populate-component-applied.png",
     "add-component-proposed.png",
     "add-component-confirmation.png",
-    "add-component-placed.png",
+    "add-component-cursor.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
     "schematic-properties-opened.png",
@@ -1197,10 +1198,8 @@ def _drive_populator_form(
     state = {"done": False, "deadline": time.monotonic() + 60.0}
 
     def close_populator() -> None:
-        # The result queue can be notified just before the executor's done
-        # callback returns. Join that short-lived worker before destroying Tk,
-        # so callback/future cleanup cannot release Tk objects on the worker.
-        populator.executor.shutdown(wait=True, cancel_futures=True)
+        # ComponentPopulator.close joins its worker and clears all Tk-owned
+        # state on the UI thread before destroying the Tcl interpreter.
         populator.close()
 
     def advance() -> None:
@@ -1372,12 +1371,38 @@ def _drive_populator_form(
                 populator.messagebox.showerror = original_showerror
 
             validate_result(populator)
-            root.update()
-            _capture_window(root, output_dir / completed_asset)
+            if populator.create_mode:
+                _capture_desktop(output_dir / completed_asset)
+                cancelled = subprocess.run(
+                    ["xdotool", "key", "--clearmodifiers", "Escape"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=10,
+                )
+                if cancelled.returncode:
+                    raise RuntimeError(
+                        "Could not cancel the visual fixture's pending cursor placement: "
+                        + (cancelled.stderr.strip() or str(cancelled.returncode))
+                    )
+            else:
+                root.update()
+                _capture_window(root, output_dir / completed_asset)
             state["done"] = True
             close_populator()
         except BaseException as exc:
-            failures.append(f"{type(exc).__name__}: {exc}")
+            diagnostic = ""
+            if populator.create_mode:
+                screenshot = output_dir / "add-component-chooser-failure.png"
+                try:
+                    _capture_desktop(screenshot)
+                    diagnostic = f"; chooser screenshot: {screenshot.name}"
+                except BaseException as capture_error:
+                    diagnostic = (
+                        "; chooser screenshot failed: "
+                        f"{type(capture_error).__name__}: {capture_error}"
+                    )
+            failures.append(f"{type(exc).__name__}: {exc}{diagnostic}")
             try:
                 close_populator()
             except Exception:
@@ -1499,6 +1524,36 @@ def _capture_passive_component_workflows(
     if not create_mode or add_target is not None or add_library_id:
         raise RuntimeError("An empty selection did not resolve to add mode.")
 
+    editor_windows = _visible_windows("xdotool")
+    editor_window_id = next(
+        (
+            window_id
+            for window_id, title, window_class in editor_windows
+            if "eeschema" in window_class.casefold()
+            or "schematic editor" in title.casefold()
+        ),
+        None,
+    )
+    if editor_window_id is None:
+        raise RuntimeError("The live Add mode UI fixture could not find Eeschema.")
+    focused = subprocess.run(
+        ["xdotool", "windowfocus", "--sync", editor_window_id],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    if focused.returncode:
+        raise RuntimeError(
+            "The live Add mode UI fixture could not focus Eeschema: "
+            + (focused.stderr.strip() or str(focused.returncode))
+        )
+    editor_window_id = capture_eeschema_window_id()
+    if editor_window_id is None:
+        raise RuntimeError(
+            "The active Eeschema window could not be captured for cursor placement."
+        )
+
     create = ComponentPopulator(
         schematic,
         None,
@@ -1506,62 +1561,57 @@ def _capture_passive_component_workflows(
         create_mode=True,
         kicad=kicad,
         theme="light",
+        editor_window_id=editor_window_id,
     )
-    create.root.geometry("1040x930+840+30")
-    create.placement_mode_var.set("coordinates")
+    create.root.geometry("1000x820+840+30")
     create.lcsc_var.set("C105637")
-    create.x_var.set("205.0")
-    create.y_var.set("160.0")
     create.lookup()
 
     def validate_create_result(populator: ComponentPopulator) -> None:
-        added = populator.symbol
+        generated = populator.generated_library_symbol
         if (
-            added is None
-            or added.reference != "R4"
-            or symbol_library_id(added) != "JLCPCB_Generated:R_C105637"
-            or added.value != "1k"
-            or added.footprint_field.text.value
-            != "Resistor_SMD:R_0402_1005Metric"
+            generated is None
+            or not populator.cursor_placement_started
+            or generated.library_id != "JLCPCB_Generated:R_C105637"
+            or generated.symbol_name != "R_C105637"
+            or not generated.library_path.is_file()
         ):
             raise RuntimeError(
-                "The confirmed add-component UI action did not place R4 linked to the "
-                "project-local generated LCSC symbol."
+                "The Add mode UI did not generate the project symbol and hand it "
+                "to Eeschema's native cursor-placement tool."
             )
-        linked = next(
-            (item for item in find_linked_components(schematic) if item.reference == "R4"),
-            None,
-        )
-        if (
-            linked is None
-            or linked.part_code != "C105637"
-            or linked.value != "1k"
-            or linked.manufacturer_part_number != "RC0402JR-071KL"
-        ):
+        library_text = generated.library_path.read_text(encoding="utf-8")
+        if f'(symbol "{generated.symbol_name}"' not in library_text:
             raise RuntimeError(
-                "The add-component UI action did not persist the LCSC metadata in the "
-                "schematic hierarchy."
+                "The generated project library does not contain the selected symbol."
             )
 
-    _drive_populator_form(
-        create,
-        output_dir,
-        proposal_asset="add-component-proposed.png",
-        light_asset="add-component-light.png",
-        dark_asset="add-component-dark.png",
-        confirmation_asset="add-component-confirmation.png",
-        completed_asset="add-component-placed.png",
-        confirmation_title="Confirm new schematic component",
-        required_confirmation_text=(
-            "clones KiCad's stock passive graphics and two-pin electrical topology"
-        ),
-        expected_lcsc="C105637",
-        expected_value="1k",
-        expected_footprint="Resistor_SMD:R_0402_1005Metric",
-        validate_result=validate_create_result,
-    )
+    debug_capture = output_dir / "add-component-chooser-after-filter.png"
+    os.environ["KICAD_CHOOSER_DEBUG_CAPTURE"] = str(debug_capture)
+    try:
+        _drive_populator_form(
+            create,
+            output_dir,
+            proposal_asset="add-component-proposed.png",
+            light_asset="add-component-light.png",
+            dark_asset="add-component-dark.png",
+            confirmation_asset="add-component-confirmation.png",
+            completed_asset="add-component-cursor.png",
+            confirmation_title="Confirm new schematic component",
+            required_confirmation_text="mouse cursor",
+            expected_lcsc="C105637",
+            expected_value="1k",
+            expected_footprint="Resistor_SMD:R_0402_1005Metric",
+            validate_result=validate_create_result,
+        )
+    except BaseException:
+        raise
+    else:
+        debug_capture.unlink(missing_ok=True)
+    finally:
+        os.environ.pop("KICAD_CHOOSER_DEBUG_CAPTURE", None)
     print(
-        "live-add-mode-ui=passed reference=R4 "
+        "live-add-mode-ui=passed cursor=active "
         "library_id=JLCPCB_Generated:R_C105637",
         flush=True,
     )
