@@ -37,7 +37,10 @@ from kicad_jlcpcb.model import (  # noqa: E402
     iter_schematic_symbols,
 )
 from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
-from kicad_jlcpcb.populator import ComponentPopulator  # noqa: E402
+from kicad_jlcpcb.populator import (  # noqa: E402
+    ComponentPopulator,
+    resolve_selected_symbol,
+)
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 
 ASSET_NAMES = (
@@ -1257,9 +1260,15 @@ def _capture_passive_component_workflows(
     if selected.reference != "R2":
         raise RuntimeError("The populate UI fixture did not select R2.")
 
+    editable_symbol = resolve_selected_symbol(schematic, selected.symbol)
+    if symbol_library_id(editable_symbol) != "Device:R":
+        raise RuntimeError(
+            "The selected R2 IPC item could not be resolved to its editable Device:R "
+            f"library definition: {symbol_library_id(editable_symbol)!r}"
+        )
     populate = ComponentPopulator(
         schematic,
-        selected.symbol,
+        editable_symbol,
         cache_dir / "populate-ui-cache",
         create_mode=False,
     )
