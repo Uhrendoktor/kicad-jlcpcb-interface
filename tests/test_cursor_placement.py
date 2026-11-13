@@ -84,6 +84,9 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
         self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "Tab"], runner.commands
+        )
+        self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
         )
 

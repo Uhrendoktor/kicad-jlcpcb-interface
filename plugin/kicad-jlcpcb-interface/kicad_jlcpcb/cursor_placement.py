@@ -101,7 +101,11 @@ def start_native_symbol_placement(
         )
 
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
-    pause(0.15)
+    pause(0.5)
+    # The text field filters the dialog but does not commit a result by itself.
+    # Tab moves focus into the filtered symbol list; Return chooses that result.
+    send("key", "--clearmodifiers", "Tab")
+    pause(0.1)
     send("key", "--clearmodifiers", "Return")
     for _ in range(30):
         focused_id = send("getwindowfocus")
