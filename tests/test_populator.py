@@ -11,6 +11,7 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.draft import symbol_library_id  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
+    resolve_passive_action_target,
     resolve_passive_library_id,
     resolve_selected_symbol,
 )
@@ -170,6 +171,74 @@ class SelectedSymbolResolutionTests(unittest.TestCase):
 
         self.assertIs(resolved, selected)
         self.assertEqual(symbol_library_id(resolved), "")
+
+
+
+
+
+class PassiveActionModeResolutionTests(unittest.TestCase):
+    def editable(self, identifier: str, reference: str, library: str = "Device", name: str = "R"):
+        result = symbol(identifier, reference, library=library, name=name)
+        result.value = "10k"
+        result.user_fields = []
+        result.proto = FakeProto()
+        result.footprint_field = object()
+        return result
+
+    def test_no_selection_selects_create_mode(self):
+        target, library_id, create_mode = resolve_passive_action_target(
+            SimpleNamespace(), FakeKiCad({}), []
+        )
+        self.assertIsNone(target)
+        self.assertEqual(library_id, "")
+        self.assertTrue(create_mode)
+
+    def test_one_stock_resistor_selects_update_mode(self):
+        selected = self.editable("symbol-id-1", "R2")
+        schematic = SimpleNamespace(
+            get_symbols=lambda: [selected],
+            document=object(),
+        )
+        target, library_id, create_mode = resolve_passive_action_target(
+            schematic, FakeKiCad({}), [selected]
+        )
+        self.assertIs(target, selected)
+        self.assertEqual(library_id, "Device:R")
+        self.assertFalse(create_mode)
+
+    def test_one_stock_capacitor_selects_update_mode(self):
+        selected = self.editable("symbol-id-1", "C2", name="C")
+        schematic = SimpleNamespace(
+            get_symbols=lambda: [selected],
+            document=object(),
+        )
+        target, library_id, create_mode = resolve_passive_action_target(
+            schematic, FakeKiCad({}), [selected]
+        )
+        self.assertIs(target, selected)
+        self.assertEqual(library_id, "Device:C")
+        self.assertFalse(create_mode)
+
+    def test_multiple_selection_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Select one generic"):
+            resolve_passive_action_target(
+                SimpleNamespace(), FakeKiCad({}), [object(), object()]
+            )
+
+    def test_incompatible_symbol_is_rejected_with_add_guidance(self):
+        selected = self.editable("symbol-id-1", "U1", library="Custom", name="IC")
+        schematic = SimpleNamespace(
+            get_symbols=lambda: [selected],
+            document=object(),
+        )
+        with self.assertRaisesRegex(ValueError, "Only stock generic"):
+            resolve_passive_action_target(schematic, FakeKiCad({}), [selected])
+
+    def test_non_symbol_selection_is_rejected(self):
+        selected = SimpleNamespace(reference="Graphic")
+        schematic = SimpleNamespace(get_symbols=lambda: [selected], document=object())
+        with self.assertRaisesRegex(ValueError, "not an editable schematic symbol"):
+            resolve_passive_action_target(schematic, FakeKiCad({}), [selected])
 
 
 if __name__ == "__main__":
