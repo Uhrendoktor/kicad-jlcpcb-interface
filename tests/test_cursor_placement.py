@@ -96,14 +96,22 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
         )
-        filter_click = ["xdotool", "click", "1"]
         chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
-        filter_focus = ["xdotool", "mousemove", "--sync", "241", "377"]
-        result_focus = ["xdotool", "mousemove", "--sync", "162", "441"]
-        type_command = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
+        filter_focus = [
+            "xdotool", "mousemove", "--sync", "--window", "0x200", "211", "17"
         ]
-        return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
+        filter_click = ["xdotool", "click", "--window", "0x200", "1"]
+        result_focus = [
+            "xdotool", "mousemove", "--sync", "--window", "0x200", "132", "81"
+        ]
+        result_click = ["xdotool", "click", "--window", "0x200", "1"]
+        type_command = [
+            "xdotool", "type", "--clearmodifiers", "--window", "0x200",
+            "--delay", "12", "R_C60489",
+        ]
+        return_command = [
+            "xdotool", "key", "--clearmodifiers", "--window", "0x200", "Return"
+        ]
         self.assertIn(chooser_focus, runner.commands)
         self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_focus))
         self.assertLess(runner.commands.index(filter_focus), runner.commands.index(type_command))
@@ -118,7 +126,8 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertLess(runner.commands.index(result_focus), runner.commands.index(return_command))
         self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
+            ["xdotool", "key", "--clearmodifiers", "--window", "0x200", "ctrl+a"],
+            runner.commands
         )
         self.assertFalse(
             any(

@@ -101,9 +101,9 @@ def start_native_symbol_placement(
             "Preferences → Hotkeys and bind Add Symbol to A, then retry."
         )
 
-    # Focusing the top-level dialog does not focus its search widget on all
-    # wxWidgets builds. Click the native Filter field before typing so the
-    # generated symbol is actually used to narrow the chooser's library tree.
+    # XTest pointer motion alone can leave wx's chooser filter outside the
+    # event target. Send both pointer and keyboard input to the actual chooser
+    # X11 window so its Filter control receives the search string.
     geometry = send("getwindowgeometry", "--shell", chooser_id)
     dimensions = {
         item.split("=", 1)[0]: item.split("=", 1)[1]
@@ -112,8 +112,6 @@ def start_native_symbol_placement(
         if "=" in item
     }
     try:
-        window_x = int(dimensions["X"])
-        window_y = int(dimensions["Y"])
         width = int(dimensions["WIDTH"])
         height = int(dimensions["HEIGHT"])
     except (KeyError, ValueError) as exc:
@@ -125,16 +123,22 @@ def start_native_symbol_placement(
             f"KiCad's native symbol chooser is unexpectedly small: {width}x{height}"
         )
 
-    filter_x = window_x + int(width * 0.24)
-    filter_y = window_y + max(12, int(height * 0.025))
-    result_x = window_x + int(width * 0.15)
-    result_y = window_y + int(height * 0.12)
+    filter_x = int(width * 0.24)
+    filter_y = max(10, int(height * 0.025))
+    result_x = int(width * 0.15)
+    result_y = int(height * 0.12)
     send("windowfocus", "--sync", chooser_id)
     pause(0.1)
-    send("mousemove", "--sync", str(filter_x), str(filter_y))
-    send("click", "1")
-    send("key", "--clearmodifiers", "ctrl+a")
-    send("type", "--clearmodifiers", "--delay", "12", symbol_name)
+    send(
+        "mousemove", "--sync", "--window", chooser_id,
+        str(filter_x), str(filter_y),
+    )
+    send("click", "--window", chooser_id, "1")
+    send("key", "--clearmodifiers", "--window", chooser_id, "ctrl+a")
+    send(
+        "type", "--clearmodifiers", "--window", chooser_id,
+        "--delay", "12", symbol_name,
+    )
     pause(0.5)
     pointer = send("getmouselocation", "--shell")
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
@@ -154,11 +158,13 @@ def start_native_symbol_placement(
                 f"pointer={pointer!r}",
                 flush=True,
             )
-    # Filtering leaves the exact symbol as the first row. Select that row
-    # explicitly instead of relying on whichever chooser control has focus.
-    send("mousemove", "--sync", str(result_x), str(result_y))
-    send("click", "1")
-    send("key", "--clearmodifiers", "Return")
+    # After filtering the exact generated symbol is the first result.
+    send(
+        "mousemove", "--sync", "--window", chooser_id,
+        str(result_x), str(result_y),
+    )
+    send("click", "--window", chooser_id, "1")
+    send("key", "--clearmodifiers", "--window", chooser_id, "Return")
     for _ in range(30):
         focused_id = send("getwindowfocus")
         if (
