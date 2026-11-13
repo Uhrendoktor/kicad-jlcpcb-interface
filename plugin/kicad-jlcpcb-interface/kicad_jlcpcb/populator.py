@@ -6,6 +6,7 @@ import math
 import queue
 import shutil
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +35,7 @@ PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 
 
 class ComponentPopulator:
-    """Review-first UI for populating a placeholder or generating a project-local passive."""
+    """Review-first UI for updating or adding project-local KiCad components."""
 
     def __init__(
         self,
@@ -65,17 +66,12 @@ class ComponentPopulator:
         if self.create_mode and symbol is not None:
             raise ValueError("Create mode does not accept an existing symbol.")
         if not self.create_mode and symbol is None:
-            raise ValueError("Select a generic Device:R or Device:C placeholder.")
+            raise ValueError("Select exactly one schematic symbol to update.")
         self.library_id = (
             str(library_id or "").strip() or symbol_library_id(symbol)
             if symbol is not None
             else ""
         )
-        if not self.create_mode and self.library_id not in SUPPORTED_PLACEHOLDERS:
-            raise ValueError(
-                "Select a generic Device:R or Device:C placeholder. "
-                f"The selected symbol resolves to {self.library_id or 'an unknown library ID'}."
-            )
         self.settings_directory = Path(settings_directory).expanduser()
         self.settings_directory.mkdir(parents=True, exist_ok=True)
         self.provider = JlcSearchProvider(
@@ -94,24 +90,31 @@ class ComponentPopulator:
         self.palette = apply_tk_theme(self.root, theme)
         self.theme = self.root._kicad_jlcpcb_theme
         reference = str(getattr(symbol, "reference", "") or "selected symbol")
-        self.root.title("JLCPCB Add or Update Passive")
+        self.root.title("JLCPCB Add or Update Component")
         self.root.geometry("1040x930" if self.create_mode else "860x780")
         self.root.minsize(820 if self.create_mode else 720, 700 if self.create_mode else 620)
 
         current = component_from_symbol(symbol) if symbol is not None else None
         self.lcsc_var = tk.StringVar(value=current.part_code if current else "")
+        self.symbol_hint_var = tk.StringVar(value="")
+        self.value_var = tk.StringVar(value=getattr(symbol, "value", "") or "")
+        self.footprint_var = tk.StringVar(
+            value=self._field_value(getattr(symbol, "footprint_field", None))
+            if symbol is not None else ""
+        )
+        self.reference_prefix_var = tk.StringVar(value="")
         self.x_var = tk.StringVar(value="100.0")
         self.y_var = tk.StringVar(value="100.0")
         self.placement_mode_var = tk.StringVar(
             value="cursor" if self.cursor_placement_available else "coordinates"
         )
         self.status_var = tk.StringVar(
-            value="Enter an LCSC code or a passive value such as 10k or 100nF."
+            value="Search by LCSC code, MPN, component name or passive value."
             if self.create_mode
             else "Enter an LCSC part number and fetch its catalogue record."
         )
         symbol_summary = (
-            "New generic passive · active sheet · placement in millimetres"
+            "New project-local component · active sheet · placement in millimetres"
             if self.create_mode
             else (
                 f"{reference} · {self.library_id} · "
@@ -128,21 +131,22 @@ class ComponentPopulator:
         ttk.Label(
             outer,
             text=(
-                "Add a new passive component"
+                "Add a new component"
                 if self.create_mode
-                else "Update the selected passive"
+                else "Update the selected component"
             ),
             style="Title.TLabel",
         ).pack(anchor="w")
         instructions = (
             "Find the catalogue part, review the proposed fields and warnings, then confirm. "
             + (
-                "With no selection, search by LCSC code or passive value, choose a match "
-                "and place a reusable project-local symbol."
+                "With no selection, search by LCSC code, MPN, device name or passive value, "
+                "review the suggested KiCad symbol and footprint, then place a project-local copy. "
+                "For other parts, enter the stock Library:Symbol ID yourself."
                 if self.create_mode
                 else (
-                    "The selected symbol's graphics, pins and electrical "
-                    "pin mapping are preserved."
+                    "Catalogue fields are updated on the selected symbol. Its graphics, "
+                    "pins and electrical pin mapping are preserved."
                 )
             )
         )
@@ -162,7 +166,7 @@ class ComponentPopulator:
         controls.pack(fill="x", pady=(0, 8))
         ttk.Label(
             controls,
-            text="LCSC code or value" if self.create_mode else "LCSC part number",
+            text="LCSC / MPN / keyword / value" if self.create_mode else "LCSC part number",
         ).pack(side="left", padx=(0, 8))
         self.lcsc_entry = ttk.Entry(
             controls, textvariable=self.lcsc_var, width=30 if self.create_mode else 24
@@ -175,9 +179,55 @@ class ComponentPopulator:
         )
         self.lookup_button.pack(side="left")
 
+        component_options = ttk.LabelFrame(
+            outer, text="COMPONENT DETAILS (REVIEW OR EDIT)", padding=(8, 5)
+        )
+        component_options.pack(fill="x", pady=(0, 8))
+        row = 0
+        if self.create_mode:
+            ttk.Label(component_options, text="KiCad Library:Symbol").grid(
+                row=row, column=0, sticky="w", padx=(0, 8), pady=3
+            )
+            symbol_entry = ttk.Entry(
+                component_options, textvariable=self.symbol_hint_var, width=34
+            )
+            symbol_entry.grid(row=row, column=1, sticky="ew", pady=3)
+            symbol_entry.bind("<KeyRelease>", self._refresh_readiness)
+            row += 1
+        ttk.Label(component_options, text="Value").grid(
+            row=row, column=0, sticky="w", padx=(0, 8), pady=3
+        )
+        value_entry = ttk.Entry(
+            component_options, textvariable=self.value_var, width=34
+        )
+        value_entry.grid(row=row, column=1, sticky="ew", pady=3)
+        value_entry.bind("<KeyRelease>", self._refresh_readiness)
+        row += 1
+        ttk.Label(component_options, text="Footprint (optional)").grid(
+            row=row, column=0, sticky="w", padx=(0, 8), pady=3
+        )
+        footprint_entry = ttk.Entry(
+            component_options, textvariable=self.footprint_var, width=34
+        )
+        footprint_entry.grid(row=row, column=1, sticky="ew", pady=3)
+        footprint_entry.bind("<KeyRelease>", self._refresh_readiness)
+        row += 1
+        if self.create_mode:
+            ttk.Label(component_options, text="Reference prefix").grid(
+                row=row, column=0, sticky="w", padx=(0, 8), pady=3
+            )
+            prefix_entry = ttk.Entry(
+                component_options, textvariable=self.reference_prefix_var, width=8
+            )
+            prefix_entry.grid(row=row, column=1, sticky="w", pady=3)
+            prefix_entry.bind("<KeyRelease>", self._refresh_readiness)
+        component_options.columnconfigure(1, weight=1)
+
         if self.create_mode:
             candidate_frame = ttk.LabelFrame(
-                outer, text="EXACT-VALUE CATALOGUE MATCHES", padding=(7, 5)
+                outer,
+                text="CATALOGUE CANDIDATES · PASSIVE VALUE SEARCH IS EXACT",
+                padding=(7, 5),
             )
             candidate_frame.pack(fill="x", pady=(0, 8))
             self.candidate_tree = ttk.Treeview(
@@ -298,7 +348,7 @@ class ComponentPopulator:
         self.apply_button = ttk.Button(
             footer,
             text=(
-                "Generate and place passive"
+                "Generate and place component"
                 if self.create_mode
                 else "Apply reviewed fields to selected symbol"
             ),
@@ -317,17 +367,23 @@ class ComponentPopulator:
 
     def lookup(self) -> None:
         query = self.lcsc_var.get().strip()
+        if not query:
+            self.messagebox.showerror(
+                "Search term required",
+                "Enter an LCSC code, manufacturer part number, component name or passive value.",
+                parent=self.root,
+            )
+            return
         mode = "lcsc"
         request_value = query
         if self.create_mode and not is_lcsc_lookup_query(query):
             try:
                 parse_passive_value_query(query)
-            except ValueError as exc:
-                self.messagebox.showerror(
-                    "Unsupported search", str(exc), parent=self.root
-                )
-                return
-            mode = "value"
+                mode = "value"
+            except ValueError:
+                # Generic keywords (MPNs, device names, electrical ratings) still
+                # return a reviewable candidate list instead of being rejected.
+                mode = "keyword"
         else:
             try:
                 request_value = normalize_lcsc_code(query)
@@ -351,11 +407,13 @@ class ComponentPopulator:
         self.status_var.set(
             f"Searching JLCPCB for exact-value {query} matches…"
             if mode == "value"
+            else f"Searching JLCPCB catalogue for {query}…"
+            if mode == "keyword"
             else f"Fetching {request_value} from JLCPCB catalogue…"
         )
         self.lookup_button.configure(state="disabled")
         results_queue = self.results
-        if mode == "value":
+        if mode in {"value", "keyword"}:
             future = self.executor.submit(
                 self.provider.search_by_keyword, request_value
             )
@@ -388,12 +446,21 @@ class ComponentPopulator:
                 except Exception as exc:
                     self.status_var.set(f"Catalogue search failed: {exc}")
                     continue
-                if mode == "value":
-                    try:
-                        matches = exact_passive_candidates(query, result)
-                    except ValueError as exc:
-                        self.status_var.set(f"Could not interpret {query!r}: {exc}")
-                        continue
+                if mode in {"value", "keyword"}:
+                    if mode == "value":
+                        try:
+                            matches = exact_passive_candidates(query, result)
+                        except ValueError as exc:
+                            self.status_var.set(f"Could not interpret {query!r}: {exc}")
+                            continue
+                    else:
+                        matches_by_id = {}
+                        for details in result:
+                            if details.is_buyable is False:
+                                continue
+                            candidate_draft = build_component_draft(details)
+                            matches_by_id[details.lcsc] = (details, candidate_draft)
+                        matches = list(matches_by_id.values())
                     for index, (details, draft) in enumerate(matches):
                         iid = f"candidate-{index}"
                         library_class = (
@@ -424,8 +491,8 @@ class ComponentPopulator:
                         )
                     if not matches:
                         self.status_var.set(
-                            f"No exact-value, supported SMD passive found for {query}. "
-                            "Try an LCSC code or a more specific value."
+                            f"No catalogue matches found for {query}. Try an LCSC code, "
+                            "manufacturer part number or broader search term."
                         )
                         continue
                     first = self.candidate_tree.get_children()[0]
@@ -433,8 +500,13 @@ class ComponentPopulator:
                     self.candidate_tree.focus(first)
                     self._on_candidate_selected()
                     self.status_var.set(
-                        f"Found {len(matches)} exact-value part(s) for {query}; "
-                        "Basic listings are ranked first. Select a row to review it."
+                        (
+                            f"Found {len(matches)} exact-value part(s) for {query}; "
+                            "Basic listings are ranked first."
+                            if mode == "value"
+                            else f"Found {len(matches)} catalogue candidate(s) for {query}."
+                        )
+                        + " Select a row to review its symbol and footprint suggestions."
                     )
                     continue
 
@@ -520,8 +592,28 @@ class ComponentPopulator:
         self.fields_tree.insert(
             "",
             "end",
-            values=("Suggested symbol type", draft.symbol_hint or "Not identified"),
+            values=("Suggested symbol type", draft.symbol_hint or "Choose manually"),
         )
+        self.value_var.set(
+            draft.value
+            or (
+                (
+                    getattr(self.selected_details, "manufacturer_part_number", "")
+                    or getattr(self.selected_details, "lcsc", "")
+                )
+                if self.create_mode and self.selected_details is not None
+                else getattr(self.symbol, "value", "") or ""
+            )
+        )
+        if self.create_mode:
+            self.symbol_hint_var.set(draft.symbol_hint)
+            self.footprint_var.set(draft.footprint)
+            self.reference_prefix_var.set(draft.reference_prefix)
+        else:
+            self.footprint_var.set(
+                draft.footprint
+                or self._field_value(getattr(self.symbol, "footprint_field", None))
+            )
         self.fields_tree.insert(
             "",
             "end",
@@ -540,7 +632,7 @@ class ComponentPopulator:
             notes = [
                 note
                 for note in notes
-                if not note.startswith("This action only populates fields on the selected symbol.")
+                if not note.startswith("For an update, the selected symbol's graphics")
             ]
         notes.append(f"Catalogue source: {draft.source_label}")
         if self.create_mode and self.selected_details is not None:
@@ -550,32 +642,41 @@ class ComponentPopulator:
                 else "unclassified"
             )
             notes.append(f"JLCPCB library class: {library_class}.")
-        compatible = (
-            draft.symbol_hint in SUPPORTED_PLACEHOLDERS
+        selected_hint = (
+            self.symbol_hint_var.get().strip()
             if self.create_mode
-            else bool(draft.symbol_hint) and draft.symbol_hint == self.library_id
+            else self.library_id
         )
-        complete_for_placement = bool(draft.value and draft.footprint)
-        if draft.symbol_hint and not compatible and not self.create_mode:
+        compatible = (
+            ":" in selected_hint if self.create_mode else self.symbol is not None
+        )
+        complete_for_placement = bool(draft.value or self.selected_details)
+        if (
+            not self.create_mode
+            and draft.symbol_hint
+            and self.library_id
+            and draft.symbol_hint != self.library_id
+        ):
             notes.append(
-                f"The proposal requires {draft.symbol_hint}, but the selected symbol is "
-                f"{self.library_id}; no values can be applied to this symbol."
+                f"Catalogue classification suggests {draft.symbol_hint}, but the selected "
+                f"symbol is {self.library_id}. Its pins and graphics will be preserved; "
+                "review Value and Footprint carefully before applying."
             )
-        elif not draft.symbol_hint:
+        if self.create_mode and not selected_hint:
             notes.append(
-                "The part type is uncertain, so automatic placement is disabled. "
-                "Complete the component manually."
+                "No stock symbol was confidently mapped. Enter the KiCad Library:Symbol "
+                "identifier for the schematic symbol you want to copy into this project."
             )
         if self.create_mode:
             notes.append(
-                "This creates a project-local reusable symbol by cloning KiCad's stock "
-                "passive graphics and two-pin electrical topology. It does not infer "
-                "arbitrary pin maps, copper footprints or 3D models."
+                "A project-local copy of the selected KiCad symbol will be generated. "
+                "Its original pin numbers, pin types, units and graphics are preserved; "
+                "the tool does not infer an IC pin map or create PCB copper geometry."
             )
-            if compatible and not complete_for_placement:
+            if not self.footprint_var.get().strip():
                 notes.append(
-                    "A reliable Value and supported Footprint are both required for "
-                    "automatic placement; this draft is incomplete."
+                    "No footprint is selected. The symbol can still be placed, but it will "
+                    "need a footprint before PCB layout."
                 )
         if cached:
             notes.append(
@@ -604,15 +705,56 @@ class ComponentPopulator:
         )
         self.apply_button.configure(state="normal" if can_apply else "disabled")
 
+    def _refresh_readiness(self, _event=None) -> None:
+        if self.closed or not self.create_mode or self.draft is None:
+            return
+        hint = self.symbol_hint_var.get().strip()
+        ready = (
+            bool(
+                self.value_var.get().strip()
+                or self.draft.value
+                or self.selected_details
+            )
+            and bool(self.draft.proposed_fields)
+            and (not self.create_mode or ":" in hint)
+        )
+        self.apply_button.configure(state="normal" if ready else "disabled")
+        if not ready:
+            self.status_var.set(
+                "Enter a KiCad Library:Symbol and a component value before placing the part."
+            )
+
     def apply(self) -> None:
         draft = self.draft
         if self.create_mode:
-            if (
-                draft is None
-                or draft.symbol_hint not in SUPPORTED_PLACEHOLDERS
-                or not draft.value
-                or not draft.footprint
-            ):
+            if draft is None:
+                return
+            selected_hint = self.symbol_hint_var.get().strip() or draft.symbol_hint
+            selected_footprint = self.footprint_var.get().strip()
+            selected_prefix = self.reference_prefix_var.get().strip() or draft.reference_prefix
+            selected_value = (
+                self.value_var.get().strip()
+                or draft.value
+                or str(
+                    getattr(self.selected_details, "manufacturer_part_number", "")
+                    or getattr(self.selected_details, "lcsc", "")
+                    or ""
+                ).strip()
+            )
+            draft = replace(
+                draft,
+                symbol_hint=selected_hint,
+                footprint=selected_footprint,
+                reference_prefix=selected_prefix,
+                value=selected_value,
+            )
+            if ":" not in draft.symbol_hint or not draft.value:
+                self.messagebox.showerror(
+                    "Component details incomplete",
+                    "Choose a KiCad Library:Symbol and confirm a component value or MPN. "
+                    "Footprint is optional and can be added later.",
+                    parent=self.root,
+                )
                 return
 
             at_cursor = self.placement_mode_var.get() == "cursor"
@@ -627,11 +769,11 @@ class ComponentPopulator:
             if at_cursor:
                 x_position = y_position = None
                 warning = (
-                    f"Generate a project-local {draft.symbol_hint} symbol for {draft.value} "
-                    f"({draft.lcsc}) and open KiCad's native Add Symbol chooser?\n\n"
-                    "The chosen symbol will follow the mouse cursor. Left-click in Eeschema "
-                    "to place it; press Escape to cancel placement. The reusable project "
-                    "library will remain generated either way."
+                    f"Copy {draft.symbol_hint} into the project-local library for "
+                    f"{draft.value} ({draft.lcsc}) and open KiCad's native Add Symbol chooser?\n\n"
+                    "The selected symbol's pin numbers and electrical types are retained; "
+                    "they are not inferred from the catalogue record. Verify pin mapping "
+                    "against the datasheet. Footprint is optional."
                 )
             else:
                 try:
@@ -652,18 +794,23 @@ class ComponentPopulator:
                     )
                     return
                 try:
-                    reference = next_component_reference(self.schematic, draft)
+                    reference = (
+                        next_component_reference(self.schematic, draft)
+                        if draft.reference_prefix
+                        else "the next available reference for the selected KiCad symbol"
+                    )
                 except Exception as exc:
                     self.messagebox.showerror(
                         "Cannot allocate component reference", str(exc), parent=self.root
                     )
                     return
                 warning = (
-                    f"Generate a project-local symbol and place {reference} ({draft.symbol_hint}) "
-                    f"for {draft.lcsc} at X={x_position:g} mm, Y={y_position:g} mm?\n\n"
-                    "The reusable symbol clones KiCad's stock passive graphics and two-pin "
-                    "electrical topology. The project symbol table and .kicad_sym library "
-                    "will be updated. Verify the footprint and electrical suitability."
+                    f"Copy {draft.symbol_hint} into the project-local library and place "
+                    f"{reference} for {draft.lcsc} at X={x_position:g} mm, "
+                    f"Y={y_position:g} mm?\n\n"
+                    "The original KiCad symbol pin numbers, pin types, units and graphics "
+                    "are retained. The tool does not infer a manufacturer pin map. "
+                    "Verify electrical suitability; footprint is optional."
                 )
             if not self.messagebox.askyesno(
                 "Confirm new schematic component", warning, parent=self.root
@@ -697,6 +844,7 @@ class ComponentPopulator:
                     x_position,
                     y_position,
                     library_id=generated.library_id,
+                    reference_prefix=generated.reference_prefix,
                 )
             except Exception as exc:
                 if iconified and not self.closed:
@@ -717,24 +865,28 @@ class ComponentPopulator:
             self.status_var.set(
                 f"Generated {generated.library_path.name}, loaded {generated.library_id}, "
                 f"and placed {created.reference} at X={x_position:g} mm, "
-                f"Y={y_position:g} mm. Verify the footprint before board use."
+                f"Y={y_position:g} mm. Verify the pin mapping and add a footprint "
+                "before PCB layout if none was selected."
             )
             self.apply_button.configure(state="disabled")
             return
-        if (
-            draft is None
-            or not draft.proposed_fields
-            or draft.symbol_hint != self.library_id
-        ):
+        if draft is None or not draft.proposed_fields:
             return
+        draft = replace(
+            draft,
+            value=self.value_var.get().strip() or draft.value,
+            footprint=self.footprint_var.get().strip(),
+        )
         reference = str(getattr(self.symbol, "reference", "") or "selected symbol")
         warning = (
             f"Apply {len(draft.proposed_fields)} proposed field(s) to {reference}?\n\n"
+            f"Value: {draft.value or '(keep existing)'}\n"
+            f"Footprint: {draft.footprint or '(keep existing)'}\n\n"
             "Existing fields with the same names will be updated; unrelated custom fields "
             "are preserved.\n\n"
-            "The selected symbol's graphic, pins and electrical pin mapping will NOT be "
-            "changed. Make sure the selected placeholder is compatible with the suggested "
-            "Device:R or Device:C type."
+            "The selected symbol's graphics, pins, units and electrical pin mapping will "
+            "NOT be changed. Review the proposed Value and Footprint against the selected "
+            "symbol and part datasheet."
         )
         if not self.messagebox.askyesno(
             "Confirm component property update", warning, parent=self.root
@@ -742,7 +894,10 @@ class ComponentPopulator:
             return
         try:
             changed = apply_component_draft_fields(
-                self.symbol, draft, expected_library_id=self.library_id
+                self.symbol,
+                draft,
+                expected_library_id=self.library_id or None,
+                allow_symbol_mismatch=True,
             )
             update_schematic_symbol(self.schematic, self.symbol)
             self.schematic.save()
@@ -785,6 +940,10 @@ class ComponentPopulator:
             "status_var",
             "symbol_var",
             "confidence_var",
+            "symbol_hint_var",
+            "value_var",
+            "footprint_var",
+            "reference_prefix_var",
         ):
             variable = getattr(self, name, None)
             setattr(self, name, None)
@@ -909,8 +1068,29 @@ def resolve_passive_action_target(
     return symbol, library_id, False
 
 
-def run_passive_component_action() -> None:
-    """Open the unified add/update workflow based on the current selection."""
+def resolve_component_action_target(
+    schematic: Any, selection: list[Any]
+) -> tuple[Any | None, str, bool]:
+    """Choose add/update mode; an existing symbol can be any editable schematic type."""
+    if not selection:
+        return None, "", True
+    if len(selection) != 1:
+        raise ValueError(
+            "Select exactly one schematic symbol to update it, or clear the selection "
+            "to add a new project-local component."
+        )
+    symbol = resolve_selected_symbol(schematic, selection[0])
+    required = ("reference", "value", "user_fields", "proto", "footprint_field")
+    if not all(hasattr(symbol, attribute) for attribute in required):
+        raise ValueError(
+            "The selected item is not an editable schematic symbol. Select one component "
+            "symbol to update it, or clear the selection to add a new component."
+        )
+    return symbol, symbol_library_id(symbol), False
+
+
+def run_component_action() -> None:
+    """Open the unified add/update component workflow based on the current selection."""
     try:
         from kipy import KiCad
 
@@ -920,8 +1100,8 @@ def run_passive_component_action() -> None:
             raise RuntimeError(
                 "No active schematic was found. Open a project in Eeschema."
             )
-        symbol, library_id, create_mode = resolve_passive_action_target(
-            schematic, kicad, list(schematic.get_selection())
+        symbol, library_id, create_mode = resolve_component_action_target(
+            schematic, list(schematic.get_selection())
         )
         editor_window_id = capture_eeschema_window_id() if create_mode else None
         settings_directory = Path(
@@ -942,5 +1122,10 @@ def run_passive_component_action() -> None:
 
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror("JLCPCB Add or Update Passive", str(exc), parent=root)
+        messagebox.showerror("JLCPCB Add or Update Component", str(exc), parent=root)
         root.destroy()
+
+
+def run_passive_component_action() -> None:
+    """Backward-compatible entrypoint for older plugin action registrations."""
+    run_component_action()

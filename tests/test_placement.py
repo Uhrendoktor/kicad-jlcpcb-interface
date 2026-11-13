@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import types
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -231,7 +232,7 @@ class PlacementTests(unittest.TestCase):
             )
         )
         schematic = FakeSchematic()
-        with self.assertRaisesRegex(ValueError, "does not identify"):
+        with self.assertRaisesRegex(ValueError, "Choose a KiCad Library:Symbol"):
             place_component_from_draft(schematic, unsupported, 100, 100)
         self.assertIsNone(schematic.created)
 
@@ -243,9 +244,44 @@ class PlacementTests(unittest.TestCase):
                 attributes={"Resistance": "10KΩ"},
             )
         )
-        with self.assertRaisesRegex(ValueError, "reliable value and supported footprint"):
-            place_component_from_draft(schematic, incomplete, 100, 100)
-        self.assertIsNone(schematic.created)
+        self.assertEqual(incomplete.value, "10k")
+        self.assertEqual(incomplete.footprint, "")
+        with patch("kicad_jlcpcb.placement.update_schematic_symbol"):
+            created = place_component_from_draft(schematic, incomplete, 100, 100)
+        self.assertIs(created, schematic.created)
+        self.assertEqual(created.value, "10k")
+        self.assertEqual(created.footprint_field.text.value, "")
+
+    def test_places_a_manually_mapped_non_passive_with_optional_footprint(self):
+        unknown = build_component_draft(
+            JlcPartDetails(
+                lcsc="C70003",
+                description="Low power microcontroller",
+                manufacturer_part_number="STM32G031K8T6",
+                category="Integrated Circuits - Microcontrollers",
+            )
+        )
+        mapped = replace(
+            unknown,
+            symbol_hint="MCU_ST_STM32G0:STM32G031K8Tx",
+            reference_prefix="U",
+            value="STM32G031K8T6",
+        )
+        schematic = FakeSchematic(("R1", "U1", "U3"))
+        with patch("kicad_jlcpcb.placement.update_schematic_symbol") as update:
+            created = place_component_from_draft(
+                schematic,
+                mapped,
+                120.0,
+                90.0,
+                library_id="JLCPCB_Generated:U_C70003",
+                reference_prefix="U",
+            )
+        self.assertEqual(created.reference, "U2")
+        self.assertEqual(created.value, "STM32G031K8T6")
+        self.assertEqual(created.footprint_field.text.value, "")
+        self.assertTrue(schematic.saved)
+        update.assert_called_once_with(schematic, created)
 
     def test_rejects_non_finite_or_non_numeric_coordinates(self):
         schematic = FakeSchematic()

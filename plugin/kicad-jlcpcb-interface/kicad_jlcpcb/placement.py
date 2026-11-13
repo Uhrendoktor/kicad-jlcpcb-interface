@@ -1,4 +1,4 @@
-"""Create a new generic passive schematic instance from an LCSC-derived draft."""
+"""Create a project-local component instance from a reviewed LCSC catalogue draft."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import re
 from typing import Any
 
 from .draft import (
-    SUPPORTED_PLACEHOLDERS,
     ComponentDraft,
     apply_component_draft_fields,
     update_schematic_symbol,
@@ -15,16 +14,13 @@ from .draft import (
 from .model import iter_schematic_symbols
 
 
-def next_component_reference(schematic: Any, draft: ComponentDraft) -> str:
-    """Choose the first unused R/C reference across the complete schematic hierarchy."""
-    prefix = str(draft.reference_prefix or "").upper()
-    expected = {"Device:R": "R", "Device:C": "C"}.get(draft.symbol_hint)
-    if (
-        expected is None
-        or prefix != expected
-        or draft.symbol_hint not in SUPPORTED_PLACEHOLDERS
-    ):
-        raise ValueError("Only reviewed Device:R and Device:C drafts can be placed.")
+def next_component_reference(
+    schematic: Any, draft: ComponentDraft, *, reference_prefix: str | None = None
+) -> str:
+    """Choose the first unused reference for the suggested component type."""
+    prefix = str(reference_prefix or draft.reference_prefix or "U").strip().upper()
+    if not re.fullmatch(r"[A-Z][A-Z0-9]{0,7}", prefix):
+        raise ValueError("The component reference prefix must be a valid KiCad prefix.")
     used: set[int] = set()
     pattern = re.compile(rf"{re.escape(prefix)}(\d+)", re.IGNORECASE)
     for symbol in iter_schematic_symbols(schematic):
@@ -44,11 +40,12 @@ def place_component_from_draft(
     y_mm: float,
     *,
     library_id: str | None = None,
+    reference_prefix: str | None = None,
 ) -> Any:
-    """Place a stock or project-generated passive and populate its fields."""
+    """Place a project-local KiCad symbol and populate it with reviewed catalogue fields."""
 
-    if draft.symbol_hint not in SUPPORTED_PLACEHOLDERS:
-        raise ValueError("Catalogue data does not identify a supported resistor or capacitor.")
+    if not str(library_id or draft.symbol_hint or "").strip():
+        raise ValueError("Choose a KiCad Library:Symbol before placing this component.")
     try:
         x_position = float(x_mm)
         y_position = float(y_mm)
@@ -56,13 +53,14 @@ def place_component_from_draft(
         raise ValueError("Placement coordinates must be numeric millimetres.") from exc
     if not math.isfinite(x_position) or not math.isfinite(y_position):
         raise ValueError("Placement coordinates must be finite millimetre values.")
-    if not draft.value or not draft.footprint:
+    if not draft.value:
         raise ValueError(
-            "The catalogue record does not provide a reliable value and supported footprint. "
-            "Review the part manually instead of placing a partially inferred passive."
+            "A component value or manufacturer part number is required before placement."
         )
 
-    reference = next_component_reference(schematic, draft)
+    reference = next_component_reference(
+        schematic, draft, reference_prefix=reference_prefix
+    )
     from kipy.geometry import Vector2
 
     requested_library_id = str(library_id or draft.symbol_hint)

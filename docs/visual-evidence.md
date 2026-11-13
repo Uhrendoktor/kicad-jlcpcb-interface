@@ -28,8 +28,8 @@ The paired captures show the same production windows in both palettes. GitHub se
     </td>
   </tr>
   <tr>
-    <th>Update a selected passive</th>
-    <th>Add a new passive</th>
+    <th>Update a selected component</th>
+    <th>Add a new component</th>
   </tr>
   <tr>
     <td>
@@ -64,9 +64,9 @@ The paired captures show the same production windows in both palettes. GitHub se
   <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-selected.png" alt="Selected component properties with catalogue image, stock, pricing and MPN results" width="620">
 </p>
 
-### Add or Update Passive
+### Add or Update Component
 
-The two modes share one review-first dialog. Select a generic resistor or capacitor to update its fields, or clear the selection to search for and add a project-local passive symbol.
+The two modes share one review-first dialog. The screenshots below use resistor examples; the implementation also supports selected non-passive symbols and standalone KiCad symbol copies.
 
 <table>
   <tr>
@@ -75,7 +75,7 @@ The two modes share one review-first dialog. Select a generic resistor or capaci
   </tr>
   <tr>
     <td>
-      <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-proposed.png" alt="Update-mode proposal showing confidence, fields and review notes before changing a selected passive" width="420">
+      <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-proposed.png" alt="Update-mode proposal showing confidence, fields and review notes before updating a selected schematic symbol" width="420">
     </td>
     <td>
       <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png" alt="Add-mode proposal showing catalogue matches and placement controls before generating a project-local symbol" width="420">
@@ -93,15 +93,15 @@ The two modes share one review-first dialog. Select a generic resistor or capaci
     </tr>
     <tr>
       <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png" alt="Confirmation explaining that the selected placeholder's symbol graphics, pins and electrical mapping remain unchanged" width="420"></td>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Updated schematic fields after confirming the review for an existing generic passive" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Updated schematic fields after confirming the review for an existing selected component" width="420"></td>
     </tr>
     <tr>
       <th>Add confirmation</th>
       <th>Add result</th>
     </tr>
     <tr>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png" alt="Confirmation describing project-local passive-symbol generation and placement" width="420"></td>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed.png" alt="Add-mode dialog after a generated project-local passive symbol was placed in the schematic" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png" alt="Confirmation describing project-local KiCad symbol generation and placement" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed.png" alt="Add-mode dialog after a generated project-local component symbol was placed in the schematic" width="420"></td>
     </tr>
   </table>
 </details>
@@ -130,16 +130,16 @@ The visual capture runs the production application windows, not separately drawn
 | Component Overview | Captures unfiltered, filtered and selected-row states. Verifies live JLCPCB detail source, product image, MPN alternatives and the completed cost/stock summary. |
 | Component Properties | Opens the focused properties window from a selected linked Eeschema symbol and captures its loaded catalogue view. |
 | Properties controls | Calls Select in schematic and Select same part on sheet; verifies the Eeschema selection; copies the LCSC ID and verifies the clipboard; invokes LCSC search, supplier product, datasheet and MPN-result actions and checks that each opens an HTTPS URL. |
-| Add or Update Passive — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, captures the proposal and the native confirmation messagebox, checks the confirmation wording, accepts the action and reads updated Value, Footprint, LCSC and MPN fields back from the schematic hierarchy. Captures the post-action state. |
-| Add or Update Passive — add mode | Clears the Eeschema selection, drives the actual lookup/review window with X/Y placement values, captures the proposal and native confirmation messagebox, checks the confirmation wording, accepts generation and placement, then verifies the resulting reference, project-local library ID, value, footprint and linked custom fields through IPC. Captures the completion state. |
-| Theme pairs | Captures the overview, properties and both Add or Update Passive modes in both light and dark palettes, reusing each live widget tree. |
+| Add or Update Component — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, captures the proposal and the native confirmation messagebox, checks the confirmation wording, accepts the action and reads updated Value, Footprint, LCSC and MPN fields back from the schematic hierarchy. Captures the post-action state. |
+| Add or Update Component — add mode | Clears the Eeschema selection, drives the actual lookup/review window with X/Y placement values, captures the proposal and native confirmation messagebox, checks the confirmation wording, accepts generation and placement, then verifies the resulting reference, project-local library ID, value, footprint and linked custom fields through IPC. Captures the completion state. |
+| Theme pairs | Captures the overview, properties and both Add or Update Component modes in both light and dark palettes, reusing each live widget tree. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 
-The capture asserts both modes of the unified action and their data provenance: update mode requires a fresh direct response for LCSC C60489 and verifies its 10 kΩ / 0402 interpretation; add mode independently fetches LCSC C105637 and verifies its 1 kΩ / 0402 interpretation. Both mode-specific screenshots fail closed rather than silently falling back to cached data. The proposal/result screenshots document those controlled examples; the actual supplier facts are those returned at capture time.
+The capture asserts both modes of the unified action and their data provenance using resistor examples: update mode requires a fresh direct response for LCSC C60489 and verifies its 10 kΩ / 0402 interpretation; add mode independently fetches LCSC C105637 and verifies its 1 kΩ / 0402 interpretation. Unit tests additionally cover inductor/LED classification, arbitrary selected-symbol metadata updates, multi-pin IC symbol copying and manual KiCad symbol selection. The GUI capture does not yet exercise every non-passive family or manual symbol-entry interaction. Both mode-specific screenshots fail closed rather than silently falling back to cached data. The proposal/result screenshots document those controlled examples; the actual supplier facts are those returned at capture time.
 
 ## Capture design
 
-The demo schematic is populated through the live KiCad IPC API with controlled example references, values, LCSC links and MPN fields. The first resistor is initially a placeholder; the fixture then exercises the same conservative draft builder and IPC write-back used by update mode.
+The demo schematic is populated through the live KiCad IPC API with controlled example references, values, LCSC links and MPN fields. The first resistor is initially a placeholder; the fixture then exercises the same draft builder and IPC write-back used by the general update mode.
 
 For generated-library coverage, the fixture seeds a project-local `JLCPCB_Generated` table entry and a `C60489` resistor *before* Eeschema starts. This lets the add mode fetch a second part (`C105637`), extend the already-loaded library, and place the new linked symbol without hitting the first-use table-registration limitation. The test checks the generated library's native fields, hidden custom metadata, stock two-pin topology, project table entry, schematic library ID and KiCad CLI export. Separately, a unit test covers the first-use reload failure and verifies that the error explains the saved table row and the required close/reopen/retry workflow.
 

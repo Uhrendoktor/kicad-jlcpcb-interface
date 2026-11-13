@@ -1,4 +1,4 @@
-"""Safe project-local KiCad symbol-library generation for reviewed LCSC passives."""
+"""Safe project-local KiCad symbol-library generation for reviewed LCSC components."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ class Quoted:
 type Sexp = Atom | Quoted | list["Sexp"]
 _GENERATOR = "kicad_jlcpcb_interface"
 _LIBRARY_BASENAME = "JLCPCB_Generated"
-_LIBRARY_DESCRIPTION = "Project-local passive symbols generated from reviewed LCSC data"
+_LIBRARY_DESCRIPTION = "Project-local JLCPCB symbols copied from reviewed KiCad library templates"
 _TOKEN = re.compile(r'\s+|;[^\r\n]*(?:\r?\n|$)|"(?:\\.|[^"\\])*"|[()]|[^\s()"]+')
 _RESERVED_PROPERTIES = {
     "reference", "value", "footprint", "datasheet", "description",
@@ -56,6 +56,7 @@ class GeneratedLibrarySymbol:
     table_path: Path
     created: bool
     already_present: bool
+    reference_prefix: str = "U"
 
 
 def parse_sexpr(text: str) -> Sexp:
@@ -218,23 +219,40 @@ def _add_hidden_property(
     symbol.append(node)
 
 
-def _symbol_name(kind: str, lcsc: str) -> str:
-    prefix = {"resistor": "R", "capacitor": "C"}.get(str(kind).casefold())
-    code = re.sub(r"[^A-Za-z0-9_]", "_", str(lcsc).strip().upper())
-    if prefix is None or not re.fullmatch(r"C\d{3,}", code):
+def _symbol_name(kind: str, lcsc: str, reference_prefix: str = "") -> str:
+    prefix = str(
+        reference_prefix or {"resistor": "R", "capacitor": "C", "inductor": "L",
+                             "diode": "D", "led": "D", "fuse": "F", "crystal": "Y"}.get(
+                                 str(kind).casefold(), "U"
+                             )
+    ).strip().upper()
+    code = str(lcsc or "").strip().upper()
+    if not re.fullmatch(r"[A-Z][A-Z0-9]{0,7}", prefix):
         raise SymbolLibraryError(
-            "Only validated LCSC resistor/capacitor drafts can create library symbols."
+            "The symbol reference prefix must be a short KiCad prefix such as R, D or U."
+        )
+    if not re.fullmatch(r"C\d{3,}", code):
+        raise SymbolLibraryError(
+            "A validated LCSC part number is required to create a project symbol."
         )
     return f"{prefix}_{code}"
 
 
 def _make_symbol(template: list[Sexp], draft) -> list[Sexp]:
     source_name = _string_value(template[1]) if len(template) > 1 else ""
-    name = _symbol_name(draft.kind, draft.lcsc)
+    reference_property = _property(template, "Reference")
+    source_prefix = (
+        _string_value(reference_property[2])
+        if reference_property is not None and len(reference_property) >= 3
+        else ""
+    )
+    reference_prefix = str(draft.reference_prefix or source_prefix or "U").strip().upper()
+    name = _symbol_name(draft.kind, draft.lcsc, reference_prefix)
     symbol = copy.deepcopy(template)
     if any(_head(child) == "extends" for child in symbol if isinstance(child, list)):
         raise SymbolLibraryError(
-            "The stock passive template unexpectedly extends another library symbol."
+            "The selected stock symbol extends another symbol. Choose a standalone symbol "
+            "so the project-local copy preserves its complete definition."
         )
 
     for node in _walk(symbol):
@@ -247,18 +265,20 @@ def _make_symbol(template: list[Sexp], draft) -> list[Sexp]:
             node[1] = Quoted(name + current[len(source_name):])
 
     pin_count = sum(1 for node in _walk(symbol) if _head(node) == "pin")
-    if pin_count != 2:
+    if pin_count < 1:
         raise SymbolLibraryError(
-            f"Stock template {source_name!r} has {pin_count} pins; exactly two are required."
+            f"Selected stock symbol {source_name!r} has no pins; choose a component symbol."
         )
 
     for field_name, field_value in (
-        ("Reference", draft.reference_prefix),
+        ("Reference", reference_prefix),
         ("Value", draft.value),
         ("Footprint", draft.footprint),
         ("Datasheet", draft.datasheet_url),
         ("Description", draft.description),
     ):
+        if field_name == "Description" and _property(symbol, field_name) is None:
+            continue
         _set_property(symbol, field_name, field_value)
 
     template_property = _property(symbol, "Description") or _property(symbol, "Datasheet")
@@ -298,7 +318,7 @@ def _make_symbol(template: list[Sexp], draft) -> list[Sexp]:
 def _root_header(template_root: list[Sexp]) -> list[Sexp]:
     version = _find_direct(template_root, "version")
     if version is None:
-        raise SymbolLibraryError("The KiCad Device library has no version node.")
+        raise SymbolLibraryError("The source KiCad symbol library has no version node.")
     return [
         Atom("kicad_symbol_lib"),
         copy.deepcopy(version),
@@ -307,7 +327,7 @@ def _root_header(template_root: list[Sexp]) -> list[Sexp]:
 
 
 def _library_is_owned(root: list[Sexp]) -> bool:
-    """Recognize only our explicitly marked generated passive symbols."""
+    """Recognize only our explicitly marked generated JLCPCB symbols."""
     generator = _find_direct(root, "generator")
     if (
         generator is None
@@ -338,7 +358,7 @@ def _library_is_owned(root: list[Sexp]) -> bool:
         if (
             not lcsc
             or owner != _GENERATOR
-            or prefix not in {"R", "C"}
+            or not re.fullmatch(r"[A-Z][A-Z0-9]{0,7}", prefix)
             or symbol_name != f"{prefix}_{lcsc}"
         ):
             return False
@@ -434,14 +454,19 @@ def _project_directory(project_or_path) -> Path:
     return path
 
 
-def find_device_symbol_library(kicad=None, explicit: str | Path | None = None) -> Path:
-    """Locate KiCad's installed Device.kicad_sym without depending on a global table."""
-    candidates: list[Path] = []
+def find_symbol_library(
+    library_nickname: str, kicad=None, explicit: str | Path | None = None
+) -> Path:
+    """Locate a named KiCad symbol library without depending on the global lib table."""
+    nickname = str(library_nickname or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_+-]{1,80}", nickname):
+        raise SymbolLibraryError(f"Invalid KiCad symbol-library nickname: {nickname!r}.")
     explicit_path = (
         Path(explicit).expanduser().resolve(strict=False)
         if explicit is not None
         else None
     )
+    candidates: list[Path] = []
     if explicit_path is not None:
         candidates.append(explicit_path)
     for key in ("KICAD_SYMBOL_DIR", "KICAD10_SYMBOL_DIR", "KICAD11_SYMBOL_DIR"):
@@ -465,26 +490,27 @@ def find_device_symbol_library(kicad=None, explicit: str | Path | None = None) -
             "/Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols",
         )
     )
+    filename = f"{nickname}.kicad_sym"
     seen: set[Path] = set()
     for candidate in candidates:
         candidate = candidate.resolve(strict=False)
         if candidate in seen:
             continue
         seen.add(candidate)
-        if candidate.is_file() and (
-            candidate.name == "Device.kicad_sym" or candidate == explicit_path
-        ):
+        if candidate.is_file() and (candidate.name == filename or candidate == explicit_path):
             return candidate
-        for possible in (
-            candidate / "Device.kicad_sym",
-            candidate / "symbols" / "Device.kicad_sym",
-        ):
+        for possible in (candidate / filename, candidate / "symbols" / filename):
             if possible.is_file():
                 return possible.resolve()
     raise SymbolLibraryError(
-        "Could not locate KiCad's Device.kicad_sym. Set KICAD_SYMBOL_DIR to the "
+        f"Could not locate KiCad's {filename}. Set KICAD_SYMBOL_DIR to the "
         "folder containing the stock KiCad symbol libraries."
     )
+
+
+def find_device_symbol_library(kicad=None, explicit: str | Path | None = None) -> Path:
+    """Backward-compatible Device library lookup."""
+    return find_symbol_library("Device", kicad, explicit)
 
 
 def _load_table(path: Path) -> list[Sexp]:
@@ -542,33 +568,42 @@ def _atomic_write(path: Path, content: str, *, backup: bool) -> None:
 def generate_project_library_symbol(
     project_or_path, draft, *, device_library: str | Path | None = None, kicad=None
 ) -> GeneratedLibrarySymbol:
-    """Create or reuse a safe project-local symbol cloned from KiCad's stock R/C."""
+    """Create or reuse a safe project-local copy of a selected KiCad library symbol."""
     project_dir = _project_directory(project_or_path)
-    if draft.symbol_hint not in {"Device:R", "Device:C"}:
+    symbol_hint = str(draft.symbol_hint or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_+-]{1,80}:[A-Za-z0-9_+.-]{1,120}", symbol_hint):
         raise SymbolLibraryError(
-            "Only inferred generic Device:R or Device:C parts can be generated."
+            "Choose a KiCad symbol using its Library:Symbol identifier before creating a part."
         )
-    if not draft.value or not draft.footprint:
+    if not str(draft.value or "").strip():
         raise SymbolLibraryError(
-            "A reliable value and reviewed stock footprint are required for symbol generation."
+            "A component value or manufacturer part number is required before placement."
         )
-    device_path = find_device_symbol_library(kicad, device_library)
+    library_nickname, source_name = symbol_hint.split(":", 1)
+    source_path = find_symbol_library(library_nickname, kicad, device_library)
     try:
-        device_root = parse_sexpr(device_path.read_text(encoding="utf-8"))
+        source_root = parse_sexpr(source_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, SymbolLibraryError) as exc:
         raise SymbolLibraryError(
-            f"Could not parse KiCad Device library {device_path}: {exc}"
+            f"Could not parse KiCad symbol library {library_nickname} "
+            f"at {source_path}: {exc}"
         ) from exc
-    if _head(device_root) != "kicad_symbol_lib":
-        raise SymbolLibraryError("KiCad Device symbol library has an invalid root node.")
-    source_name = draft.symbol_hint.split(":", 1)[1]
-    stock_symbol = _root_symbol(device_root, source_name)
+    if _head(source_root) != "kicad_symbol_lib":
+        raise SymbolLibraryError(f"KiCad {library_nickname} library has an invalid root node.")
+    stock_symbol = _root_symbol(source_root, source_name)
     if stock_symbol is None:
         raise SymbolLibraryError(
-            f"KiCad's Device library does not contain the required {source_name!r} symbol."
+            f"KiCad's {library_nickname} library does not contain {source_name!r}."
         )
     candidate = _make_symbol(stock_symbol, draft)
-    symbol_name = _symbol_name(draft.kind, draft.lcsc)
+    reference_property = _property(stock_symbol, "Reference")
+    source_prefix = (
+        _string_value(reference_property[2])
+        if reference_property is not None and len(reference_property) >= 3
+        else ""
+    )
+    reference_prefix = str(draft.reference_prefix or source_prefix or "U").strip().upper()
+    symbol_name = _symbol_name(draft.kind, draft.lcsc, reference_prefix)
 
     table_path = project_dir / "sym-lib-table"
     table = _load_table(table_path)
@@ -588,7 +623,7 @@ def generate_project_library_symbol(
                 "it was left untouched."
             )
     else:
-        library_root = _root_header(device_root)
+        library_root = _root_header(source_root)
 
     existing_symbol = _root_symbol(library_root, symbol_name)
     already_present = False
@@ -636,6 +671,7 @@ def generate_project_library_symbol(
         table_path=table_path,
         created=library_changed,
         already_present=already_present,
+        reference_prefix=reference_prefix,
     )
 
 
@@ -650,7 +686,7 @@ def reload_project_symbol_library(kicad, generated: GeneratedLibrarySymbol) -> N
             f"The project library and table entry were saved, but the active Eeschema "
             f"session could not reload {generated.nickname!r}: {exc}. "
             "No schematic instance was placed. Save and close the project, reopen it, "
-            "then run JLCPCB Add Component from LCSC again for the same LCSC number. "
+            "then run JLCPCB Add or Update Component again with the same LCSC number. "
             "The existing symbol is reused idempotently after KiCad loads the table entry."
         ) from exc
     status_items = statuses if isinstance(statuses, (list, tuple)) else ()

@@ -233,6 +233,82 @@ class ProjectLibraryTests(unittest.TestCase):
         table_text = self.table.read_text(encoding="utf-8")
         self.assertIn('"${KIPRJMOD}/JLCPCB_Generated.kicad_sym"', table_text)
 
+
+    def test_copies_a_multi_pin_non_passive_symbol_and_allows_missing_footprint(self):
+        amplifier_library = self.project / "Amplifier_Operational.kicad_sym"
+        amplifier_library.write_text(
+            r'''
+(kicad_symbol_lib
+  (version 20231120)
+  (generator "kicad_symbol_editor")
+  (symbol "LM358"
+    (property "Reference" "U" (id 0) (at 0 2.54 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "LM358" (id 1) (at 0 0 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (id 2) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (id 3) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Dual operational amplifier" (id 4) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide))
+    (symbol "LM358_1_1"
+      (pin input line (at -7.62 2.54 0) (length 5.08)
+        (name "+") (number "3"))
+      (pin input line (at -7.62 -2.54 0) (length 5.08)
+        (name "-") (number "2"))
+      (pin output line (at 7.62 0 180) (length 5.08)
+        (name "OUT") (number "1"))
+      (pin power_in line (at 0 7.62 270) (length 5.08)
+        (name "V+") (number "8"))))
+)
+''',
+            encoding="utf-8",
+        )
+        draft = resistor_draft(
+            lcsc="C888888",
+            kind="integrated_circuit",
+            symbol_hint="Amplifier_Operational:LM358",
+            reference_prefix="U",
+            value="LM358",
+            footprint="",
+            description="Dual operational amplifier",
+            category="Amplifiers",
+            attributes=(("Channels", "2"), ("Supply voltage", "3V to 32V")),
+        )
+
+        entry = generate_project_library_symbol(
+            self.project / "demo.kicad_pro",
+            draft,
+            device_library=amplifier_library,
+        )
+
+        self.assertEqual(entry.library_id, "JLCPCB_Generated:U_C888888")
+        self.assertEqual(entry.reference_prefix, "U")
+        root = self.read_library(entry.library_path)
+        symbol = next(
+            node for node in root
+            if isinstance(node, list) and node and node[0].value == "symbol"
+        )
+        self.assertEqual(symbol[1].value, "U_C888888")
+        properties = {
+            node[1].value: node[2].value
+            for node in symbol
+            if isinstance(node, list) and node and node[0].value == "property"
+        }
+        self.assertEqual(properties["Value"], "LM358")
+        self.assertEqual(properties["Footprint"], "")
+        self.assertEqual(properties["Reference"], "U")
+        pins = [
+            node for node in self._walk(symbol)
+            if isinstance(node, list) and node and node[0].value == "pin"
+        ]
+        self.assertEqual(len(pins), 4)
+        self.assertEqual(
+            [pin[1].value for pin in pins],
+            ["input", "input", "output", "power_in"],
+        )
+
     @staticmethod
     def _walk(node):
         if isinstance(node, list):
@@ -366,13 +442,13 @@ class ProjectLibraryTests(unittest.TestCase):
         self.assertIn("table entry were saved", message)
         self.assertIn("no schematic instance was placed", message)
         self.assertIn("reopen it", message)
-        self.assertIn("run jlcpcb add component from lcsc again", message)
+        self.assertIn("run jlcpcb add or update component again", message)
 
-    def test_refuses_ambiguous_drafts_and_missing_stock_symbol(self):
-        with self.assertRaisesRegex(Exception, "Device:R or Device:C"):
+    def test_refuses_missing_symbol_choice_or_component_value(self):
+        with self.assertRaisesRegex(Exception, "Library:Symbol"):
             self.generate(resistor_draft(kind="unknown", symbol_hint=""))
-        with self.assertRaisesRegex(Exception, "reliable value"):
-            self.generate(resistor_draft(footprint=""))
+        with self.assertRaisesRegex(Exception, "component value"):
+            self.generate(resistor_draft(value="", footprint=""))
         missing = self.project / "Missing.kicad_sym"
         missing.write_text(
             DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "OTHER"'),
