@@ -138,6 +138,10 @@ This action updates fields on one existing generic passive. It does not replace 
 
 ![Populate Selected Symbol: actual LCSC proposal screen](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-proposed.png)
 
+The confirmation explains that the operation updates fields only; it does not replace symbol graphics, pins or electrical pin mapping.
+
+![Populate Selected Symbol: confirmation dialog](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png)
+
 The proposal may include Value, Footprint, Datasheet, Description, LCSC, Manufacturer, MPN, JLCPCB Category and selected catalogue attributes. Empty or uncertain values are not guessed. Existing custom fields with matching names are updated; unrelated fields are preserved. Newly created metadata fields are hidden in the schematic drawing.
 
 After confirmation, the action sends the updated symbol through the KiCad IPC API and saves the schematic. Review the resulting component and footprint before continuing with the PCB.
@@ -167,6 +171,10 @@ This action creates a reusable project-local symbol for a supported passive part
 7. Confirm **Place new symbol on schematic**. The final confirmation explains that the project-local library will be updated and that the symbol is based on KiCad's stock two-pin passive topology.
 
 ![Add Component from LCSC: proposal, supported type and X/Y placement coordinates](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png)
+
+The confirmation states that the action creates or extends the project-local library, clones KiCad's stock passive graphics and two-pin topology, and places the new linked symbol.
+
+![Add Component from LCSC: confirmation dialog](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png)
 
 ### What is generated
 
