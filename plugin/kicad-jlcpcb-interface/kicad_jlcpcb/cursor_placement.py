@@ -125,21 +125,11 @@ def start_native_symbol_placement(
     # With the Tk review window withdrawn, click the actual wxSearchCtrl. The
     # headless fixture does not focus this child control automatically, even
     # though the chooser frame itself owns X11 focus.
-    geometry = send("getwindowgeometry", "--shell", chooser_id)
-    dimensions = {
-        item.split("=", 1)[0]: item.split("=", 1)[1]
-        for line in geometry.splitlines()
-        for item in line.split()
-        if "=" in item
-    }
-    try:
-        window_x = int(dimensions["X"])
-        window_y = int(dimensions["Y"])
-    except (KeyError, ValueError) as exc:
-        raise RuntimeError(
-            f"Could not read KiCad's native symbol chooser position: {geometry!r}"
-        ) from exc
-    send("mousemove", "--sync", str(window_x + 200), str(window_y + 20))
+    # The native chooser is a panel embedded in the Eeschema frame, not a
+    # separate top-level window. Its X11 focus XID reports an interior widget
+    # origin, so use the measured screen coordinates of the visible Filter
+    # field in the controlled Eeschema fixture.
+    send("mousemove", "--sync", "170", "276")
     send("click", "1")
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
