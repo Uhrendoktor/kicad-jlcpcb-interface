@@ -63,7 +63,7 @@ The visual capture runs the production application windows, not separately drawn
 | Add Component from LCSC | Clears the Eeschema selection, drives the actual lookup/review window with X/Y placement values, captures the proposal, checks the final confirmation wording, confirms generation and placement, then verifies the resulting reference, project-local library ID, value, footprint and linked custom fields through IPC. Captures the completion state. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 
-The capture asserts both the proposed part and data provenance: the UI fixtures require a fresh response for LCSC C60489 and verify its expected 10 kΩ / 0402 resistor interpretation. It does not silently fall back to cached data for the screenshots. The proposal/result screenshots therefore document the UI states for that controlled example; the actual supplier facts are those returned at capture time.
+The capture asserts both the proposed part and data provenance: the Populate dialog requires a fresh direct response for LCSC C60489 and verifies its 10 kΩ / 0402 interpretation; the Add dialog independently fetches LCSC C105637 and verifies its 1 kΩ / 0402 interpretation. Both screenshots fail closed rather than silently falling back to cached data. The proposal/result screenshots document those controlled examples; the actual supplier facts are those returned at capture time.
 
 ## Capture design
 
