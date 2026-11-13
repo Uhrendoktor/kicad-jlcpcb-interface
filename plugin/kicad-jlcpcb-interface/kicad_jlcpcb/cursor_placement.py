@@ -122,6 +122,27 @@ def start_native_symbol_placement(
             f"within 15 seconds: {chooser_title!r}."
         )
     pause(0.2)
+    geometry = send("getwindowgeometry", "--shell", chooser_id)
+    dimensions = {
+        item.split("=", 1)[0]: item.split("=", 1)[1]
+        for line in geometry.splitlines()
+        for item in line.split()
+        if "=" in item
+    }
+    try:
+        window_x = int(dimensions["X"])
+        window_y = int(dimensions["Y"])
+    except (KeyError, ValueError) as exc:
+        raise RuntimeError(
+            f"Could not read KiCad's native symbol chooser position: {geometry!r}"
+        ) from exc
+    # The catalog-ready state is important: before it finishes loading, the
+    # wxGTK Filter text control ignores clicks and keyboard events.
+    send(
+        "mousemove", "--sync", str(window_x + 80), str(window_y + 17)
+    )
+    send("click", "1")
+    send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "15", symbol_name)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
