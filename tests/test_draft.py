@@ -192,6 +192,25 @@ class ComponentDraftTests(unittest.TestCase):
                 resistor_draft,
             )
 
+
+    def test_expected_library_hint_must_match_the_draft_type(self):
+        draft = build_component_draft(details())
+        symbol = SimpleNamespace(
+            definition=SimpleNamespace(id=SimpleNamespace(library="Device", name="R")),
+            value="old",
+            footprint_field=SimpleNamespace(text=SimpleNamespace(value="")),
+            datasheet_field=SimpleNamespace(text=SimpleNamespace(value="")),
+            proto=SimpleNamespace(
+                value_field=RawField(),
+                user_fields=RepeatedFields(),
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "Expected library ID Device:C"):
+            apply_component_draft_fields(
+                symbol, draft, expected_library_id="Device:C"
+            )
+        self.assertEqual(symbol.value, "old")
+
     def test_non_https_datasheet_is_not_proposed(self):
         draft = build_component_draft(details(datasheet_url="http://example.test/ds.pdf"))
         self.assertEqual(draft.datasheet_url, "")
