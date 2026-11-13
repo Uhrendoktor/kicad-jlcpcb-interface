@@ -142,8 +142,11 @@ def start_native_symbol_placement(
         "mousemove", "--sync", str(window_x + 80), str(window_y + 17)
     )
     send("click", "1")
-    send("key", "--clearmodifiers", "ctrl+a")
-    send("type", "--clearmodifiers", "--delay", "15", symbol_name)
+    send("key", "--clearmodifiers", "--window", chooser_id, "ctrl+a")
+    send(
+        "type", "--clearmodifiers", "--window", chooser_id,
+        "--delay", "15", symbol_name,
+    )
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         try:
@@ -160,7 +163,7 @@ def start_native_symbol_placement(
                 f"chooser-search-debug=failed error={type(exc).__name__}: {exc}",
                 flush=True,
             )
-    send("key", "--clearmodifiers", "Return")
+    send("key", "--clearmodifiers", "--window", chooser_id, "Return")
     pause(0.6)
     focused_id = send("getwindowfocus")
     if focused_id != str(editor_window_id):

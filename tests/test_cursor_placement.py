@@ -99,17 +99,29 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
         self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
+            [
+                "xdotool", "key", "--clearmodifiers", "--window", "0x200", "Return"
+            ],
+            runner.commands,
         )
         chooser_title_command = ["xdotool", "getwindowname", "0x200"]
         geometry_command = ["xdotool", "getwindowgeometry", "--shell", "0x200"]
         filter_move = ["xdotool", "mousemove", "--sync", "110", "377"]
         filter_click = ["xdotool", "click", "1"]
-        type_command = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "15", "R_C60489"
+        clear_command = [
+            "xdotool", "key", "--clearmodifiers", "--window", "0x200", "ctrl+a"
         ]
-        return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
+        type_command = [
+            "xdotool", "type", "--clearmodifiers", "--window", "0x200",
+            "--delay", "15", "R_C60489",
+        ]
+        return_command = [
+            "xdotool", "key", "--clearmodifiers", "--window", "0x200", "Return"
+        ]
         loaded_index = runner.commands.index(type_command)
+        self.assertIn(clear_command, runner.commands)
+        self.assertLess(runner.commands.index(filter_click), runner.commands.index(clear_command))
+        self.assertLess(runner.commands.index(clear_command), loaded_index)
         title_index = runner.commands.index(chooser_title_command)
         geometry_index = runner.commands.index(geometry_command)
         move_index = runner.commands.index(filter_move)
