@@ -629,24 +629,39 @@ class ComponentBrowser:
         self._detail_token += 1
         token = self._detail_token
         try:
+            provider = self.provider
+            catalogue_queue = self._catalogue_queue
             future = self._catalogue_executor.submit(
-                self._load_catalogue_details, component
+                self._load_catalogue_details, provider, component
             )
-            future.add_done_callback(
-                lambda completed: self._catalogue_queue.put(
-                    (token, component, completed)
+
+            def enqueue_catalogue_result(
+                completed: Future,
+                *,
+                result_queue=catalogue_queue,
+                result_token=token,
+                result_component=component,
+            ) -> None:
+                # The worker callback must not close over ComponentBrowser:
+                # its Tk variables and root may otherwise be finalized on this
+                # worker thread when the completed Future is released.
+                result_queue.put(
+                    (result_token, result_component, completed)
                 )
-            )
+
+            future.add_done_callback(enqueue_catalogue_result)
         except ValueError:
             self.catalogue_status_var.set(
                 "This field does not contain a recognizable LCSC part number."
             )
 
+    @staticmethod
     def _load_catalogue_details(
-        self, component: SchematicComponent
+        provider: JlcSearchProvider,
+        component: SchematicComponent,
     ) -> tuple[JlcPartDetails | None, bytes | None, list[JlcPartDetails], str]:
-        """Fetch current supplier details, the supplier image, and exact MPN matches."""
-        details = self.provider.lookup(component.part_code, force_refresh=True)
+        """Fetch supplier details without retaining the Tk browser in the worker."""
+        details = provider.lookup(component.part_code, force_refresh=True)
         image_data = (
             _download_product_image(details.image_url)
             if details is not None and details.image_url
@@ -659,7 +674,7 @@ class ComponentBrowser:
         alternative_error = ""
         if mpn and details is not None:
             try:
-                alternatives = self.provider.search_by_mpn(mpn)
+                alternatives = provider.search_by_mpn(mpn)
             except Exception as exc:
                 alternative_error = str(exc)
         return details, image_data, alternatives, alternative_error
