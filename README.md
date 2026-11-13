@@ -47,6 +47,11 @@ The two LCSC entry actions use a review screen rather than silently changing the
   </tr>
 </table>
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png" alt="Populate confirmation: existing symbol graphics and pin mapping remain unchanged" width="46%">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png" alt="Add component confirmation: project-local symbol generation and placement" width="46%">
+</p>
+
 KiCad-native previews of the supported stock symbol shapes:
 
 <p align="center">
