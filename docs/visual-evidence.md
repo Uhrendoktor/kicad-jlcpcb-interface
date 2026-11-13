@@ -28,8 +28,8 @@ The paired captures show the same production windows in both palettes. GitHub se
     </td>
   </tr>
   <tr>
-    <th>Update a selected component</th>
-    <th>Add a new component</th>
+    <th>Same action · one symbol selected (update)</th>
+    <th>Same action · no symbol selected (add)</th>
   </tr>
   <tr>
     <td>
@@ -66,12 +66,12 @@ The paired captures show the same production windows in both palettes. GitHub se
 
 ### Add or Update Component
 
-The two modes share one review-first dialog. The screenshots below use resistor examples; the implementation also supports selected non-passive symbols and standalone KiCad symbol copies.
+There is one Eeschema command and one review-dialog class. The action selects its mode from the current schematic selection: exactly one editable symbol opens update mode; an empty selection opens add mode. The images below are two context states of that same action, not screenshots of separate tools. These live examples use resistor records for deterministic supplier data; non-passive behavior is covered by the unit-test suite described below.
 
 <table>
   <tr>
-    <th>Update an existing placeholder</th>
-    <th>Add a new project-local symbol</th>
+    <th>One symbol selected · update its fields</th>
+    <th>No symbol selected · add a project-local symbol</th>
   </tr>
   <tr>
     <td>
@@ -92,7 +92,7 @@ The two modes share one review-first dialog. The screenshots below use resistor 
       <th>Update result</th>
     </tr>
     <tr>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png" alt="Confirmation explaining that the selected placeholder's symbol graphics, pins and electrical mapping remain unchanged" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png" alt="Confirmation explaining that the selected symbol's graphics, pins and electrical mapping remain unchanged" width="420"></td>
       <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Updated schematic fields after confirming the review for an existing selected component" width="420"></td>
     </tr>
     <tr>
@@ -135,7 +135,7 @@ The visual capture runs the production application windows, not separately drawn
 | Theme pairs | Captures the overview, properties and both Add or Update Component modes in both light and dark palettes, reusing each live widget tree. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 
-The capture asserts both modes of the unified action and their data provenance using resistor examples: update mode requires a fresh direct response for LCSC C60489 and verifies its 10 kΩ / 0402 interpretation; add mode independently fetches LCSC C105637 and verifies its 1 kΩ / 0402 interpretation. Unit tests additionally cover inductor/LED classification, arbitrary selected-symbol metadata updates, multi-pin IC symbol copying and manual KiCad symbol selection. The GUI capture does not yet exercise every non-passive family or manual symbol-entry interaction. Both mode-specific screenshots fail closed rather than silently falling back to cached data. The proposal/result screenshots document those controlled examples; the actual supplier facts are those returned at capture time.
+The live GUI capture verifies both selection contexts of the unified action using resistor examples: update mode requires a fresh direct response for LCSC C60489 and verifies its 10 kΩ / 0402 interpretation; add mode independently fetches LCSC C105637 and verifies its 1 kΩ / 0402 interpretation. These examples demonstrate the shared dialog and its context-dependent controls; they do not define the supported component scope. Unit tests additionally cover inductor/LED classification, arbitrary selected-symbol metadata updates, multi-pin IC symbol copying and manual KiCad symbol selection. The GUI capture does not yet exercise every non-passive family or the manual symbol-entry interaction. Both mode-specific screenshots fail closed rather than silently falling back to cached data. The proposal/result screenshots document those controlled examples; the actual supplier facts are those returned at capture time.
 
 ## Capture design
 

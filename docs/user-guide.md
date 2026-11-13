@@ -148,40 +148,63 @@ The direct JLCPCB detail and MPN endpoints are undocumented website endpoints, n
 
 ## JLCPCB Add or Update Component
 
-This unified action handles two related tasks: updating catalogue properties on an existing schematic symbol, or adding a new project-local copy of a KiCad stock symbol. The mode follows the current Eeschema selection:
+**There is one Eeschema action: JLCPCB Add or Update Component.** The action chooses its mode from the current schematic selection; you do not launch separate add and update commands.
 
-- **Exactly one editable schematic symbol selected:** update that symbol's catalogue fields. The selected library identity, graphics, pins, units and electrical pin types are preserved; the action never converts the selected symbol into another component type.
-- **Nothing selected:** search the catalogue and add a project-local symbol copy.
-- **Multiple items or a non-symbol object selected:** the action stops and asks you to select one symbol or clear the selection.
+| Selection when the action starts | Mode | Behavior |
+| --- | --- | --- |
+| Exactly one editable schematic symbol | **Update** | Look up a catalogue part and apply reviewed fields to the selected symbol. Its library identity, graphics, pins, units and electrical pin types are not replaced. Any editable symbol family is accepted, including ICs, connectors, sensors, protection devices and passives. |
+| Nothing selected | **Add** | Search the catalogue, review a suggested or manually selected KiCad symbol, then create and place a project-local copy. |
+| Multiple items or a non-symbol object | — | The action rejects the selection. Select one symbol to update it, or clear the selection to add a component. |
 
-Both modes use the same review-first dialog. The symbol and footprint controls remain editable when catalogue inference is incomplete.
+The dialog title is the same in both cases. Its heading and controls adapt to the selection: update mode focuses on the selected symbol and catalogue fields; add mode also shows the symbol-library, reference-prefix and placement controls. Both contexts use the same proposal/review/confirmation pattern.
+
+### Shared review process
+
+1. Launch **JLCPCB Add or Update Component** from the active Schematic Editor.
+2. Look up the catalogue part. Update mode accepts an LCSC part number. Add mode accepts an LCSC code, manufacturer part number, device name or free-text keyword.
+3. Review the proposed fields, inference confidence, catalogue source/freshness and warnings before applying anything.
+4. Edit the suggested **Value** and **Footprint** as needed. In add mode, also review or edit **KiCad Library:Symbol** and **Reference prefix**. A suggested value is a proposal, not a verified electrical equivalence.
+5. Confirm the update or generation action. Nothing is written or placed before confirmation.
+
+The review controls are deliberately editable. An uncertain symbol or footprint is not silently treated as correct, and an optional footprint can be filled in later.
+
+### Understand the inference confidence
+
+The confidence label describes how complete the catalogue-to-symbol suggestion is; it is not a guarantee that the selected part is electrically interchangeable:
+
+- **High** — a resistor, capacitor or inductor was classified, a value was inferred, and a reviewed footprint mapping is available.
+- **Partial** — a component family was recognized, but the value or reviewed footprint may be incomplete, or the symbol is a generic template such as a diode, LED, fuse or crystal.
+- **Metadata only** — the catalogue record does not support a confident stock-symbol classification. In add mode, select a KiCad `Library:Symbol` manually.
+
+Exact-value candidate filtering is limited to supported resistor and capacitor queries, and keeps only high-confidence matching records. General keyword results are catalogue candidates to inspect, not declared drop-in replacements.
 
 ### Update an existing schematic symbol
 
-Use this mode when a symbol is already placed, including an IC, connector, sensor, protection device or passive. You can add catalogue fields without changing the selected symbol's electrical definition.
+Use update mode when exactly one editable symbol is selected in Eeschema. It is not limited to resistor and capacitor placeholders: it can add catalogue fields to an IC, connector, sensor, protection device or any other editable schematic symbol without changing the selected symbol's electrical definition.
 
-1. In Eeschema, select exactly one schematic symbol.
+1. Select exactly one schematic symbol.
 2. Launch **JLCPCB Add or Update Component**.
 3. Enter the LCSC part number and choose **Fetch and propose**.
-4. Review the proposed fields, source/freshness label and warnings. The Value and Footprint inputs are editable; a suggested footprint can be replaced with the one verified for the selected part.
+4. Review the proposed fields, source/freshness label and warnings. The **Value** and **Footprint** inputs are editable; replace a suggested footprint with the one verified for the selected part.
 5. Confirm **Apply reviewed fields to selected symbol** to write the proposal. Cancel the confirmation to leave the schematic unchanged.
 
-The proposal can include Value, Footprint, Datasheet, Description, LCSC, Manufacturer, MPN, JLCPCB Category and selected catalogue attributes. Empty or uncertain values are not guessed. The Value and Footprint inputs start with the best available suggestion, or with the selected symbol's existing value/footprint when no confident suggestion exists. Leaving a field blank does not clear an existing schematic field. Existing custom fields with matching names are updated; unrelated fields are preserved. New metadata fields are hidden in the schematic drawing.
+The proposal can include Value, Footprint, Datasheet, Description, LCSC, Manufacturer, MPN, JLCPCB Category and selected catalogue attributes. The selected symbol's library identity, graphics, pins, units and electrical pin types remain unchanged, even when the catalogue classification suggests another component family. A mismatch is surfaced in the review notes; check the proposed Value and Footprint against the datasheet before applying.
 
-If the catalogue classification suggests a different family from the selected library symbol, the review notes show that mismatch. The selected symbol is not replaced; check the proposed Value and Footprint against the datasheet before applying. The action saves the schematic after KiCad confirms the IPC write-back.
+Existing fields with matching names are updated; unrelated custom fields are preserved. Leaving Value or Footprint blank does not clear an existing field. New catalogue metadata fields are hidden in the schematic drawing. The action saves the schematic after KiCad confirms the IPC write-back.
 
 ### Add a new project-local symbol
 
-Use this mode when the component is not yet in the schematic. The add-on creates or reuses a reusable project-local symbol copied from a standalone KiCad stock-library symbol, then places an instance.
+Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a reusable project-local symbol copied from a standalone KiCad stock-library symbol, then places an instance.
 
 1. Save the KiCad project and clear the Eeschema selection.
-2. Launch **JLCPCB Add or Update Component** from the active Schematic Editor.
-3. Search by LCSC code, manufacturer part number, device name or another keyword. Passive-value queries such as 10k, 4k7, 470R, 100nF and 4.7uF use exact-value candidate filtering; other free-text searches show catalogue candidates to review.
-4. Select a catalogue row when the search returns multiple parts. Review the suggested symbol, Value, package, Footprint, metadata and warnings.
-5. In **Component details**, accept or edit the suggested KiCad Library:Symbol. When the part is not confidently classified, enter a stock ID manually, for example Amplifier_Operational:LM358. Edit Value and optional Footprint if the catalogue suggestion is incomplete. Reference prefix can also be edited.
-6. Choose **Place at cursor in KiCad** or **Use X/Y coordinates (mm)**, then confirm **Generate and place component**.
+2. Search by LCSC code, manufacturer part number, device name or another keyword. Resistor/capacitor value queries such as 10k, 4k7, 470R, 100nF and 4.7uF use exact-value candidate filtering; other free-text searches show catalogue candidates to review.
+3. Select a catalogue row when the search returns multiple parts. Review the suggested symbol, Value, package, Footprint, metadata, confidence and warnings.
+4. In **Component details**, accept or edit the suggested KiCad `Library:Symbol`. When no confident symbol mapping is available, enter a stock ID manually, for example `Amplifier_Operational:LM358`. You can also replace an uncertain automatic suggestion. Edit Value, optional Footprint and Reference prefix as required.
+5. Choose **Place at cursor in KiCad** or **Use X/Y coordinates (mm)**, then confirm **Generate and place component**.
 
-The inferred stock-symbol suggestions currently cover common resistors, capacitors, inductors, diodes, LEDs, fuses and crystals. Package mappings are deliberately narrower: the UI leaves Footprint blank when no reviewed mapping exists, and lets you enter a KiCad footprint identifier yourself. Unknown/ambiguous part categories remain at **Choose manually** rather than guessing an IC pinout.
+Automatic symbol suggestions currently cover common resistors, capacitors, inductors, diodes, LEDs, fuses and crystals. The suggestions are generic symbol templates, not manufacturer-specific pin maps. When classification is ambiguous, the symbol field remains for manual selection rather than guessing an IC pinout.
+
+Package mappings are narrower than symbol classification. The UI leaves Footprint blank when no reviewed package mapping exists, and lets you enter a KiCad footprint identifier yourself. Footprint is optional for symbol generation, but a suitable footprint is needed before normal PCB layout.
 
 #### What is generated
 
@@ -210,11 +233,10 @@ The existing generated symbol is detected and reused; placement can continue whe
 
 #### Placement and electrical checks
 
-Passive-value search only accepts exact nominal-value matches for supported resistor/capacitor queries. It does not compare voltage rating, tolerance, power rating, temperature coefficient, dielectric or manufacturer equivalence. General keyword matches are ranked catalogue candidates, not declared drop-in replacements. Review the selected part's details and datasheet.
-
 Cursor placement uses the native Eeschema Add Symbol hotkey A through xdotool. It requires the action to have been launched while the Eeschema window was focused on an X11 desktop. Check Eeschema Preferences → Hotkeys if the native chooser does not open. X/Y placement remains available when cursor handoff cannot be used.
 
 The optional Footprint field is a KiCad footprint-library reference, not a footprint generator. A symbol can be created without a footprint, but it will need a suitable footprint before PCB layout. Always inspect the symbol/footprint pair and verify pin numbers, electrical types, package dimensions and ratings against the manufacturer datasheet.
+
 ## Catalogue data, cache and privacy
 
 - The plugin stores component catalogue records in a SQLite cache beneath the KiCad plugin settings directory returned by its IPC API.
