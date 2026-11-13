@@ -794,7 +794,11 @@ class ComponentPopulator:
                     )
                     return
                 try:
-                    reference = next_component_reference(self.schematic, draft)
+                    reference = (
+                        next_component_reference(self.schematic, draft)
+                        if draft.reference_prefix
+                        else "the next available reference for the selected KiCad symbol"
+                    )
                 except Exception as exc:
                     self.messagebox.showerror(
                         "Cannot allocate component reference", str(exc), parent=self.root
