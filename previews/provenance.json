@@ -1,18 +1,24 @@
 {
   "assets": {
-    "component-browser-filtered.png": "0527d6156e6f8bd43d76f16c91156abef62aa5cf318abb69ab818a1b44abf267",
-    "component-browser-initial.png": "d3c8d342e569bc357e94dfbf72b2b55342fd5105252b21f72d1fd7f413bc2e94",
-    "component-browser-selected.png": "208c5e4d674371ca181a808a80f2427eef2bd40aa0125deb9b8559ad1207b814",
-    "component-browser-workflow.gif": "fb2bf50274d98675b04399975c7b7706858d6fc51550a8b2a50b619bc5a7e5c7",
-    "component-properties-selected.png": "1bfd15f289072f5fe37e1dcd0f66f7f2b2f55462ce8278b53abfcecfb1c5c9f5",
-    "jlcpcb-capacitor-symbol.svg": "dd4c74a6c5167e05c6e725d65b4219633a08b4127c9881d9bf1c1f06ae9999aa",
-    "jlcpcb-resistor-symbol.svg": "1a66913e3dfac040e32bdc8f97221cb52429d467832fe140060f2e64241bbfc6",
+    "add-component-confirmation.png": "d5681d82322d459ea26a5b5b4b1695adb0db7934e928cd434a366249c20f9c46",
+    "add-component-placed.png": "6fec40a232e543eeedfce2e7a736417ba83dc5a79f196f4416bb8f33a2e894b2",
+    "add-component-proposed.png": "849cb59b43af12ca76247f82b58bce6556035cfe87f9206aaa98dc927320a09a",
+    "component-browser-filtered.png": "5ae57b1505cf40f6c1adf00379df4fa0f848179f4edd54178b6ad481a441fdc3",
+    "component-browser-initial.png": "7cac395ced670e8ad2b8f13001d693e04335e3cd7085517fe316c041b3962d41",
+    "component-browser-selected.png": "f968f14c06b079f6f798172826921ea77f63e913e9f55ee4932347aa4dd68777",
+    "component-browser-workflow.gif": "120a0824e41f7f19fa09625b4ae1312262f7b128a10fa8ca4845e381d62aac03",
+    "component-properties-selected.png": "a5e5cb805d22a15e198550bbe12cc3253ade14e7fa883c4f3ddae0bc8fa45fc5",
+    "jlcpcb-capacitor-symbol.svg": "12fad94961482a12484856242269684d77fe55cf641e3bde93cace862ad3a17a",
+    "jlcpcb-resistor-symbol.svg": "8b7b99fac5615dcd4095f3b04d12c56cd1eaac9afa76edf54d1f2ec6175dfca1",
+    "populate-component-applied.png": "6ba4b92fcc09226371f5e77e4868fe14696cb6e862d34a4609f35939031b2b1b",
+    "populate-component-confirmation.png": "fcfb0a3f88c41f42c60175f695276f8677d1bad31478db317e8e1b90041fd82f",
+    "populate-component-proposed.png": "57faf470ee95e773f64ad72bb2891e1acdb96da3a90ad57697db139b6fe03f19",
     "schematic-before-selection.png": "205cfb9e7394ea0cad4dd91ae3069b8503d74cf2a1d39a9464f60a2668e0dc7e",
     "schematic-component-selected.png": "49d9e3ec8c903a6e02bac922377067e15a9e07857c7f45a88ac489627d465928",
-    "schematic-properties-opened.png": "4ea67164c79306f2a3385f1a8b75da0f7591802de18e0f0748a3b7c40b9b0718"
+    "schematic-properties-opened.png": "80e0a292ece3f775e695a5a0b87c3e77b848362c948aa2f681c4289817d228a6"
   },
   "kicad_cli_version": "10.99.0",
-  "source_commit": "324d0be95d05c77952919c6b55d91e08f710ad04",
-  "workflow_run_id": "43432183807",
-  "workflow_run_number": "88"
+  "source_commit": "3fa09b02497653c8b12af88a94be681ca707539c",
+  "workflow_run_id": "43448034206",
+  "workflow_run_number": "119"
 }
