@@ -70,10 +70,10 @@ A part link is useful only when you can see how it affects the whole design. **J
   </picture>
 </p>
 
-When a catalogue row needs closer inspection, **Select in schematic** takes you back to the corresponding symbol. The animation shows that transition from a linked resistor in Eeschema to its JLCPCB properties, so you can verify which circuit component the supplier record belongs to.
+When a catalogue row needs closer inspection, **Select in schematic** takes you back to the corresponding symbol. The screenshot shows the linked resistor selected in Eeschema beside its JLCPCB properties, so you can verify which circuit component the supplier record belongs to.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-browser-workflow.gif" alt="Animation showing a linked resistor being selected in Eeschema and its JLCPCB catalogue-properties window opening." width="440">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/schematic-properties-opened.png" alt="Linked resistor selected in Eeschema with its JLCPCB Component Properties window open." width="440">
 </p>
 
 ### 3. Add or update a passive through one review

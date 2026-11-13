@@ -45,13 +45,11 @@ from kicad_jlcpcb.populator import (  # noqa: E402
 )
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 from kicad_jlcpcb.theme import apply_tk_theme  # noqa: E402
-from scripts.workflow_gif import build_workflow_gif  # noqa: E402
 
 ASSET_NAMES = (
     "component-browser-initial.png",
     "component-browser-filtered.png",
     "component-browser-selected.png",
-    "component-browser-workflow.gif",
     "component-properties-selected.png",
     "populate-component-proposed.png",
     "populate-component-confirmation.png",
@@ -634,7 +632,7 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
                         f"KiCad did not expose the new {field_name} fixture field."
                     )
                 # Keep metadata available to the plugin without printing it on
-                # top of the symbol's value field in the live-editor GIF.
+                # top of the symbol's value field in the schematic view.
                 user_field.visible = False
 
             _update_schematic_item_checked(schematic, symbol)
@@ -1633,6 +1631,8 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     for name in ASSET_NAMES:
         (output_dir / name).unlink(missing_ok=True)
+    # Remove bundles produced by older revisions that still included an animation.
+    (output_dir / "component-browser-workflow.gif").unlink(missing_ok=True)
     cache_dir = output_dir / ".cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1665,7 +1665,6 @@ def main() -> int:
         _capture_passive_component_workflows(
             schematic, symbols, kicad, output_dir, cache_dir
         )
-        build_workflow_gif(output_dir)
         cli_version = _render_native_symbols(cli, output_dir)
 
         assets = {}
