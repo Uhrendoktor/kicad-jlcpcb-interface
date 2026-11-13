@@ -142,6 +142,25 @@ def start_native_symbol_placement(
         "mousemove", "--sync", str(window_x + 80), str(window_y + 17)
     )
     send("click", "1")
+    if os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip():
+        pointer = send("getmouselocation", "--shell")
+        focused = send("getwindowfocus")
+        xwininfo = shutil.which("xwininfo")
+        tree = ""
+        if xwininfo:
+            result = command_runner(
+                [xwininfo, "-id", chooser_id, "-tree"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+            tree = str(getattr(result, "stdout", "") or "").strip()
+        print(
+            f"chooser-window-debug=pointer={pointer!r} "
+            f"focus={focused!r} tree={tree[:6000]!r}",
+            flush=True,
+        )
     send("key", "--clearmodifiers", "--window", chooser_id, "ctrl+a")
     send(
         "type", "--clearmodifiers", "--window", chooser_id,
