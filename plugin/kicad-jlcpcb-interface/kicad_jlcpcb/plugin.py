@@ -1102,46 +1102,26 @@ class ComponentBrowser:
         if self._closed:
             return
         self._closed = True
+
+        # Keep the Tcl interpreter alive while pending catalogue work finishes.
+        # Worker functions do not call Tk; joining them here prevents a future
+        # callback/final reference from extending the window's lifetime beyond
+        # the UI thread that owns its interpreter.
+        state = self.__dict__
+        root = state["root"]
         try:
-            self.root.after_cancel(self._poll_id)
+            root.after_cancel(state.get("_poll_id"))
         except Exception:
             pass
+        state["_catalogue_executor"].shutdown(wait=True, cancel_futures=True)
+        state["_summary_executor"].shutdown(wait=True, cancel_futures=True)
 
-        # Tk variables and images must be finalized on the thread that owns
-        # the Tcl interpreter, before destroying the root. A completed worker
-        # future can outlive this window and cause the Browser instance to be
-        # released on that worker thread.
-        tk_variables = [
-            getattr(self, name, None)
-            for name in (
-                "search_var",
-                "field_var",
-                "status_var",
-                "catalogue_status_var",
-                "summary_status_var",
-                "alternatives_status_var",
-            )
-        ]
-        for name in (
-            "search_var",
-            "field_var",
-            "status_var",
-            "catalogue_status_var",
-            "summary_status_var",
-            "alternatives_status_var",
-        ):
-            setattr(self, name, None)
-        for name in ("summary_vars", "detail_vars"):
-            variables = getattr(self, name, {})
-            tk_variables.extend(variables.values())
-            variables.clear()
-            setattr(self, name, {})
-        self._image_ref = None
-        tk_variables.clear()
-
-        self._catalogue_executor.shutdown(wait=False, cancel_futures=True)
-        self._summary_executor.shutdown(wait=False, cancel_futures=True)
-        self.root.destroy()
+        # Drop every Browser-owned reference on the UI thread, not only the
+        # StringVars and PhotoImage. Tk widgets, command callbacks and the
+        # interpreter must all be finalized on the thread that created them.
+        state.clear()
+        self._closed = True
+        root.destroy()
 
     def run(self) -> None:
         self.root.mainloop()
