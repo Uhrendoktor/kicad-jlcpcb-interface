@@ -6,6 +6,7 @@ import math
 import queue
 import shutil
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -65,17 +66,12 @@ class ComponentPopulator:
         if self.create_mode and symbol is not None:
             raise ValueError("Create mode does not accept an existing symbol.")
         if not self.create_mode and symbol is None:
-            raise ValueError("Select a generic Device:R or Device:C placeholder.")
+            raise ValueError("Select exactly one schematic symbol to update.")
         self.library_id = (
             str(library_id or "").strip() or symbol_library_id(symbol)
             if symbol is not None
             else ""
         )
-        if not self.create_mode and self.library_id not in SUPPORTED_PLACEHOLDERS:
-            raise ValueError(
-                "Select a generic Device:R or Device:C placeholder. "
-                f"The selected symbol resolves to {self.library_id or 'an unknown library ID'}."
-            )
         self.settings_directory = Path(settings_directory).expanduser()
         self.settings_directory.mkdir(parents=True, exist_ok=True)
         self.provider = JlcSearchProvider(
@@ -94,24 +90,27 @@ class ComponentPopulator:
         self.palette = apply_tk_theme(self.root, theme)
         self.theme = self.root._kicad_jlcpcb_theme
         reference = str(getattr(symbol, "reference", "") or "selected symbol")
-        self.root.title("JLCPCB Add or Update Passive")
+        self.root.title("JLCPCB Add or Update Component")
         self.root.geometry("1040x930" if self.create_mode else "860x780")
         self.root.minsize(820 if self.create_mode else 720, 700 if self.create_mode else 620)
 
         current = component_from_symbol(symbol) if symbol is not None else None
         self.lcsc_var = tk.StringVar(value=current.part_code if current else "")
+        self.symbol_hint_var = tk.StringVar(value="")
+        self.footprint_var = tk.StringVar(value="")
+        self.reference_prefix_var = tk.StringVar(value="")
         self.x_var = tk.StringVar(value="100.0")
         self.y_var = tk.StringVar(value="100.0")
         self.placement_mode_var = tk.StringVar(
             value="cursor" if self.cursor_placement_available else "coordinates"
         )
         self.status_var = tk.StringVar(
-            value="Enter an LCSC code or a passive value such as 10k or 100nF."
+            value="Enter an LCSC code (or a resistor/capacitor value such as 10k or 100nF)."
             if self.create_mode
             else "Enter an LCSC part number and fetch its catalogue record."
         )
         symbol_summary = (
-            "New generic passive · active sheet · placement in millimetres"
+            "New project-local component · active sheet · placement in millimetres"
             if self.create_mode
             else (
                 f"{reference} · {self.library_id} · "
@@ -128,21 +127,22 @@ class ComponentPopulator:
         ttk.Label(
             outer,
             text=(
-                "Add a new passive component"
+                "Add a new component"
                 if self.create_mode
-                else "Update the selected passive"
+                else "Update the selected component"
             ),
             style="Title.TLabel",
         ).pack(anchor="w")
         instructions = (
             "Find the catalogue part, review the proposed fields and warnings, then confirm. "
             + (
-                "With no selection, search by LCSC code or passive value, choose a match "
-                "and place a reusable project-local symbol."
+                "With no selection, search by LCSC code or passive value, review the "
+                "suggested KiCad symbol and footprint, then place a project-local copy. "
+                "For other parts, enter the stock Library:Symbol ID yourself."
                 if self.create_mode
                 else (
-                    "The selected symbol's graphics, pins and electrical "
-                    "pin mapping are preserved."
+                    "Catalogue fields are updated on the selected symbol. Its graphics, "
+                    "pins and electrical pin mapping are preserved."
                 )
             )
         )
@@ -176,6 +176,36 @@ class ComponentPopulator:
         self.lookup_button.pack(side="left")
 
         if self.create_mode:
+            component_options = ttk.LabelFrame(
+                outer, text="KICAD SYMBOL AND FOOTPRINT (REVIEW OR EDIT)", padding=(8, 5)
+            )
+            component_options.pack(fill="x", pady=(0, 8))
+            ttk.Label(component_options, text="Library:Symbol").grid(
+                row=0, column=0, sticky="w", padx=(0, 8), pady=3
+            )
+            symbol_entry = ttk.Entry(
+                component_options, textvariable=self.symbol_hint_var, width=34
+            )
+            symbol_entry.grid(row=0, column=1, sticky="ew", pady=3)
+            symbol_entry.bind("<KeyRelease>", self._refresh_readiness)
+            ttk.Label(component_options, text="Footprint (optional)").grid(
+                row=1, column=0, sticky="w", padx=(0, 8), pady=3
+            )
+            footprint_entry = ttk.Entry(
+                component_options, textvariable=self.footprint_var, width=34
+            )
+            footprint_entry.grid(row=1, column=1, sticky="ew", pady=3)
+            footprint_entry.bind("<KeyRelease>", self._refresh_readiness)
+            ttk.Label(component_options, text="Reference prefix").grid(
+                row=2, column=0, sticky="w", padx=(0, 8), pady=3
+            )
+            prefix_entry = ttk.Entry(
+                component_options, textvariable=self.reference_prefix_var, width=8
+            )
+            prefix_entry.grid(row=2, column=1, sticky="w", pady=3)
+            prefix_entry.bind("<KeyRelease>", self._refresh_readiness)
+            component_options.columnconfigure(1, weight=1)
+
             candidate_frame = ttk.LabelFrame(
                 outer, text="EXACT-VALUE CATALOGUE MATCHES", padding=(7, 5)
             )
@@ -298,7 +328,7 @@ class ComponentPopulator:
         self.apply_button = ttk.Button(
             footer,
             text=(
-                "Generate and place passive"
+                "Generate and place component"
                 if self.create_mode
                 else "Apply reviewed fields to selected symbol"
             ),
@@ -540,7 +570,7 @@ class ComponentPopulator:
             notes = [
                 note
                 for note in notes
-                if not note.startswith("This action only populates fields on the selected symbol.")
+                if not note.startswith("For an update, the selected symbol's graphics")
             ]
         notes.append(f"Catalogue source: {draft.source_label}")
         if self.create_mode and self.selected_details is not None:
