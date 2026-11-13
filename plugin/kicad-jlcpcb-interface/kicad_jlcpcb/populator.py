@@ -207,7 +207,8 @@ class ComponentPopulator:
         notes.append(f"Catalogue source: {draft.source_label}")
         if cached:
             notes.append(
-                "The provider returned a cached/offline snapshot; verify its freshness before applying."
+                "The provider returned a cached/offline snapshot; "
+                "verify its freshness before applying."
             )
         self._set_notes(tuple(notes))
         self.confidence_var.set(

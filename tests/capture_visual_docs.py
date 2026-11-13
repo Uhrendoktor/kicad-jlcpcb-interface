@@ -19,7 +19,7 @@ PLUGIN_ROOT = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN_ROOT))
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
-from kicad_jlcpcb.draft import (
+from kicad_jlcpcb.draft import (  # noqa: E402
     apply_component_draft_fields,
     build_component_draft,
     update_schematic_symbol,
