@@ -16,7 +16,10 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = ROOT / "plugin" / "kicad-jlcpcb-interface"
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(PLUGIN_ROOT))
+
+from scripts.workflow_gif import build_workflow_gif  # noqa: E402
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
@@ -1557,36 +1560,6 @@ def _capture_passive_component_workflows(
     )
 
 
-def _build_gif(output_dir: Path) -> None:
-    """Create a full-desktop GIF of the actual Eeschema selection-to-properties workflow."""
-    from PIL import Image
-
-    names = (
-        "schematic-before-selection.png",
-        "schematic-component-selected.png",
-        "schematic-properties-opened.png",
-    )
-    frames = [Image.open(output_dir / name).convert("RGB") for name in names]
-    try:
-        if len({frame.size for frame in frames}) != 1:
-            raise RuntimeError("Eeschema workflow captures have inconsistent desktop dimensions.")
-        frames[0].save(
-            output_dir / "component-browser-workflow.gif",
-            save_all=True,
-            append_images=frames[1:],
-            duration=(1100, 1100, 1700),
-            loop=0,
-            optimize=True,
-            disposal=2,
-        )
-        with Image.open(output_dir / "component-browser-workflow.gif") as result:
-            if result.n_frames != 3:
-                raise RuntimeError(f"Expected 3 schematic workflow frames, got {result.n_frames}.")
-    finally:
-        for frame in frames:
-            frame.close()
-
-
 def _find_symbol_library() -> Path:
     """Find the Device symbol library installed with the KiCad CLI package."""
     configured = os.environ.get("KICAD_SYMBOL_DIR", "").strip()
@@ -1685,7 +1658,7 @@ def main() -> int:
         _capture_passive_component_workflows(
             schematic, symbols, kicad, output_dir, cache_dir
         )
-        _build_gif(output_dir)
+        build_workflow_gif(output_dir)
         cli_version = _render_native_symbols(cli, output_dir)
 
         assets = {}
