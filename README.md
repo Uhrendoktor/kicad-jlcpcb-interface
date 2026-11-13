@@ -76,39 +76,44 @@ When a catalogue row needs closer inspection, **Select in schematic** takes you 
   <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/schematic-properties-opened.png" alt="Linked resistor selected in Eeschema with its JLCPCB Component Properties window open." width="440">
 </p>
 
-### 3. Add or update any component through one review
+### 3. Use the unified Add or Update Component action
 
-JLCPCB Add or Update Component chooses its mode from the Eeschema selection:
+**JLCPCB Add or Update Component is one Eeschema action, not two separate tools.** It chooses what to do from the current schematic selection:
 
-- **Update:** select exactly one editable schematic symbol, including an IC, connector, sensor or passive. Look up its LCSC part, review the proposed Value, Footprint, datasheet and metadata, edit the Value/Footprint inputs when needed, then confirm. The existing symbol library identity, graphics, pins and electrical pin types are preserved.
-- **Add:** clear the selection, then search by LCSC code, manufacturer part number, component name or another keyword. Passive values such as 10k and 100nF still use exact-value matching. Choose a suggested KiCad symbol or enter a stock Library:Symbol manually, then review/edit Value, optional Footprint and reference prefix before placing a project-local copy.
+| Selection when the action starts | Mode | What happens |
+| --- | --- | --- |
+| Exactly one editable schematic symbol | **Update** | Look up its LCSC part and review catalogue fields for that symbol. Its library identity, graphics, pins, units and electrical pin types are preserved. This works for ICs, connectors, sensors, passives and other symbol families. |
+| Nothing selected | **Add** | Search the catalogue, review the suggested symbol and fields, then create and place a project-local copy of a KiCad stock symbol. |
+| Multiple items or a non-symbol object | — | The action stops and asks you to select one symbol or clear the selection. |
 
-The same review screen handles both tasks. Uncertain symbol and footprint choices stay editable instead of being guessed silently.
+Both contexts use the same review-first dialog. Its heading and available controls adapt to the selection: update mode edits catalogue fields on the selected symbol; add mode also exposes the KiCad `Library:Symbol`, reference prefix and placement controls. Value and Footprint are editable, and Footprint is optional during symbol creation.
+
+The screenshots show the two contexts of that one action—not separate commands:
 
 <table>
   <tr>
     <td valign="top" width="50%">
-      <strong>Update a selected component</strong>
-      <p>Update catalogue properties on one existing symbol without replacing its graphics or pin mapping. A manually entered footprint can fill gaps in catalogue package mapping.</p>
+      <strong>One symbol selected · update its catalogue fields</strong>
+      <p>Review Value, Footprint and catalogue metadata without replacing the selected symbol or changing its pin mapping.</p>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png">
-        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Catalogue properties proposed for a selected schematic component." width="320">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Update context of the unified action, with one schematic symbol selected and its catalogue fields proposed." width="320">
       </picture>
     </td>
     <td valign="top" width="50%">
-      <strong>Add a project-local symbol</strong>
-      <p>Search by LCSC code or free text, accept a suggested stock symbol or enter a KiCad Library:Symbol, and review the value and optional footprint before placement.</p>
+      <strong>No symbol selected · add a project-local copy</strong>
+      <p>Search by LCSC code or free text, review the proposed KiCad symbol, Value and optional Footprint, then place the new symbol.</p>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
-        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Catalogue candidates and project-local symbol placement options." width="320">
+        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Add context of the unified action, with no symbol selected and project-local symbol options visible." width="320">
       </picture>
     </td>
   </tr>
 </table>
 
-When no catalogue-to-symbol mapping is available, enter the stock KiCad identifier (for example, Amplifier_Operational:LM358). The selected symbol definition is copied into the project-local library with its original pins, units and graphics. This does not validate that the chosen symbol matches the actual orderable part: check pin numbers and electrical types against the manufacturer datasheet. Symbols that extend another library symbol must be replaced with a standalone KiCad symbol choice.
+In add mode, the tool suggests a generic stock symbol only when the catalogue description or attributes support a recognizable category. You can edit that suggestion or enter a KiCad identifier manually (for example, `Amplifier_Operational:LM358`) whenever the mapping is uncertain. The project-local library copies the chosen standalone symbol's original pins, units and graphics; it does not infer a manufacturer-specific pinout. Symbols that extend another library symbol must be replaced with a standalone choice.
 
-For add mode, placement can use KiCad's native Add Symbol chooser at the cursor on X11 when xdotool is available, or explicit X/Y coordinates in millimetres. The generated project-local symbol can be reused on subsequent runs. Multiple selections are rejected; clear the selection to add a new component.
+Add-mode placement uses KiCad's native Add Symbol chooser at the cursor on X11 when `xdotool` is available, or explicit X/Y coordinates in millimetres. A generated project-local symbol can be reused on subsequent runs.
 
 > **First use in a project:** when the generated-library table entry does not yet exist, the open Eeschema session may not recognize the new library immediately. The library and table entry are saved, but no instance is placed. Close and reopen the project, then repeat the same add-mode search; the existing generated symbol is reused.
 
