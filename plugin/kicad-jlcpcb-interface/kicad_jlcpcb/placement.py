@@ -1,4 +1,4 @@
-"""Create a new generic passive schematic instance from an LCSC-derived draft."""
+"""Create a project-local component instance from a reviewed LCSC catalogue draft."""
 
 from __future__ import annotations
 
