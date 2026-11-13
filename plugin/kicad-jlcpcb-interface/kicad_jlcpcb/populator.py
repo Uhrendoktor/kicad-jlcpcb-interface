@@ -13,6 +13,7 @@ from .draft import (
     ComponentDraft,
     apply_component_draft_fields,
     build_component_draft,
+    symbol_definition_matches_library,
     symbol_library_id,
     update_schematic_symbol,
 )
@@ -35,6 +36,7 @@ class ComponentPopulator:
         *,
         create_mode: bool = False,
         kicad: Any | None = None,
+        library_id: str | None = None,
     ):
         import tkinter as tk
         from tkinter import messagebox, ttk
@@ -50,7 +52,11 @@ class ComponentPopulator:
             raise ValueError("Create mode does not accept an existing symbol.")
         if not self.create_mode and symbol is None:
             raise ValueError("Select a generic Device:R or Device:C placeholder.")
-        self.library_id = symbol_library_id(symbol) if symbol is not None else ""
+        self.library_id = (
+            str(library_id or "").strip() or symbol_library_id(symbol)
+            if symbol is not None
+            else ""
+        )
         if not self.create_mode and self.library_id not in SUPPORTED_PLACEHOLDERS:
             raise ValueError(
                 "Select a generic Device:R or Device:C placeholder. "
@@ -397,7 +403,6 @@ class ComponentPopulator:
         if (
             draft is None
             or not draft.proposed_fields
-            or draft.symbol_hint != symbol_library_id(self.symbol)
             or draft.symbol_hint != self.library_id
         ):
             return
@@ -415,7 +420,9 @@ class ComponentPopulator:
         ):
             return
         try:
-            changed = apply_component_draft_fields(self.symbol, draft)
+            changed = apply_component_draft_fields(
+                self.symbol, draft, expected_library_id=self.library_id
+            )
             update_schematic_symbol(self.schematic, self.symbol)
             self.schematic.save()
         except Exception as exc:
@@ -497,13 +504,7 @@ def _sheet_path_label(symbol: Any) -> str:
 
 
 def resolve_selected_symbol(schematic: Any, selected_symbol: Any) -> Any:
-    """Resolve selection payloads to a complete editable symbol instance.
-
-    Some KiCad selection responses expose a symbol's fields and KIID but omit its
-    library definition. The schematic symbol query returns the full instance,
-    including definition.id, which is needed to safely restrict field population
-    to Device:R and Device:C.
-    """
+    """Resolve a selected item to the editable symbol instance in the hierarchy."""
     selected_id = _symbol_instance_id(selected_symbol)
     selected_reference = str(
         getattr(selected_symbol, "reference", "") or ""
@@ -517,7 +518,6 @@ def resolve_selected_symbol(schematic: Any, selected_symbol: Any) -> Any:
                 candidate
                 for candidate in candidates
                 if _symbol_instance_id(candidate) == selected_id
-                and symbol_library_id(candidate)
             ),
             None,
         )
@@ -530,9 +530,34 @@ def resolve_selected_symbol(schematic: Any, selected_symbol: Any) -> Any:
         if str(getattr(candidate, "reference", "") or "").strip()
         == selected_reference
         and (not selected_path or _sheet_path_label(candidate) == selected_path)
-        and symbol_library_id(candidate)
     ]
     return matches[0] if len(matches) == 1 else selected_symbol
+
+
+def resolve_passive_library_id(
+    symbol: Any,
+    kicad: Any,
+    *,
+    document: Any | None = None,
+) -> str:
+    """Return a verified stock passive ID, including KiCad's embedded-definition case.
+
+    Prefer the true LIB_ID when the binding exposes it. If not, compare the full
+    embedded symbol definition against both canonical stock passives. A custom or
+    modified symbol is not accepted merely because its reference starts with R/C.
+    """
+    direct_id = symbol_library_id(symbol)
+    if direct_id:
+        return direct_id if direct_id in SUPPORTED_PLACEHOLDERS else ""
+
+    matches = [
+        library_id
+        for library_id in sorted(SUPPORTED_PLACEHOLDERS)
+        if symbol_definition_matches_library(
+            symbol, kicad, library_id, document=document
+        )
+    ]
+    return matches[0] if len(matches) == 1 else ""
 
 
 def run_component_populator() -> None:
@@ -557,16 +582,25 @@ def run_component_populator() -> None:
             raise ValueError(
                 "The selected item is not a schematic symbol with editable properties."
             )
-        library_id = symbol_library_id(symbol)
+        library_id = resolve_passive_library_id(
+            symbol, kicad, document=schematic.document
+        )
         if library_id not in SUPPORTED_PLACEHOLDERS:
             raise ValueError(
                 "This first version accepts only generic Device:R or Device:C placeholders. "
-                f"The selected symbol resolves to {library_id or 'an unknown library ID'}."
+                "KiCad did not expose a supported library ID, and the selected symbol "
+                "does not exactly match either stock passive definition."
             )
         settings_directory = Path(
             kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
         ).expanduser()
-        ComponentPopulator(schematic, symbol, settings_directory).run()
+        ComponentPopulator(
+            schematic,
+            symbol,
+            settings_directory,
+            kicad=kicad,
+            library_id=library_id,
+        ).run()
     except Exception as exc:
         import tkinter as tk
         from tkinter import messagebox
