@@ -286,7 +286,9 @@ class ComponentBrowser:
             )
             field_entry = ttk.Entry(header, textvariable=self.field_var, width=24)
             field_entry.grid(row=2, column=1, sticky="w", padx=(0, 12))
-            ttk.Button(header, text="Refresh", command=self.refresh).grid(
+            ttk.Button(
+                header, text="Refresh", command=self.refresh, style="Primary.TButton"
+            ).grid(
                 row=2, column=2, sticky="w"
             )
         # In overview mode the linked-parts table needs little vertical space,
