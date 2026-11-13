@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import math
 import queue
+import shutil
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+from .cursor_placement import capture_eeschema_window_id, start_native_symbol_placement
 from .draft import (
     SUPPORTED_PLACEHOLDERS,
     ComponentDraft,
@@ -22,6 +24,11 @@ from .model import component_from_symbol, iter_schematic_symbols
 from .placement import place_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
 from .theme import apply_tk_theme
+from .value_search import (
+    exact_passive_candidates,
+    is_lcsc_lookup_query,
+    parse_passive_value_query,
+)
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 
@@ -39,6 +46,7 @@ class ComponentPopulator:
         kicad: Any | None = None,
         library_id: str | None = None,
         theme: str | None = None,
+        editor_window_id: str | None = None,
     ):
         import tkinter as tk
         from tkinter import messagebox, ttk
@@ -50,6 +58,10 @@ class ComponentPopulator:
         self.symbol = symbol
         self.kicad = kicad
         self.create_mode = bool(create_mode)
+        self.editor_window_id = str(editor_window_id or "").strip() or None
+        self.cursor_placement_available = bool(
+            self.editor_window_id and shutil.which("xdotool")
+        )
         if self.create_mode and symbol is not None:
             raise ValueError("Create mode does not accept an existing symbol.")
         if not self.create_mode and symbol is None:
@@ -72,8 +84,10 @@ class ComponentPopulator:
         self.executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="jlcpcb-populate"
         )
-        self.results: queue.Queue[tuple[Future, str]] = queue.Queue()
+        self.results: queue.Queue[tuple[Future, str, str]] = queue.Queue()
         self.draft: ComponentDraft | None = None
+        self.selected_details = None
+        self.candidate_rows: dict[str, tuple[Any, ComponentDraft]] = {}
         self.closed = False
 
         self.root = tk.Tk()
@@ -85,15 +99,20 @@ class ComponentPopulator:
             if self.create_mode
             else f"JLCPCB Populate Selected Symbol — {reference}"
         )
-        self.root.geometry("940x800" if self.create_mode else "860x780")
-        self.root.minsize(720, 620)
+        self.root.geometry("1040x930" if self.create_mode else "860x780")
+        self.root.minsize(820 if self.create_mode else 720, 700 if self.create_mode else 620)
 
         current = component_from_symbol(symbol) if symbol is not None else None
         self.lcsc_var = tk.StringVar(value=current.part_code if current else "")
         self.x_var = tk.StringVar(value="100.0")
         self.y_var = tk.StringVar(value="100.0")
+        self.placement_mode_var = tk.StringVar(
+            value="cursor" if self.cursor_placement_available else "coordinates"
+        )
         self.status_var = tk.StringVar(
-            value="Enter an LCSC part number and fetch its catalogue record."
+            value="Enter an LCSC code or a passive value such as 10k or 100nF."
+            if self.create_mode
+            else "Enter an LCSC part number and fetch its catalogue record."
         )
         symbol_summary = (
             "New generic passive · active sheet · placement in millimetres"
@@ -113,7 +132,7 @@ class ComponentPopulator:
         ttk.Label(
             outer,
             text=(
-                "Add a new passive from LCSC"
+                "Search and add a passive component"
                 if self.create_mode
                 else "Populate selected symbol from LCSC"
             ),
@@ -122,8 +141,8 @@ class ComponentPopulator:
         instructions = (
             "Fetch supplier data, review the proposed fields, then explicitly apply "
             + (
-                "them to the active schematic. A stock KiCad Device:R or Device:C symbol "
-                "will be placed at the coordinates below."
+                "them to the active schematic. Search by LCSC number or nominal value, "
+                "choose an exact Basic/Extended match, then place at the cursor or by X/Y."
                 if self.create_mode
                 else "them to the selected symbol."
             )
@@ -141,19 +160,94 @@ class ComponentPopulator:
         )
 
         controls = ttk.Frame(outer)
-        controls.pack(fill="x", pady=(0, 10))
-        ttk.Label(controls, text="LCSC part number").pack(side="left", padx=(0, 8))
-        self.lcsc_entry = ttk.Entry(controls, textvariable=self.lcsc_var, width=24)
-        self.lcsc_entry.pack(side="left", padx=(0, 8))
+        controls.pack(fill="x", pady=(0, 8))
+        ttk.Label(
+            controls,
+            text="LCSC code or value" if self.create_mode else "LCSC part number",
+        ).pack(side="left", padx=(0, 8))
+        self.lcsc_entry = ttk.Entry(
+            controls, textvariable=self.lcsc_var, width=30 if self.create_mode else 24
+        )
+        self.lcsc_entry.pack(side="left", padx=(0, 8), fill="x", expand=self.create_mode)
         self.lookup_button = ttk.Button(
-            controls, text="Fetch and propose", command=self.lookup
+            controls,
+            text="Search catalogue" if self.create_mode else "Fetch and propose",
+            command=self.lookup,
         )
         self.lookup_button.pack(side="left")
+
         if self.create_mode:
-            ttk.Label(controls, text="X (mm)").pack(side="left", padx=(16, 4))
-            ttk.Entry(controls, textvariable=self.x_var, width=9).pack(side="left")
-            ttk.Label(controls, text="Y (mm)").pack(side="left", padx=(8, 4))
-            ttk.Entry(controls, textvariable=self.y_var, width=9).pack(side="left")
+            candidate_frame = ttk.LabelFrame(
+                outer, text="EXACT-VALUE CATALOGUE MATCHES", padding=(7, 5)
+            )
+            candidate_frame.pack(fill="x", pady=(0, 8))
+            self.candidate_tree = ttk.Treeview(
+                candidate_frame,
+                columns=("part", "value", "package", "library", "stock", "price"),
+                show="headings",
+                height=4,
+                selectmode="browse",
+            )
+            candidate_headings = {
+                "part": ("LCSC", 95),
+                "value": ("Value", 90),
+                "package": ("Package", 85),
+                "library": ("Library", 90),
+                "stock": ("Stock", 105),
+                "price": ("Unit price", 95),
+            }
+            for key, (label, width) in candidate_headings.items():
+                self.candidate_tree.heading(key, text=label)
+                self.candidate_tree.column(
+                    key, width=width, minwidth=60, stretch=key in {"value", "package"}
+                )
+            self.candidate_tree.tag_configure(
+                "stripe-alt", background=self.palette["surface_alt"]
+            )
+            self.candidate_tree.pack(side="left", fill="x", expand=True)
+            candidate_scroll = ttk.Scrollbar(
+                candidate_frame, orient="vertical", command=self.candidate_tree.yview
+            )
+            candidate_scroll.pack(side="right", fill="y")
+            self.candidate_tree.configure(yscrollcommand=candidate_scroll.set)
+            self.candidate_tree.bind(
+                "<<TreeviewSelect>>", self._on_candidate_selected
+            )
+
+            placement = ttk.LabelFrame(outer, text="PLACEMENT", padding=(8, 5))
+            placement.pack(fill="x", pady=(0, 8))
+            self.cursor_radio = ttk.Radiobutton(
+                placement,
+                text="Place at cursor in KiCad",
+                variable=self.placement_mode_var,
+                value="cursor",
+                command=self._update_placement_controls,
+                state="normal" if self.cursor_placement_available else "disabled",
+            )
+            self.cursor_radio.pack(side="left", padx=(0, 12))
+            ttk.Radiobutton(
+                placement,
+                text="Use X/Y coordinates (mm)",
+                variable=self.placement_mode_var,
+                value="coordinates",
+                command=self._update_placement_controls,
+            ).pack(side="left", padx=(0, 10))
+            ttk.Label(placement, text="X").pack(side="left", padx=(2, 4))
+            self.x_entry = ttk.Entry(placement, textvariable=self.x_var, width=9)
+            self.x_entry.pack(side="left")
+            ttk.Label(placement, text="Y").pack(side="left", padx=(8, 4))
+            self.y_entry = ttk.Entry(placement, textvariable=self.y_var, width=9)
+            self.y_entry.pack(side="left")
+            if not self.cursor_placement_available:
+                ttk.Label(
+                    placement,
+                    text=(
+                        "Cursor mode needs this action launched from Eeschema "
+                        "on X11 with xdotool."
+                    ),
+                    style="Muted.TLabel",
+                ).pack(side="left", padx=(12, 0))
+            self._update_placement_controls()
 
         ttk.Label(
             outer,
@@ -167,7 +261,7 @@ class ComponentPopulator:
             outer,
             columns=("field", "value"),
             show="headings",
-            height=15,
+            height=11 if self.create_mode else 15,
             selectmode="browse",
         )
         self.fields_tree.tag_configure(
@@ -182,7 +276,7 @@ class ComponentPopulator:
         ttk.Label(outer, text="REVIEW NOTES", style="Section.TLabel").pack(
             anchor="w"
         )
-        self.notes = tk.Text(outer, height=7, wrap="word")
+        self.notes = tk.Text(outer, height=5 if self.create_mode else 7, wrap="word")
         self.notes.pack(fill="x", pady=(5, 10))
         self.notes.configure(
             state="disabled",
@@ -205,7 +299,7 @@ class ComponentPopulator:
         self.apply_button = ttk.Button(
             footer,
             text=(
-                "Place new symbol on schematic"
+                "Generate and place passive"
                 if self.create_mode
                 else "Apply reviewed fields to selected symbol"
             ),
@@ -223,35 +317,63 @@ class ComponentPopulator:
         return str(getattr(text, "value", "") or "").strip()
 
     def lookup(self) -> None:
-        try:
-            lcsc = normalize_lcsc_code(self.lcsc_var.get())
-        except ValueError as exc:
-            self.messagebox.showerror(
-                "Invalid LCSC part number", str(exc), parent=self.root
-            )
-            return
-        self.lcsc_var.set(lcsc)
+        query = self.lcsc_var.get().strip()
+        mode = "lcsc"
+        request_value = query
+        if self.create_mode and not is_lcsc_lookup_query(query):
+            try:
+                parse_passive_value_query(query)
+            except ValueError as exc:
+                self.messagebox.showerror(
+                    "Unsupported search", str(exc), parent=self.root
+                )
+                return
+            mode = "value"
+        else:
+            try:
+                request_value = normalize_lcsc_code(query)
+            except ValueError as exc:
+                self.messagebox.showerror(
+                    "Invalid LCSC part number", str(exc), parent=self.root
+                )
+                return
+            self.lcsc_var.set(request_value)
+
         self.draft = None
+        self.selected_details = None
         self.apply_button.configure(state="disabled")
         self.fields_tree.delete(*self.fields_tree.get_children())
+        if self.create_mode:
+            self.candidate_tree.delete(*self.candidate_tree.get_children())
+            self.candidate_rows.clear()
         self._set_notes(
             ("Waiting for a fresh catalogue lookup. No symbol fields have been changed.",)
         )
-        self.status_var.set(f"Fetching {lcsc} from JLCPCB catalogue…")
+        self.status_var.set(
+            f"Searching JLCPCB for exact-value {query} matches…"
+            if mode == "value"
+            else f"Fetching {request_value} from JLCPCB catalogue…"
+        )
         self.lookup_button.configure(state="disabled")
         results_queue = self.results
-        future = self.executor.submit(
-            self.provider.lookup, lcsc, force_refresh=True
-        )
+        if mode == "value":
+            future = self.executor.submit(
+                self.provider.search_by_keyword, request_value
+            )
+        else:
+            future = self.executor.submit(
+                self.provider.lookup, request_value, force_refresh=True
+            )
 
         def enqueue_lookup_result(
             completed: Future,
             *,
             result_queue=results_queue,
-            part_code=lcsc,
+            search_mode=mode,
+            search_value=request_value,
         ) -> None:
             # Keep the Tk dialog out of worker-thread completion callbacks.
-            result_queue.put((completed, part_code))
+            result_queue.put((completed, search_mode, search_value))
 
         future.add_done_callback(enqueue_lookup_result)
 
@@ -260,29 +382,133 @@ class ComponentPopulator:
             return
         try:
             while True:
-                future, lcsc = self.results.get_nowait()
+                future, mode, query = self.results.get_nowait()
                 self.lookup_button.configure(state="normal")
                 try:
-                    details = future.result()
+                    result = future.result()
                 except Exception as exc:
-                    self.status_var.set(f"Catalogue lookup failed: {exc}")
+                    self.status_var.set(f"Catalogue search failed: {exc}")
                     continue
+                if mode == "value":
+                    try:
+                        matches = exact_passive_candidates(query, result)
+                    except ValueError as exc:
+                        self.status_var.set(f"Could not interpret {query!r}: {exc}")
+                        continue
+                    for index, (details, draft) in enumerate(matches):
+                        iid = f"candidate-{index}"
+                        library_class = (
+                            "Basic" if details.is_basic is True
+                            else "Extended" if details.is_basic is False
+                            else "Unknown"
+                        )
+                        stock = f"{details.stock:,}" if details.stock is not None else "—"
+                        price = (
+                            "$" + f"{details.unit_price_usd:.4g}"
+                            if details.unit_price_usd is not None
+                            else "—"
+                        )
+                        self.candidate_rows[iid] = (details, draft)
+                        self.candidate_tree.insert(
+                            "",
+                            "end",
+                            iid=iid,
+                            values=(
+                                details.lcsc,
+                                draft.value,
+                                details.package or "—",
+                                library_class,
+                                stock,
+                                price,
+                            ),
+                            tags=("stripe-alt",) if index % 2 else (),
+                        )
+                    if not matches:
+                        self.status_var.set(
+                            f"No exact-value, supported SMD passive found for {query}. "
+                            "Try an LCSC code or a more specific value."
+                        )
+                        continue
+                    first = self.candidate_tree.get_children()[0]
+                    self.candidate_tree.selection_set(first)
+                    self.candidate_tree.focus(first)
+                    self._on_candidate_selected()
+                    self.status_var.set(
+                        f"Found {len(matches)} exact-value part(s) for {query}; "
+                        "Basic listings are ranked first. Select a row to review it."
+                    )
+                    continue
+
+                details = result
                 if details is None:
                     self.status_var.set(
-                        f"No catalogue record found for {lcsc}; no symbol fields were changed."
+                        f"No catalogue record found for {query}; no symbol fields were changed."
                     )
                     continue
-                if details.lcsc != lcsc:
+                if details.lcsc != query:
                     self.status_var.set(
-                        f"Catalogue returned {details.lcsc} instead of {lcsc}; result rejected."
+                        f"Catalogue returned {details.lcsc} instead of {query}; result rejected."
                     )
                     continue
+                self.selected_details = details
                 self.draft = build_component_draft(details)
+                if self.create_mode:
+                    library_class = (
+                        "Basic" if details.is_basic is True
+                        else "Extended" if details.is_basic is False
+                        else "Unknown"
+                    )
+                    stock = f"{details.stock:,}" if details.stock is not None else "—"
+                    price = (
+                        "$" + f"{details.unit_price_usd:.4g}"
+                        if details.unit_price_usd is not None
+                        else "—"
+                    )
+                    self.candidate_rows["candidate-0"] = (details, self.draft)
+                    self.candidate_tree.insert(
+                        "",
+                        "end",
+                        iid="candidate-0",
+                        values=(
+                            details.lcsc,
+                            self.draft.value,
+                            details.package or "—",
+                            library_class,
+                            stock,
+                            price,
+                        ),
+                    )
+                    self.candidate_tree.selection_set("candidate-0")
+                    self.candidate_tree.focus("candidate-0")
                 self._render_draft(self.draft, details.is_cached or details.stale)
         except queue.Empty:
             pass
         if not self.closed:
             self._poll_id = self.root.after(100, self._poll_results)
+
+    def _on_candidate_selected(self, _event=None) -> None:
+        if not self.create_mode:
+            return
+        selection = self.candidate_tree.selection()
+        if not selection:
+            return
+        selected = self.candidate_rows.get(selection[0])
+        if selected is None:
+            return
+        self.selected_details, self.draft = selected
+        self._render_draft(
+            self.draft,
+            self.selected_details.is_cached or self.selected_details.stale,
+        )
+
+    def _update_placement_controls(self) -> None:
+        if not self.create_mode:
+            return
+        coordinate_state = (
+            "normal" if self.placement_mode_var.get() == "coordinates" else "disabled"
+        )
+        self.x_entry.configure(state=coordinate_state)
+        self.y_entry.configure(state=coordinate_state)
 
     def _set_notes(self, lines: tuple[str, ...]) -> None:
         self.notes.configure(state="normal")
@@ -318,6 +544,13 @@ class ComponentPopulator:
                 if not note.startswith("This action only populates fields on the selected symbol.")
             ]
         notes.append(f"Catalogue source: {draft.source_label}")
+        if self.create_mode and self.selected_details is not None:
+            library_class = (
+                "Basic" if self.selected_details.is_basic is True
+                else "Extended" if self.selected_details.is_basic is False
+                else "unclassified"
+            )
+            notes.append(f"JLCPCB library class: {library_class}.")
         compatible = (
             draft.symbol_hint in SUPPORTED_PLACEHOLDERS
             if self.create_mode
@@ -382,41 +615,63 @@ class ComponentPopulator:
                 or not draft.footprint
             ):
                 return
-            try:
-                x_position = float(self.x_var.get())
-                y_position = float(self.y_var.get())
-            except ValueError:
+
+            at_cursor = self.placement_mode_var.get() == "cursor"
+            if at_cursor and not self.cursor_placement_available:
                 self.messagebox.showerror(
-                    "Invalid placement",
-                    "Enter numeric X and Y coordinates in millimetres.",
+                    "Cursor placement unavailable",
+                    "Launch this action from the active Eeschema window on X11 "
+                    "with xdotool installed, or switch to X/Y coordinate placement.",
                     parent=self.root,
                 )
                 return
-            if not math.isfinite(x_position) or not math.isfinite(y_position):
-                self.messagebox.showerror(
-                    "Invalid placement",
-                    "Placement coordinates must be finite millimetre values.",
-                    parent=self.root,
+            if at_cursor:
+                x_position = y_position = None
+                warning = (
+                    f"Generate a project-local {draft.symbol_hint} symbol for {draft.value} "
+                    f"({draft.lcsc}) and open KiCad's native Add Symbol chooser?\n\n"
+                    "The chosen symbol will follow the mouse cursor. Left-click in Eeschema "
+                    "to place it; press Escape to cancel placement. The reusable project "
+                    "library will remain generated either way."
                 )
-                return
-            try:
-                reference = next_component_reference(self.schematic, draft)
-            except Exception as exc:
-                self.messagebox.showerror(
-                    "Cannot allocate component reference", str(exc), parent=self.root
+            else:
+                try:
+                    x_position = float(self.x_var.get())
+                    y_position = float(self.y_var.get())
+                except ValueError:
+                    self.messagebox.showerror(
+                        "Invalid placement",
+                        "Enter numeric X and Y coordinates in millimetres.",
+                        parent=self.root,
+                    )
+                    return
+                if not math.isfinite(x_position) or not math.isfinite(y_position):
+                    self.messagebox.showerror(
+                        "Invalid placement",
+                        "Placement coordinates must be finite millimetre values.",
+                        parent=self.root,
+                    )
+                    return
+                try:
+                    reference = next_component_reference(self.schematic, draft)
+                except Exception as exc:
+                    self.messagebox.showerror(
+                        "Cannot allocate component reference", str(exc), parent=self.root
+                    )
+                    return
+                warning = (
+                    f"Generate a project-local symbol and place {reference} ({draft.symbol_hint}) "
+                    f"for {draft.lcsc} at X={x_position:g} mm, Y={y_position:g} mm?\n\n"
+                    "The reusable symbol clones KiCad's stock passive graphics and two-pin "
+                    "electrical topology. The project symbol table and .kicad_sym library "
+                    "will be updated. Verify the footprint and electrical suitability."
                 )
-                return
-            warning = (
-                f"Generate a project-local symbol and place {reference} ({draft.symbol_hint}) "
-                f"for {draft.lcsc} at X={x_position:g} mm, Y={y_position:g} mm?\n\n"
-                "The reusable symbol clones KiCad's stock passive graphics and two-pin "
-                "electrical topology. The project symbol table and .kicad_sym library "
-                "will be updated. Verify the footprint and electrical suitability."
-            )
             if not self.messagebox.askyesno(
                 "Confirm new schematic component", warning, parent=self.root
             ):
                 return
+
+            iconified = False
             try:
                 if self.kicad is None:
                     raise RuntimeError("The KiCad project connection is unavailable.")
@@ -425,6 +680,18 @@ class ComponentPopulator:
                     project, draft, kicad=self.kicad
                 )
                 reload_project_symbol_library(self.kicad, generated)
+                if at_cursor:
+                    self.root.iconify()
+                    iconified = True
+                    start_native_symbol_placement(
+                        self.editor_window_id, generated.symbol_name
+                    )
+                    self.status_var.set(
+                        f"{generated.library_id} is attached to KiCad's cursor. "
+                        "Click to place or press Escape to cancel."
+                    )
+                    self.close()
+                    return
                 created = place_component_from_draft(
                     self.schematic,
                     draft,
@@ -433,11 +700,14 @@ class ComponentPopulator:
                     library_id=generated.library_id,
                 )
             except Exception as exc:
+                if iconified and not self.closed:
+                    self.root.deiconify()
                 self.status_var.set(f"Project library generation failed: {exc}")
                 self.messagebox.showerror(
                     "Component library generation failed", str(exc), parent=self.root
                 )
                 return
+
             self.symbol = created
             self.library_id = symbol_library_id(created)
             self.symbol_var.set(
@@ -505,6 +775,21 @@ class ComponentPopulator:
         except Exception:
             pass
         self._poll_id = None
+        # Release Tk variables on the GUI thread while their Tcl interpreter
+        # is still alive. This avoids cross-thread Variable.__del__ calls when
+        # a completed catalogue worker is being collected during dialog teardown.
+        for name in (
+            "lcsc_var",
+            "x_var",
+            "y_var",
+            "placement_mode_var",
+            "status_var",
+            "symbol_var",
+            "confidence_var",
+        ):
+            variable = getattr(self, name, None)
+            setattr(self, name, None)
+            del variable
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.root.destroy()
 
@@ -523,6 +808,7 @@ def run_component_creator() -> None:
     try:
         from kipy import KiCad
 
+        editor_window_id = capture_eeschema_window_id()
         kicad = KiCad()
         schematic = kicad.get_schematic()
         if schematic is None:
@@ -537,7 +823,12 @@ def run_component_creator() -> None:
             kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
         ).expanduser()
         ComponentPopulator(
-            schematic, None, settings_directory, create_mode=True, kicad=kicad
+            schematic,
+            None,
+            settings_directory,
+            create_mode=True,
+            kicad=kicad,
+            editor_window_id=editor_window_id,
         ).run()
     except Exception as exc:
         import tkinter as tk
