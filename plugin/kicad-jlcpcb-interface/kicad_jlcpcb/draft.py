@@ -59,7 +59,8 @@ _REFERENCE_PREFIXES = {
     "fuse": "F",
     "crystal": "Y",
 }
-SUPPORTED_PLACEHOLDERS = set(_SYMBOL_HINTS.values())
+KNOWN_SYMBOL_HINTS = set(_SYMBOL_HINTS.values())
+SUPPORTED_PLACEHOLDERS = {"Device:R", "Device:C"}
 
 
 def symbol_library_id(symbol: Any) -> str:
