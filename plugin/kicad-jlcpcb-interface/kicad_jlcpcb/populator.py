@@ -805,21 +805,6 @@ class ComponentPopulator:
                 )
                 return
 
-            self.symbol = created
-            self.library_id = symbol_library_id(created)
-            self.symbol_var.set(
-                f"Added {created.reference} · {self.library_id} · "
-                f"Value: {created.value} · "
-                f"Footprint: {self._field_value(created.footprint_field)}"
-            )
-            self.status_var.set(
-                f"Generated {generated.library_path.name}, loaded {generated.library_id}, "
-                f"and placed {created.reference} at X={x_position:g} mm, "
-                f"Y={y_position:g} mm. Verify the pin mapping and add a footprint "
-                "before PCB layout if none was selected."
-            )
-            self.apply_button.configure(state="disabled")
-            return
         if draft is None or not draft.proposed_fields:
             return
         draft = replace(
