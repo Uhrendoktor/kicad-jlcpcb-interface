@@ -323,7 +323,6 @@ class ComponentBrowser:
                     stretch=key in {"value", "footprint", "sheet"}
                 )
             self.tree.tag_configure("stripe-alt", background=self.palette["surface_alt"])
-            self.tree.tag_configure("stripe-alt", background=self.palette["surface_alt"])
             self.tree.grid(row=1, column=0, sticky="nsew")
             scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
             scrollbar.grid(row=1, column=1, sticky="ns")
