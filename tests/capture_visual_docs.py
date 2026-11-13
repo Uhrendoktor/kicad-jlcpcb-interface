@@ -1221,7 +1221,10 @@ def _drive_populator_form(
 
                 def capture_and_accept() -> None:
                     try:
-                        _capture_desktop(output_dir / confirmation_asset)
+                        # Crop to the production form window. The native modal
+                        # remains layered over its parent, without the large Xvfb
+                        # desktop area or unrelated Eeschema controls.
+                        _capture_window(root, output_dir / confirmation_asset)
                     except BaseException as exc:
                         dismissal_errors.append(
                             f"confirmation screenshot failed: {type(exc).__name__}: {exc}"
