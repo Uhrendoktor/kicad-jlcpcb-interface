@@ -104,10 +104,18 @@ def start_native_symbol_placement(
     pause(0.15)
     send("key", "--clearmodifiers", "Return")
     for _ in range(30):
-        if send("getwindowfocus") == str(editor_window_id):
+        focused_id = send("getwindowfocus")
+        if (
+            focused_id
+            and focused_id != chooser_id
+            and send("getwindowpid", focused_id) == editor_pid
+        ):
+            # KiCad can return focus to a different child/canvas window from
+            # the one that was focused when the action was launched. The PID
+            # and chooser transition are more reliable than an exact XID match.
             return
         pause(0.1)
     raise RuntimeError(
         "KiCad accepted the symbol chooser selection but did not return focus "
-        "to Eeschema. Check the native chooser and retry placement."
+        "to the Eeschema process. Check the native chooser and retry placement."
     )
