@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1292,6 +1293,8 @@ def _capture_passive_component_workflows(
             "proto_identifiers": raw_identifiers,
         }
 
+    native_selection = schematic.get_selection_as_string()
+    native_document = schematic.get_as_string()
     print(
         "selected-symbol-ipc-debug="
         + json.dumps(
@@ -1299,6 +1302,16 @@ def _capture_passive_component_workflows(
                 "selection": describe_symbol(selection_symbol),
                 "queried": describe_symbol(queried_symbol),
                 "placed": describe_symbol(symbols["R2"]),
+                "native_selection_lib_ids": re.findall(
+                    r'\\(lib_id\\s+"([^"]+)"', native_selection
+                ),
+                "native_document_r2_context": [
+                    native_document[max(0, match.start() - 120):match.end() + 120]
+                    for match in re.finditer(r'"R2"', native_document)
+                ][:4],
+                "native_document_lib_ids": re.findall(
+                    r'\\(lib_id\\s+"([^"]+)"', native_document
+                ),
             },
             sort_keys=True,
         ),
