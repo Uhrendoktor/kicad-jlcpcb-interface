@@ -140,7 +140,10 @@ class ComponentPopulator:
                 "With no selection, search by LCSC code or passive value, choose a match "
                 "and place a reusable project-local symbol."
                 if self.create_mode
-                else "The selected symbol's graphics, pins and electrical pin mapping are preserved."
+                else (
+                    "The selected symbol's graphics, pins and electrical "
+                    "pin mapping are preserved."
+                )
             )
         )
         ttk.Label(
