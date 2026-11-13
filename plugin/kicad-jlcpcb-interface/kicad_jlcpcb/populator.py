@@ -21,6 +21,7 @@ from .library import generate_project_library_symbol, reload_project_symbol_libr
 from .model import component_from_symbol, iter_schematic_symbols
 from .placement import place_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
+from .theme import apply_tk_theme
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 
@@ -37,6 +38,7 @@ class ComponentPopulator:
         create_mode: bool = False,
         kicad: Any | None = None,
         library_id: str | None = None,
+        theme: str | None = None,
     ):
         import tkinter as tk
         from tkinter import messagebox, ttk
@@ -75,6 +77,8 @@ class ComponentPopulator:
         self.closed = False
 
         self.root = tk.Tk()
+        self.palette = apply_tk_theme(self.root, theme)
+        self.theme = self.root._kicad_jlcpcb_theme
         reference = str(getattr(symbol, "reference", "") or "selected symbol")
         self.root.title(
             "JLCPCB Add Component from LCSC"
@@ -113,7 +117,7 @@ class ComponentPopulator:
                 if self.create_mode
                 else "Populate selected symbol from LCSC"
             ),
-            font=("TkDefaultFont", 15, "bold"),
+            style="Title.TLabel",
         ).pack(anchor="w")
         instructions = (
             "Fetch supplier data, review the proposed fields, then explicitly apply "
@@ -127,9 +131,12 @@ class ComponentPopulator:
         ttk.Label(
             outer,
             text=instructions,
+            style="Subtitle.TLabel",
             wraplength=800,
         ).pack(anchor="w", pady=(4, 12))
-        ttk.Label(outer, textvariable=self.symbol_var, wraplength=800).pack(
+        ttk.Label(
+            outer, textvariable=self.symbol_var, style="Muted.TLabel", wraplength=800
+        ).pack(
             anchor="w", pady=(0, 10)
         )
 
@@ -151,9 +158,9 @@ class ComponentPopulator:
         ttk.Label(
             outer,
             textvariable=self.confidence_var,
-            font=("TkDefaultFont", 10, "bold"),
+            style="Accent.TLabel",
         ).pack(anchor="w", pady=(2, 8))
-        ttk.Label(outer, text="PROPOSED FIELDS", font=("TkDefaultFont", 9, "bold")).pack(
+        ttk.Label(outer, text="PROPOSED FIELDS", style="Section.TLabel").pack(
             anchor="w"
         )
         self.fields_tree = ttk.Treeview(
@@ -169,17 +176,28 @@ class ComponentPopulator:
         self.fields_tree.column("value", width=600, minwidth=260, stretch=True)
         self.fields_tree.pack(fill="both", expand=True, pady=(5, 10))
 
-        ttk.Label(outer, text="REVIEW NOTES", font=("TkDefaultFont", 9, "bold")).pack(
+        ttk.Label(outer, text="REVIEW NOTES", style="Section.TLabel").pack(
             anchor="w"
         )
         self.notes = tk.Text(outer, height=7, wrap="word")
         self.notes.pack(fill="x", pady=(5, 10))
-        self.notes.configure(state="disabled")
+        self.notes.configure(
+            state="disabled",
+            background=self.palette["field"],
+            foreground=self.palette["foreground"],
+            insertbackground=self.palette["foreground"],
+            selectbackground=self.palette["selected"],
+            selectforeground=self.palette["foreground"],
+            highlightbackground=self.palette["border"],
+            highlightcolor=self.palette["accent"],
+            borderwidth=1,
+            relief="solid",
+        )
 
         footer = ttk.Frame(outer)
         footer.pack(fill="x")
         ttk.Label(
-            footer, textvariable=self.status_var, wraplength=590
+            footer, textvariable=self.status_var, style="Muted.TLabel", wraplength=590
         ).pack(side="left", fill="x", expand=True)
         self.apply_button = ttk.Button(
             footer,
@@ -191,6 +209,7 @@ class ComponentPopulator:
             command=self.apply,
             state="disabled",
         )
+        self.apply_button.configure(style="Primary.TButton")
         self.apply_button.pack(side="right", padx=(10, 0))
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self._poll_id = self.root.after(100, self._poll_results)
