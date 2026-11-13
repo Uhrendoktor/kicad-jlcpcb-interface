@@ -243,6 +243,17 @@ def _resistance_value(raw: str) -> str:
     candidate = str(raw or "").strip().replace(",", "").replace("Ω", "Ω")
     candidate = re.sub(r"ohms?", "Ω", candidate, flags=re.IGNORECASE)
     candidate = candidate.replace(" ", "")
+    eia_code = re.fullmatch(
+        r"(?P<integer>\d+)(?P<scale>[RrKkMmGg])(?P<fraction>\d+)",
+        candidate,
+    )
+    if eia_code:
+        number = f"{eia_code.group('integer')}.{eia_code.group('fraction')}"
+        scale = eia_code.group("scale")
+        if scale in "Rr":
+            return f"{_format_number(number)}R"
+        scale = {"K": "k"}.get(scale, scale)
+        return f"{_format_number(number)}{scale}"
     zero_code = re.fullmatch(r"(?P<num>\d+(?:\.\d+)?)R", candidate, re.IGNORECASE)
     if zero_code:
         return f"{_format_number(zero_code.group('num'))}R"
@@ -268,6 +279,17 @@ def _capacitance_value(raw: str) -> str:
         .replace("μ", "u")
         .replace(" ", "")
     )
+    eia_code = re.fullmatch(
+        r"(?P<integer>\d+)(?P<scale>[pnum])(?P<fraction>\d+)",
+        candidate,
+        re.IGNORECASE,
+    )
+    if eia_code:
+        number = f"{eia_code.group('integer')}.{eia_code.group('fraction')}"
+        return (
+            f"{_format_number(number)}"
+            f"{eia_code.group('scale').casefold()}F"
+        )
     match = re.fullmatch(
         r"(?P<num>\d+(?:\.\d+)?)(?P<scale>[pnum]?)(?:F)?",
         candidate,
@@ -283,6 +305,12 @@ def _capacitance_value(raw: str) -> str:
 def _value_from_description(description: str, kind: str) -> str:
     text = str(description or "").replace("Ω", "Ω").replace("µ", "u").replace("μ", "u")
     if kind == "resistor":
+        eia_code = re.search(
+            r"(?<![A-Za-z0-9.])\d+[RrKkMmGg]\d+(?![A-Za-z0-9])",
+            text,
+        )
+        if eia_code:
+            return _resistance_value(eia_code.group(0))
         match = re.search(
             r"(?<![A-Za-z0-9.])(?P<num>\d+(?:\.\d+)?)\s*"
             r"(?P<scale>[pnumkKMG])\s*(?:Ω|ohms?|ohm)?(?![A-Za-z0-9])",
@@ -300,7 +328,10 @@ def _value_from_description(description: str, kind: str) -> str:
 
     if kind == "capacitor":
         match = re.search(
-            r"(?<![A-Za-z0-9.])\d+(?:\.\d+)?\s*(?:pF|nF|uF|mF|F)(?![A-Za-z0-9])",
+            r"(?<![A-Za-z0-9.])(?:"
+            r"\d+(?:\.\d+)?\s*(?:pF|nF|uF|mF|F)"
+            r"|\d+[pnum]\d+"
+            r")(?![A-Za-z0-9])",
             text,
             re.IGNORECASE,
         )

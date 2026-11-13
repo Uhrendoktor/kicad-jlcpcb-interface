@@ -103,6 +103,40 @@ class ComponentDraftTests(unittest.TestCase):
         self.assertEqual(capacitor.value, "4.7uF")
         self.assertEqual(resistor.value, "1M")
 
+    def test_normalizes_eia_resistor_and_capacitor_value_codes(self):
+        resistor = build_component_draft(
+            details(
+                category="Resistors",
+                attributes={"Resistance": "4K7"},
+                description="Thick Film Resistor 0402",
+            )
+        )
+        capacitor = build_component_draft(
+            details(
+                category="Capacitors",
+                attributes={"Capacitance": "4u7"},
+                description="Ceramic Capacitor 0603",
+            )
+        )
+        description_resistor = build_component_draft(
+            details(
+                category="Resistors",
+                attributes={},
+                description="4k7 1% thick film resistor 0402",
+            )
+        )
+        description_capacitor = build_component_draft(
+            details(
+                category="Capacitors",
+                attributes={},
+                description="4u7 X7R ceramic capacitor 0603",
+            )
+        )
+        self.assertEqual(resistor.value, "4.7k")
+        self.assertEqual(capacitor.value, "4.7uF")
+        self.assertEqual(description_resistor.value, "4.7k")
+        self.assertEqual(description_capacitor.value, "4.7uF")
+
     def test_keeps_unknown_component_types_and_packages_conservative(self):
         unknown = build_component_draft(
             details(
