@@ -444,11 +444,11 @@ class ProjectLibraryTests(unittest.TestCase):
         self.assertIn("reopen it", message)
         self.assertIn("run jlcpcb add component from lcsc again", message)
 
-    def test_refuses_ambiguous_drafts_and_missing_stock_symbol(self):
-        with self.assertRaisesRegex(Exception, "Device:R or Device:C"):
+    def test_refuses_missing_symbol_choice_or_component_value(self):
+        with self.assertRaisesRegex(Exception, "Library:Symbol"):
             self.generate(resistor_draft(kind="unknown", symbol_hint=""))
-        with self.assertRaisesRegex(Exception, "reliable value"):
-            self.generate(resistor_draft(footprint=""))
+        with self.assertRaisesRegex(Exception, "component value"):
+            self.generate(resistor_draft(value="", footprint=""))
         missing = self.project / "Missing.kicad_sym"
         missing.write_text(
             DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "OTHER"'),
