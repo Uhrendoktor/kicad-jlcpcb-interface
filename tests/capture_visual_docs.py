@@ -22,6 +22,7 @@ from kicad_jlcpcb import plugin as browser_module  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     apply_component_draft_fields,
     build_component_draft,
+    symbol_library_id,
     update_schematic_symbol,
 )
 from kicad_jlcpcb.model import find_linked_components, find_selected_component  # noqa: E402
@@ -532,8 +533,12 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             # Set wrapper properties through their public API. The `.proto`
             # view below is a raw protobuf, whose Text field stores its string
             # in `.text` (the Python Text wrapper exposes this as `.value`).
-            symbol.value = record["value"]
-            symbol.footprint_field.text.value = record["footprint"]
+            # R1 starts unpopulated so this live IPC check proves the LCSC-derived
+            # property values are written back rather than merely re-read.
+            symbol.value = "placeholder" if record["reference"] == "R1" else record["value"]
+            symbol.footprint_field.text.value = (
+                "" if record["reference"] == "R1" else record["footprint"]
+            )
 
             for field_name, field_value in (
                 ("LCSC", record["lcsc"]),
@@ -578,6 +583,8 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         draft = build_component_draft(draft_details)
         if (
             draft.kind != "resistor"
+            or draft.symbol_hint != "Device:R"
+            or symbol_library_id(created["R1"]) != draft.symbol_hint
             or draft.value != "10k"
             or draft.footprint != "Resistor_SMD:R_0402_1005Metric"
         ):

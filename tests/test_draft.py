@@ -12,6 +12,7 @@ sys.path.insert(0, str(PLUGIN))
 from kicad_jlcpcb.draft import (  # noqa: E402
     apply_component_draft_fields,
     build_component_draft,
+    symbol_library_id,
 )
 from kicad_jlcpcb.provider import JlcPartDetails  # noqa: E402
 
@@ -143,6 +144,7 @@ class ComponentDraftTests(unittest.TestCase):
             user_fields=RepeatedFields([existing_mpn, unrelated]),
         )
         symbol = SimpleNamespace(
+            definition=SimpleNamespace(id=SimpleNamespace(library="Device", name="R")),
             value="old",
             footprint_field=SimpleNamespace(text=SimpleNamespace(value="Old:Footprint")),
             datasheet_field=SimpleNamespace(text=SimpleNamespace(value="")),
@@ -165,6 +167,35 @@ class ComponentDraftTests(unittest.TestCase):
         self.assertIn("Value", changed)
         self.assertIn("Footprint", changed)
         self.assertIn("Datasheet", changed)
+
+    def test_library_identifier_is_used_to_guard_write_back(self):
+        resistor = SimpleNamespace(
+            definition=SimpleNamespace(id=SimpleNamespace(library="Device", name="R"))
+        )
+        capacitor = SimpleNamespace(
+            definition=SimpleNamespace(id=SimpleNamespace(library="Device", name="C"))
+        )
+        self.assertEqual(symbol_library_id(resistor), "Device:R")
+        self.assertEqual(symbol_library_id(capacitor), "Device:C")
+        self.assertEqual(symbol_library_id(SimpleNamespace()), "")
+
+        resistor_draft = build_component_draft(details())
+        with self.assertRaisesRegex(ValueError, "proposal requires Device:R"):
+            apply_component_draft_fields(
+                SimpleNamespace(
+                    definition=capacitor.definition,
+                    value="old",
+                    footprint_field=SimpleNamespace(text=SimpleNamespace(value="")),
+                    datasheet_field=SimpleNamespace(text=SimpleNamespace(value="")),
+                    proto=SimpleNamespace(value_field=RawField(), user_fields=RepeatedFields()),
+                ),
+                resistor_draft,
+            )
+
+    def test_non_https_datasheet_is_not_proposed(self):
+        draft = build_component_draft(details(datasheet_url="http://example.test/ds.pdf"))
+        self.assertEqual(draft.datasheet_url, "")
+        self.assertTrue(any("HTTPS" in warning for warning in draft.warnings))
 
 
 if __name__ == "__main__":

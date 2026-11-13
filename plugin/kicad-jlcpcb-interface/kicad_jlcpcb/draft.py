@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 from .provider import JlcPartDetails, normalize_lcsc_code
 
@@ -39,6 +40,16 @@ _ATTRIBUTE_ALIASES = {
     },
     "capacitor": {"capacitance", "capacitancevalue", "nominalcapacitance"},
 }
+SUPPORTED_PLACEHOLDERS = {"Device:R", "Device:C"}
+
+
+def symbol_library_id(symbol: Any) -> str:
+    """Read the selected instance's actual library identifier, e.g. Device:R."""
+    definition = getattr(symbol, "definition", None)
+    identifier = getattr(definition, "id", None)
+    library = str(getattr(identifier, "library", "") or "").strip()
+    name = str(getattr(identifier, "name", "") or "").strip()
+    return f"{library}:{name}" if library and name else ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +223,12 @@ def _footprint(kind: str, package: str) -> str:
     return ""
 
 
+def _https_url(value: str) -> str:
+    candidate = str(value or "").strip()
+    parsed = urlparse(candidate)
+    return candidate if parsed.scheme == "https" and parsed.hostname else ""
+
+
 def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
     """Infer only fields supported by exact supplier attributes or a clear description."""
     kind = _classify(details)
@@ -227,6 +244,7 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
         value = _value_from_description(details.description, kind)
 
     footprint = _footprint(kind, details.package)
+    datasheet_url = _https_url(details.datasheet_url)
     warnings = [
         "This action only populates fields on the selected symbol. It does not replace "
         "symbol graphics, pin numbers, electrical pin types or pin mapping. Use a "
@@ -247,8 +265,8 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
             f"Package {details.package or '(missing)'} is not in the reviewed SMD "
             "footprint map; Footprint is left unchanged."
         )
-    if not details.datasheet_url:
-        warnings.append("The catalogue record has no datasheet URL.")
+    if not datasheet_url:
+        warnings.append("The catalogue record has no valid HTTPS datasheet URL.")
 
     if kind != "unknown" and value and footprint:
         confidence = "high"
@@ -269,7 +287,7 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
         reference_prefix={"resistor": "R", "capacitor": "C"}.get(kind, ""),
         value=value,
         footprint=footprint,
-        datasheet_url=str(details.datasheet_url or ""),
+        datasheet_url=datasheet_url,
         manufacturer=str(details.manufacturer or ""),
         mpn=str(details.manufacturer_part_number or ""),
         description=str(details.description or ""),
@@ -282,7 +300,13 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
 
 
 def apply_component_draft_fields(symbol: Any, draft: ComponentDraft) -> tuple[str, ...]:
-    """Apply non-empty, reviewed values while preserving unrelated user fields."""
+    """Apply fields only when the selected symbol matches the inferred passive type."""
+    actual_library_id = symbol_library_id(symbol)
+    if not draft.symbol_hint or actual_library_id != draft.symbol_hint:
+        raise ValueError(
+            f"Proposal requires {draft.symbol_hint or 'a known passive type'}, "
+            f"but the selected symbol is {actual_library_id or 'an unknown library symbol'}."
+        )
     changed: list[str] = []
     if draft.value:
         symbol.value = draft.value

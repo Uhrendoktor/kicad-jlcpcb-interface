@@ -8,9 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from .draft import (
+    SUPPORTED_PLACEHOLDERS,
     ComponentDraft,
     apply_component_draft_fields,
     build_component_draft,
+    symbol_library_id,
     update_schematic_symbol,
 )
 from .model import component_from_symbol
@@ -31,6 +33,12 @@ class ComponentPopulator:
         self.messagebox = messagebox
         self.schematic = schematic
         self.symbol = symbol
+        self.library_id = symbol_library_id(symbol)
+        if self.library_id not in SUPPORTED_PLACEHOLDERS:
+            raise ValueError(
+                "Select a generic Device:R or Device:C placeholder. "
+                f"The selected symbol resolves to {self.library_id or 'an unknown library ID'}."
+            )
         self.settings_directory = Path(settings_directory).expanduser()
         self.settings_directory.mkdir(parents=True, exist_ok=True)
         self.provider = JlcSearchProvider(
@@ -56,7 +64,8 @@ class ComponentPopulator:
         )
         self.symbol_var = tk.StringVar(
             value=(
-                f"{reference} · Value: {getattr(symbol, 'value', '') or '—'} · "
+                f"{reference} · {self.library_id} · "
+                f"Value: {getattr(symbol, 'value', '') or '—'} · "
                 f"Footprint: {self._field_value(getattr(symbol, 'footprint_field', None)) or '—'}"
             )
         )
@@ -205,6 +214,16 @@ class ComponentPopulator:
             self.fields_tree.insert("", "end", values=(name, value))
         notes = list(draft.warnings)
         notes.append(f"Catalogue source: {draft.source_label}")
+        compatible = bool(draft.symbol_hint) and draft.symbol_hint == self.library_id
+        if draft.symbol_hint and not compatible:
+            notes.append(
+                f"The proposal requires {draft.symbol_hint}, but the selected symbol is "
+                f"{self.library_id}; no values can be applied to this symbol."
+            )
+        elif not draft.symbol_hint:
+            notes.append(
+                "The part type is uncertain, so write-back is disabled. Complete the component manually."
+            )
         if cached:
             notes.append(
                 "The provider returned a cached/offline snapshot; "
@@ -216,14 +235,21 @@ class ComponentPopulator:
         )
         self.status_var.set(
             "Review the proposed properties. Nothing is written until you apply them."
+            if compatible
+            else "Proposal is not compatible with the selected placeholder; no write-back is available."
         )
         self.apply_button.configure(
-            state="normal" if draft.proposed_fields else "disabled"
+            state="normal" if compatible and draft.proposed_fields else "disabled"
         )
 
     def apply(self) -> None:
         draft = self.draft
-        if draft is None or not draft.proposed_fields:
+        if (
+            draft is None
+            or not draft.proposed_fields
+            or draft.symbol_hint != symbol_library_id(self.symbol)
+            or draft.symbol_hint != self.library_id
+        ):
             return
         reference = str(getattr(self.symbol, "reference", "") or "selected symbol")
         warning = (
@@ -251,7 +277,8 @@ class ComponentPopulator:
             )
             return
         self.symbol_var.set(
-            f"{reference} · Value: {getattr(self.symbol, 'value', '') or '—'} · "
+            f"{reference} · {self.library_id} · "
+            f"Value: {getattr(self.symbol, 'value', '') or '—'} · "
             f"Footprint: {self._field_value(getattr(self.symbol, 'footprint_field', None)) or '—'}"
         )
         self.status_var.set(
@@ -292,6 +319,12 @@ def run_component_populator() -> None:
         if not all(hasattr(symbol, attribute) for attribute in required):
             raise ValueError(
                 "The selected item is not a schematic symbol with editable properties."
+            )
+        library_id = symbol_library_id(symbol)
+        if library_id not in SUPPORTED_PLACEHOLDERS:
+            raise ValueError(
+                "This first version accepts only generic Device:R or Device:C placeholders. "
+                f"The selected symbol resolves to {library_id or 'an unknown library ID'}."
             )
         settings_directory = Path(
             kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
