@@ -222,7 +222,8 @@ class ComponentPopulator:
             )
         elif not draft.symbol_hint:
             notes.append(
-                "The part type is uncertain, so write-back is disabled. Complete the component manually."
+                "The part type is uncertain, so write-back is disabled. "
+                "Complete the component manually."
             )
         if cached:
             notes.append(
@@ -236,7 +237,10 @@ class ComponentPopulator:
         self.status_var.set(
             "Review the proposed properties. Nothing is written until you apply them."
             if compatible
-            else "Proposal is not compatible with the selected placeholder; no write-back is available."
+            else (
+                "Proposal is not compatible with the selected placeholder; "
+                "no write-back is available."
+            )
         )
         self.apply_button.configure(
             state="normal" if compatible and draft.proposed_fields else "disabled"
