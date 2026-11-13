@@ -130,6 +130,7 @@ def start_native_symbol_placement(
         "mousemove", "--sync", "--window", str(editor_window_id), "180", "450"
     )
     send("click", "1")
+    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "15", symbol_name)
     if debug_capture:
