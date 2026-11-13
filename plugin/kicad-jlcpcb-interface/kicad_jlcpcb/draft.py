@@ -472,7 +472,7 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
     if not footprint:
         warnings.append(
             f"Package {details.package or '(missing)'} has no reviewed footprint mapping. "
-            "Footprint is left blank; enter a KiCad footprint or leave it for later."
+            "Footprint is left unchanged (blank); enter a KiCad footprint or leave it for later."
         )
     if kind not in _SYMBOL_HINTS:
         warnings.append("The schematic symbol must be selected manually.")
@@ -547,11 +547,12 @@ def apply_component_draft_fields(
     expected = str(expected_library_id or "").strip()
     if expected and actual_library_id and expected != actual_library_id:
         raise ValueError(
-            f"Expected library ID {expected}, but the selected symbol is {actual_library_id}."
+            f"Expected library ID {expected} does not identify this LCSC draft; "
+            f"the selected symbol is {actual_library_id}."
         )
     if not expected and draft.symbol_hint and not _library_id_matches_draft(actual_library_id, draft):
         raise ValueError(
-            f"Proposal suggests {draft.symbol_hint}, but the selected symbol is "
+            f"Proposal requires {draft.symbol_hint}, but the selected symbol is "
             f"{actual_library_id or 'an unknown library symbol'}."
         )
     if not expected and not actual_library_id and not draft.symbol_hint:
