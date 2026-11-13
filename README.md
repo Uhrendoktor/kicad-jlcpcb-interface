@@ -6,7 +6,7 @@ A KiCad 11 Schematic Editor IPC add-on for reviewing JLCPCB/LCSC catalogue infor
 
 The long-term goal is to make common catalogue parts almost as quick to add as entering an LCSC part number. For a basic part such as a cheap 10 kΩ resistor, the LCSC record should eventually provide the symbol, footprint, value, description, manufacturer part number, datasheet and other useful properties with minimal manual work. For more complex devices, the tool should make conservative suggestions and leave uncertain pin mappings, footprints or properties for the user to complete.
 
-**PR3 implements the inspection and BOM groundwork, not full component generation or synchronization.** It works with symbols that are already placed in a schematic and linked by an LCSC custom field. It retrieves and presents supplier data, helps compare purchasable MPN matches, and summarizes catalogue cost and stock for the design. It does not yet create KiCad symbols or footprints, write catalogue values back into a symbol, or synchronize library files from an LCSC number. Automatic generation for simple components, with manual completion for uncertain fields, is a follow-up milestone.
+**The current implementation separates field population from full component generation.** The properties and BOM views inspect symbols already linked by an LCSC field. The new **JLCPCB Populate Selected Symbol** action accepts an LCSC number, previews catalogue-derived values, footprints and properties, then writes only after explicit confirmation. Its first inference rules cover common SMD resistors and capacitors. Unknown values and unsupported packages are left unchanged with a warning. The action does not replace symbol graphics, pins, pin mapping or library files; the selected symbol must already be a compatible generic placeholder. Full component/library generation and synchronization remain future work.
 
 ## Visual previews
 
@@ -21,16 +21,17 @@ The previews are captured from a real KiCad Eeschema session. The demo schematic
 See [Visual evidence and generated previews](docs/visual-evidence.md) for the capture fixture, reproduction command and provenance checks.
 
 
-**Status: early prototype.** The add-on provides two schematic actions. **JLCPCB Component Properties** opens a focused window for exactly one selected symbol carrying the configurable `LCSC` custom property. **JLCPCB Component Overview** lists all linked symbols, supports local search, and summarizes estimated design cost and catalogue stock coverage. The properties action is a separate window; KiCad's documented IPC plugin API does not expose extension tabs inside the built-in Symbol Properties dialog. Catalogue facts are queried from JLCPCB's own parts-page detail endpoint; MPN alternatives are queried from JLCPCB's own parts-search endpoint. These are undocumented website endpoints rather than a supported public components API, and may change. The source/freshness line distinguishes JLCPCB, community fallback and cached data. MPN search displays all purchasable keyword results returned within the paginated search limit, sorting exact normalized-MPN matches first and marking related results separately. The table compares candidate MPN, stock, minimum order quantity, library class and price breaks. Related results are not guaranteed drop-in replacements; compare package and attributes before substituting. Images are downloaded only from supplier-provided HTTPS URLs. Stock/prices remain snapshots, not a guaranteed quote or reservation. Footprint/3D previews and continuous editor synchronization remain future work; cross-sheet navigation uses the KiCad 11 Schematic IPC `FocusOnItems` command.
+**Status: early prototype.** The add-on provides three schematic actions. **JLCPCB Component Properties** opens a focused window for exactly one selected symbol carrying the configurable `LCSC` custom property. **JLCPCB Component Overview** lists all linked symbols, supports local search, and summarizes estimated design cost and catalogue stock coverage. **JLCPCB Populate Selected Symbol** previews fields inferred from an LCSC record and applies them to one selected compatible placeholder only after confirmation; it does not swap symbol geometry or pin mapping. The properties action is a separate window; KiCad's documented IPC plugin API does not expose extension tabs inside the built-in Symbol Properties dialog. Catalogue facts are queried from JLCPCB's own parts-page detail endpoint; MPN alternatives are queried from JLCPCB's own parts-search endpoint. These are undocumented website endpoints rather than a supported public components API, and may change. The source/freshness line distinguishes JLCPCB, community fallback and cached data. MPN search displays all purchasable keyword results returned within the paginated search limit, sorting exact normalized-MPN matches first and marking related results separately. The table compares candidate MPN, stock, minimum order quantity, library class and price breaks. Related results are not guaranteed drop-in replacements; compare package and attributes before substituting. Images are downloaded only from supplier-provided HTTPS URLs. Stock/prices remain snapshots, not a guaranteed quote or reservation. Footprint/3D previews and continuous editor synchronization remain future work; cross-sheet navigation uses the KiCad 11 Schematic IPC `FocusOnItems` command.
 
 ## Intended workflow
 
-1. Add an `LCSC` custom field to a symbol and set it to an LCSC code (for example `C123456`) or a URL containing that code.
-2. To inspect one part, select exactly one linked symbol in Eeschema and launch **JLCPCB Component Properties**. The action opens a focused, property-window-style details view for that symbol.
-3. To inspect the design, launch **JLCPCB Component Overview**. Search by reference, value, LCSC code or footprint; the overview groups repeated LCSC codes, estimates component cost from live catalogue unit price × placed quantity, and reports which catalogue stock levels cover the schematic quantity.
-4. In the properties view, the supplier image is placed beside the catalogue facts. If the symbol has an MPN custom field (for example `MPN` or `Manufacturer Part Number`), the alternatives table shows all purchasable JLCPCB keyword-search results returned for that MPN. Exact results are marked and shown first; related candidates follow, each with MPN, LCSC code, package, Basic/Extended class, stock or pre-order status, minimum quantity and lowest price break. Double-click a row to open its supplier page. Related candidates must be checked for package and electrical compatibility before substituting.
-5. In either view, review manufacturer, MPN, package, attributes, stock, full price breaks and source/freshness. Copy the part ID or open the product page/datasheet.
-6. From the overview, select a schematic symbol or all matching instances of the same part on its sheet. KiCad's `FocusOnItems` command navigates to the correct sheet, zooms to the symbol(s), and applies the editor selection.
+1. To populate a generic passive placeholder, select exactly one compatible `Device:R` or `Device:C` symbol in Eeschema and launch **JLCPCB Populate Selected Symbol**. Enter an LCSC code (for example `C123456`), review the inferred value, package footprint, datasheet and custom properties, then explicitly apply the fields. Unsupported or uncertain values remain unchanged. The action does not replace symbol graphics, pins or electrical pin mapping.
+2. For catalogue inspection, add an `LCSC` custom field to an existing symbol and set it to an LCSC code (for example `C123456`) or a URL containing that code.
+3. To inspect one part, select exactly one linked symbol in Eeschema and launch **JLCPCB Component Properties**. The action opens a focused, property-window-style details view for that symbol.
+4. To inspect the design, launch **JLCPCB Component Overview**. Search by reference, value, LCSC code or footprint; the overview groups repeated LCSC codes, estimates component cost from live catalogue unit price × placed quantity, and reports which catalogue stock levels cover the schematic quantity.
+5. In the properties view, the supplier image is placed beside the catalogue facts. If the symbol has an MPN custom field (for example `MPN` or `Manufacturer Part Number`), the alternatives table shows all purchasable JLCPCB keyword-search results returned for that MPN. Exact results are marked and shown first; related candidates follow, each with MPN, LCSC code, package, Basic/Extended class, stock or pre-order status, minimum quantity and lowest price break. Double-click a row to open its supplier page. Related candidates must be checked for package and electrical compatibility before substituting.
+6. In either view, review manufacturer, MPN, package, attributes, stock, full price breaks and source/freshness. Copy the part ID or open the product page/datasheet.
+7. From the overview, select a schematic symbol or all matching instances of the same part on its sheet. KiCad's `FocusOnItems` command navigates to the correct sheet, zooms to the symbol(s), and applies the editor selection.
 
 The part-link field name is editable in the browser, so projects using another property name (for example `JLCPCB` or `LCSC Part Number`) do not need to rename their fields.
 
@@ -39,6 +40,7 @@ The part-link field name is editable in the browser, so projects using another p
 - `plugin/kicad-jlcpcb-interface/plugin.json`: KiCad IPC plugin manifest and schematic action registration.
 - `plugin/kicad-jlcpcb-interface/main.py`: full-schematic overview action entrypoint.
 - `plugin/kicad-jlcpcb-interface/component_properties.py`: selected-symbol properties action entrypoint.
+- `plugin/kicad-jlcpcb-interface/populate_component.py` and `kicad_jlcpcb/draft.py`: review-first LCSC field inference and selected-symbol IPC write-back.
 - `plugin/kicad-jlcpcb-interface/kicad_jlcpcb/`: schematic scanning, component model, browser UI and cached catalogue provider.
 - `plugin/kicad-jlcpcb-interface/requirements.txt`: ABI-specific binary wheels for the official `kicad-python` IPC bindings.
 - `scripts/install_plugin.py`: validates and atomically installs the package into a KiCad version's user plugin directory.
@@ -70,7 +72,7 @@ Other operating systems and architectures need matching `kicad-python` wheels an
    ```
 
    The installer defaults to `KICAD_DOCUMENTS_HOME`, or `~/.local/share` on Linux. Override the root with `--documents-home PATH`. Use `--dry-run` to validate the package and print the destination without installing it.
-4. Restart KiCad and launch **JLCPCB Component Properties** or **JLCPCB Component Overview** from Eeschema.
+4. Restart KiCad and launch **JLCPCB Populate Selected Symbol**, **JLCPCB Component Properties** or **JLCPCB Component Overview** from Eeschema.
 
 The plugin directory is installed to:
 
@@ -90,7 +92,7 @@ python -m compileall -q plugin tests scripts
 ruff check plugin tests scripts
 ```
 
-Unit tests use fake schematic objects. The CI visual job also launches KiCad 10.99 Eeschema and verifies IPC symbol creation, LCSC/MPN field read-back, live selection, the properties window and live supplier data. Full plugin registration/discovery and cross-sheet GUI navigation still need separate validation before release.
+Unit tests use fake schematic objects. The CI visual job also launches KiCad 10.99 Eeschema, creates real symbols through IPC, populates a resistor from a fresh LCSC record, verifies the new value/footprint/datasheet/custom fields by reading them back, and captures live selection/properties windows and supplier data. Full plugin registration/discovery and cross-sheet GUI navigation still need separate validation before release.
 
 ## Planned milestones
 
@@ -105,7 +107,8 @@ Unit tests use fake schematic objects. The CI visual job also launches KiCad 10.
 - [x] Selected-symbol properties action and schematic-wide estimated-cost/stock-coverage summary.
 - [x] End-to-end live Eeschema selection-to-properties GIF and supplier-data visual evidence, captured from real KiCad 10.99 IPC and live JLCPCB responses.
 - [x] Live fixture verifies IPC-created LCSC/MPN fields remain readable after their display annotations are hidden.
-- [ ] Generate/synchronize complete KiCad components from an LCSC number for supported simple parts, with explicit manual completion for uncertain/complex fields.
+- [x] Populate an already placed compatible resistor/capacitor symbol from an LCSC number, with conservative field inference, review/confirmation and manual completion warnings.
+- [ ] Generate complete KiCad symbols and footprints from an LCSC number without a pre-placed placeholder, including geometry, pin mapping, library creation and synchronization.
 - [ ] Footprint and 3D model previews.
 - [x] Catalogue stock/pricing display, clearly labelled as indicative and source-dated.
 - [x] Cross-sheet navigation and selection through KiCad's `FocusOnItems` command.

@@ -22,6 +22,14 @@
       "show-button": true,
       "scopes": ["schematic"],
       "entrypoint": "main.py"
+    },
+    {
+      "identifier": "populate-component",
+      "name": "JLCPCB Populate Selected Symbol",
+      "description": "Preview and populate fields on one selected compatible resistor or capacitor symbol from an LCSC part number.",
+      "show-button": true,
+      "scopes": ["schematic"],
+      "entrypoint": "populate_component.py"
     }
   ]
 }

@@ -17,7 +17,7 @@ class PluginPackageTests(unittest.TestCase):
         self.assertEqual(manifest["runtime"]["min_version"], "3.12")
         self.assertEqual(
             {action["identifier"] for action in manifest["actions"]},
-            {"component-properties", "component-overview"},
+            {"component-properties", "component-overview", "populate-component"},
         )
         for action in manifest["actions"]:
             with self.subTest(action=action["identifier"]):
