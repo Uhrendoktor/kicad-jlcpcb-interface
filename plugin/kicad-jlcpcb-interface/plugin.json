@@ -40,7 +40,7 @@
     {
       "identifier": "create-component",
       "name": "JLCPCB Add Component from LCSC",
-      "description": "Search by LCSC code or resistor/capacitor value, review exact Basic/Extended catalogue matches, generate a reusable project-local KiCad symbol and place it at the cursor or by X/Y coordinates.",
+      "description": "Search by LCSC code or resistor/capacitor value, review exact Basic/Extended catalogue matches, generate a reusable project-local KiCad symbol and hand it to Eeschema's native cursor-placement tool.",
       "show-button": true,
       "scopes": [
         "schematic"

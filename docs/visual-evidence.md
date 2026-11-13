@@ -77,7 +77,7 @@ The same production windows are captured in both palettes. In GitHub's light UI 
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png" alt="Add Component from LCSC with catalogue match details and cursor or X/Y placement options" width="80%">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png" alt="Add Component from LCSC with exact-value catalogue matches and native mouse-placement workflow" width="80%">
 </p>
 
 <p align="center">
@@ -85,7 +85,7 @@ The same production windows are captured in both palettes. In GitHub's light UI 
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed.png" alt="Add Component dialog after the generated project-local symbol was placed" width="80%">
+  <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-cursor.png" alt="Eeschema with the generated project-local symbol selected and attached to the cursor" width="80%">
 </p>
 
 ### Actual Eeschema selection flow
@@ -111,7 +111,7 @@ The visual capture runs the production application windows, not separately drawn
 | Component Properties | Opens the focused properties window from a selected linked Eeschema symbol and captures its loaded catalogue view. |
 | Properties controls | Calls Select in schematic and Select same part on sheet; verifies the Eeschema selection; copies the LCSC ID and verifies the clipboard; invokes LCSC search, supplier product, datasheet and MPN-result actions and checks that each opens an HTTPS URL. |
 | Populate Selected Symbol | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, captures the proposal and the native confirmation messagebox, checks the confirmation wording, accepts the action and reads updated Value, Footprint, LCSC and MPN fields back from the schematic hierarchy. Captures the post-action state. |
-| Add Component from LCSC | Clears the Eeschema selection, drives the actual lookup/review window with X/Y placement values, captures the proposal and native confirmation messagebox, checks the confirmation wording, accepts generation and placement, then verifies the resulting reference, project-local library ID, value, footprint and linked custom fields through IPC. Captures the completion state. |
+| Add Component from LCSC | Clears the Eeschema selection, drives the actual lookup/review window, captures the proposal and native confirmation, then verifies that the generated project symbol is selected in KiCad's native Add Symbol chooser and attached to the cursor. Captures the live Eeschema cursor state, then sends Escape to cancel the fixture placement. |
 | Theme pairs | Captures the overview, properties, Populate and Add windows in both light and dark palettes, reusing each live widget tree. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 

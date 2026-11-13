@@ -178,7 +178,7 @@ A missing or unsupported footprint or an uncertain value is left unchanged and e
 
 ## 6. JLCPCB Add Component from LCSC
 
-This action searches for a supported passive part, generates a reusable project-local KiCad symbol, and places a new instance. Clear the Eeschema selection before launching it; the action expects an active project and no selected symbol.
+This action searches for a supported passive part, generates a reusable project-local KiCad symbol, and opens it in Eeschema for placement with the mouse. Clear the Eeschema selection before launching it; the action expects an active project and no selected symbol.
 
 ### Workflow
 
@@ -186,14 +186,16 @@ This action searches for a supported passive part, generates a reusable project-
 2. Launch **JLCPCB Add Component from LCSC** from the active Schematic Editor.
 3. Enter either an LCSC code (for example, `C60489`) or a resistor/capacitor value (for example, `10k`, `4k7`, `470R`, `100nF`, `0.1uF` or `4.7uF`), then choose **Search catalogue**.
 4. For a value search, review the exact-value matches. Basic listings are ranked first; Extended listings are retained as alternatives. Select a row to inspect its proposed Value, package, footprint, voltage/tolerance attributes, metadata and warnings. An LCSC-code lookup reviews that single catalogue record.
-5. Choose **Place at cursor in KiCad** or **Use X/Y coordinates (mm)**. Cursor placement is selected by default when the action was launched from Eeschema on an X11 desktop with `xdotool`; otherwise use coordinates.
-6. Confirm **Generate and place passive**. In cursor mode, the add-on opens KiCad's native Add Symbol chooser, selects the generated symbol, and returns to Eeschema with it attached to the mouse pointer. Left-click to place it or press Escape to cancel. Coordinate mode places the instance at the entered position.
+5. Confirm **Generate and place passive**. The add-on generates or reuses the project-local symbol, opens KiCad's native Add Symbol chooser, selects the generated part and returns to Eeschema with it attached to the mouse cursor.
+6. Move the symbol to the desired location and left-click to place it. Press Escape to cancel placement; the reusable project library remains generated.
+
+There are no X/Y coordinate fields. Placement is performed directly in the schematic using KiCad's normal mouse workflow. Cursor handoff requires the action to be launched from the focused Eeschema window on an X11 desktop with `xdotool` installed.
 
 The first matching Basic part is preselected when one is available. Basic/Extended is JLCPCB's library classification; it is not a statement that a part is electrically interchangeable with another listing. Compare voltage rating, tolerance, dielectric, power rating, package and other attributes before generating the symbol.
 
-![Add Component from LCSC: reviewed catalogue proposal and placement options](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png)
+![Add Component from LCSC: reviewed catalogue matches and mouse-placement handoff](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png)
 
-The confirmation explains that the project-local library will be updated and the symbol is based on KiCad's stock two-pin passive topology.
+The confirmation explains that the project-local library will be updated and that KiCad's native symbol chooser will attach the generated part to the cursor.
 
 ![Add Component from LCSC: confirmation dialog](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png)
 
@@ -206,8 +208,8 @@ For a supported resistor or capacitor, the add-on:
 - Adds hidden LCSC, Manufacturer, MPN, `JLCPCB Library Type` (Basic/Extended), category and selected attribute properties.
 - Writes or extends `JLCPCB_Generated.kicad_sym` in the project directory.
 - Registers the project library in `sym-lib-table` using a project-relative KiCad project variable URI.
-- Reloads the project library before opening KiCad's native chooser or placing an instance at the X/Y coordinates.
-- Lets KiCad assign the reference in cursor mode; coordinate mode chooses the next free R or C reference.
+- Reloads the project library, then chooses the generated symbol in KiCad's native Add Symbol chooser. KiCad assigns its reference when the placed instance is committed.
+- Leaves placement to the normal Eeschema mouse workflow; Escape cancels the pending placement without deleting the reusable library symbol.
 
 The symbol ID is deterministic for the LCSC part, so an existing generated symbol is reused rather than duplicated. The generator protects unowned files and refuses to overwrite a generated symbol that has been manually modified. The library writer uses atomic file replacement and a backup when extending an existing generated library.
 
@@ -216,18 +218,18 @@ The symbol ID is deterministic for the LCSC part, so an existing generated symbo
 Eeschema loads the project symbol table when it opens the project. When this action creates the *first* project-local library table row while Eeschema is already running, the current editor session may not know that new library nickname. In that case:
 
 1. The generated symbol file and table entry are saved.
-2. The plugin reports that the active session could not reload the new library.
-3. No symbol is opened in the chooser and no schematic instance is placed.
+2. The plugin reports that the active Eeschema session could not reload the new library.
+3. The native chooser is not opened.
 4. Close and reopen the project in Eeschema.
 5. Run **JLCPCB Add Component from LCSC** again with the same LCSC code or value query.
 
-The existing generated symbol is detected and reused; placement can continue when the reopened editor resolves the library. Once the nickname is loaded, later additions can extend and reload that library within the running session.
+The existing generated symbol is detected and reused; cursor placement can continue when the reopened editor resolves the library. Once the nickname is loaded, later additions can extend and reload that library within the running session.
 
 ### Placement and electrical checks
 
 Value search only returns exact nominal-value matches that can be confidently classified as resistors or capacitors and mapped to one of the reviewed SMD footprints (0201, 0402, 0603, 0805, 1206, 1210, 1812, 2010 or 2512). It does not compare voltage rating, tolerance, power rating, temperature coefficient, dielectric or manufacturer equivalence. Review those fields and the datasheet before generating a symbol.
 
-Cursor placement uses the native Eeschema Add Symbol hotkey `A` through `xdotool`. It requires the action to have been launched while the Eeschema window was focused on an X11 desktop. Check Eeschema Preferences → Hotkeys if the native chooser does not open. X/Y placement remains available when cursor handoff cannot be used.
+Cursor placement uses the native Eeschema Add Symbol hotkey `A` through `xdotool`. It requires the action to have been launched while the Eeschema window was focused on an X11 desktop. Check Eeschema Preferences → Hotkeys if the native chooser does not open. The add-on does not offer manual X/Y coordinates; move and place the symbol in the schematic with the mouse.
 
 The generated footprint association is a KiCad footprint-library reference, not a footprint generator. Always inspect the symbol and PCB footprint. The generator preserves stock two-pin passive topology; it does not infer component-specific pin mapping or arbitrary electrical behavior.
 

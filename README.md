@@ -17,7 +17,7 @@ KiCad JLCPCB Interface is a KiCad 11 Schematic Editor IPC add-on that connects s
 | **JLCPCB Component Overview** | Scans linked symbols across the schematic hierarchy, filters the list, shows catalogue details and estimates design cost and stock coverage. |
 | **JLCPCB Component Properties** | Opens catalogue details for exactly one selected LCSC-linked symbol, including supplier image, price breaks and MPN search results. |
 | **JLCPCB Populate Selected Symbol** | Reviews catalogue-derived fields, then updates one compatible `Device:R` or `Device:C` placeholder after confirmation. |
-| **JLCPCB Add Component from LCSC** | Searches by LCSC code or resistor/capacitor value, ranks exact Basic/Extended matches, then generates a project-local symbol for cursor or X/Y placement. |
+| **JLCPCB Add Component from LCSC** | Searches by LCSC code or resistor/capacitor value, ranks exact Basic/Extended matches, generates a project-local symbol and hands it to KiCad's native mouse-placement tool. |
 
 ## See it in KiCad
 
@@ -55,7 +55,7 @@ The two LCSC entry actions use a review screen rather than silently changing the
       <strong>Create a reusable project symbol</strong><br>
       <picture>
           <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
-          <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Reviewing a new resistor proposal and its X and Y placement coordinates" width="100%">
+          <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Reviewing a new resistor proposal and exact-value catalogue matches" width="100%">
         </picture>
     </td>
   </tr>
@@ -112,7 +112,7 @@ KiCad creates the managed plugin environment and installs pinned dependencies wh
 
 **Populate a generic passive:** select one `Device:R` or `Device:C` placeholder, open **JLCPCB Populate Selected Symbol**, enter an LCSC code, review the proposed fields and warnings, then confirm. The symbol graphics, pins and electrical pin mapping are not changed.
 
-**Add a reusable passive:** save the project, clear the Eeschema selection, open **JLCPCB Add Component from LCSC**, enter an LCSC code and X/Y coordinates in millimetres, review the proposal, then confirm. The add-on creates or reuses a project-local symbol in `JLCPCB_Generated.kicad_sym` and places an instance linked to that library ID.
+**Add a reusable passive:** save the project, clear the Eeschema selection, open **JLCPCB Add Component from LCSC**, enter an LCSC code or a value such as `10k` or `100nF`, review the exact catalogue matches, then confirm. KiCad opens its native symbol chooser and attaches the generated component to the mouse cursor; click in the schematic to place it or press Escape to cancel.
 
 > **First use in a project:** when the project does not yet have the generated-library table entry, Eeschema may not be able to load the new nickname in the already-open session. The library and table entry are saved, but no schematic instance is placed. Close and reopen the project, then run **JLCPCB Add Component from LCSC** again with the same LCSC code. The existing generated symbol is reused; later additions can reload the library live.
 
@@ -122,7 +122,7 @@ For the complete action-by-action instructions, catalogue field behavior, troubl
 
 - **Conservative generation.** Automatic symbol generation currently supports only resistor/capacitor records with a confident value and one of the reviewed SMD package-to-footprint mappings. New symbols clone KiCad's stock `Device:R` or `Device:C` graphics and two-pin electrical topology. Arbitrary IC pin maps and electrical pin types are not inferred.
 - **Value-based passive discovery.** The Add Component action accepts nominal values such as `10k`, `4k7`, `100nF` and `4.7uF`. It filters JLCPCB keyword results to exact electrical-value matches with a supported footprint, ranks Basic listings first and keeps Extended listings available as alternatives.
-- **Cursor placement.** Place-at-cursor uses KiCad's native Add Symbol chooser via `xdotool` on X11 when the action is launched from a focused Eeschema window. Explicit X/Y placement remains available as a fallback.
+- **Cursor placement.** Add Component uses KiCad's native Add Symbol chooser via `xdotool` on X11 when launched from a focused Eeschema window. The UI has no manual coordinate-placement mode; move and place the part with the mouse.
 - **No PCB-library generation.** The add-on does not create copper footprints, pad mappings or 3D models. Always verify the selected footprint and electrical suitability before board use or ordering.
 - **Supplier data.** Catalogue details, MPN searches and value-keyword searches use JLCPCB website endpoints that are not a supported public components API and may change. Source/freshness labels distinguish direct JLCPCB results, community fallbacks and cached snapshots.
 - **Indicative availability.** Stock and unit prices are snapshots, not a quote, stock reservation or purchase guarantee. Related MPN-search results are comparison candidates, not guaranteed drop-in replacements.

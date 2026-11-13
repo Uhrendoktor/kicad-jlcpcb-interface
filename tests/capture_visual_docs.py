@@ -19,6 +19,7 @@ PLUGIN_ROOT = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN_ROOT))
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
+from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -56,7 +57,7 @@ ASSET_NAMES = (
     "populate-component-applied.png",
     "add-component-proposed.png",
     "add-component-confirmation.png",
-    "add-component-placed.png",
+    "add-component-cursor.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
     "schematic-properties-opened.png",
@@ -1363,8 +1364,25 @@ def _drive_populator_form(
                 populator.messagebox.showerror = original_showerror
 
             validate_result(populator)
-            root.update()
-            _capture_window(root, output_dir / completed_asset)
+            if populator.create_mode:
+                # The real handoff leaves Eeschema in its native Place Symbol
+                # tool with the generated part attached to the mouse cursor.
+                _capture_desktop(output_dir / completed_asset)
+                cancelled = subprocess.run(
+                    ["xdotool", "key", "--clearmodifiers", "Escape"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=10,
+                )
+                if cancelled.returncode:
+                    raise RuntimeError(
+                        "Could not cancel the visual fixture's pending cursor placement: "
+                        + (cancelled.stderr.strip() or str(cancelled.returncode))
+                    )
+            else:
+                root.update()
+                _capture_window(root, output_dir / completed_asset)
             state["done"] = True
             populator.close()
         except BaseException as exc:
@@ -1483,6 +1501,34 @@ def _capture_passive_component_workflows(
     if list(schematic.get_selection()):
         raise RuntimeError("The add-component UI fixture did not clear the Eeschema selection.")
 
+    editor_windows = _visible_windows("xdotool")
+    editor_window_id = next(
+        (
+            window_id
+            for window_id, title, window_class in editor_windows
+            if "eeschema" in window_class.casefold()
+            or "schematic editor" in title.casefold()
+        ),
+        None,
+    )
+    if editor_window_id is None:
+        raise RuntimeError("The live Add Component UI fixture could not find Eeschema.")
+    focused = subprocess.run(
+        ["xdotool", "windowfocus", "--sync", editor_window_id],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    if focused.returncode:
+        raise RuntimeError(
+            "The live Add Component UI fixture could not focus Eeschema: "
+            + (focused.stderr.strip() or str(focused.returncode))
+        )
+    editor_window_id = capture_eeschema_window_id()
+    if editor_window_id is None:
+        raise RuntimeError("The active Eeschema window could not be captured for cursor placement.")
+
     create = ComponentPopulator(
         schematic,
         None,
@@ -1490,41 +1536,29 @@ def _capture_passive_component_workflows(
         create_mode=True,
         kicad=kicad,
         theme="light",
+        editor_window_id=editor_window_id,
     )
-    create.root.geometry("1040x930+840+30")
-    create.placement_mode_var.set("coordinates")
+    create.root.geometry("1000x820+840+30")
     create.lcsc_var.set("C105637")
-    create.x_var.set("205.0")
-    create.y_var.set("160.0")
     create.lookup()
 
     def validate_create_result(populator: ComponentPopulator) -> None:
-        added = populator.symbol
+        generated = populator.generated_library_symbol
         if (
-            added is None
-            or added.reference != "R4"
-            or symbol_library_id(added) != "JLCPCB_Generated:R_C105637"
-            or added.value != "1k"
-            or added.footprint_field.text.value
-            != "Resistor_SMD:R_0402_1005Metric"
+            generated is None
+            or not populator.cursor_placement_started
+            or generated.library_id != "JLCPCB_Generated:R_C105637"
+            or generated.symbol_name != "R_C105637"
+            or not generated.library_path.is_file()
         ):
             raise RuntimeError(
-                "The confirmed add-component UI action did not place R4 linked to the "
-                "project-local generated LCSC symbol."
+                "The Add Component UI did not generate the project symbol and hand it "
+                "to Eeschema's native cursor-placement tool."
             )
-        linked = next(
-            (item for item in find_linked_components(schematic) if item.reference == "R4"),
-            None,
-        )
-        if (
-            linked is None
-            or linked.part_code != "C105637"
-            or linked.value != "1k"
-            or linked.manufacturer_part_number != "RC0402JR-071KL"
-        ):
+        library_text = generated.library_path.read_text(encoding="utf-8")
+        if f'(symbol "{generated.symbol_name}"' not in library_text:
             raise RuntimeError(
-                "The add-component UI action did not persist the LCSC metadata in the "
-                "schematic hierarchy."
+                "The generated project library does not contain the selected symbol."
             )
 
     _drive_populator_form(
@@ -1534,10 +1568,10 @@ def _capture_passive_component_workflows(
         light_asset="add-component-light.png",
         dark_asset="add-component-dark.png",
         confirmation_asset="add-component-confirmation.png",
-        completed_asset="add-component-placed.png",
+        completed_asset="add-component-cursor.png",
         confirmation_title="Confirm new schematic component",
         required_confirmation_text=(
-            "clones KiCad's stock passive graphics and two-pin electrical topology"
+            "attach the generated part to your mouse cursor"
         ),
         expected_lcsc="C105637",
         expected_value="1k",
@@ -1545,7 +1579,7 @@ def _capture_passive_component_workflows(
         validate_result=validate_create_result,
     )
     print(
-        "live-add-component-ui=passed reference=R4 "
+        "live-add-component-ui=passed cursor=active "
         "library_id=JLCPCB_Generated:R_C105637",
         flush=True,
     )
