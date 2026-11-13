@@ -775,6 +775,21 @@ class ComponentPopulator:
         except Exception:
             pass
         self._poll_id = None
+        # Release Tk variables on the GUI thread while their Tcl interpreter
+        # is still alive. This avoids cross-thread Variable.__del__ calls when
+        # a completed catalogue worker is being collected during dialog teardown.
+        for name in (
+            "lcsc_var",
+            "x_var",
+            "y_var",
+            "placement_mode_var",
+            "status_var",
+            "symbol_var",
+            "confidence_var",
+        ):
+            variable = getattr(self, name, None)
+            setattr(self, name, None)
+            del variable
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.root.destroy()
 
