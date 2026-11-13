@@ -133,8 +133,11 @@ class TkCleanupRoot:
 
 
 class TkCleanupExecutor:
+    def __init__(self, shutdowns):
+        self.shutdowns = shutdowns
+
     def shutdown(self, *, wait, cancel_futures):
-        pass
+        self.shutdowns.append((wait, cancel_futures, threading.get_ident()))
 
 
 class BrowserCleanupTests(unittest.TestCase):
@@ -145,8 +148,9 @@ class BrowserCleanupTests(unittest.TestCase):
         browser._closed = False
         browser._poll_id = "poll-id"
         browser.root = root
-        browser._catalogue_executor = TkCleanupExecutor()
-        browser._summary_executor = TkCleanupExecutor()
+        shutdowns = []
+        browser._catalogue_executor = TkCleanupExecutor(shutdowns)
+        browser._summary_executor = TkCleanupExecutor(shutdowns)
 
         direct_variables = (
             "search_var",
@@ -188,6 +192,13 @@ class BrowserCleanupTests(unittest.TestCase):
         self.assertTrue(all(not event[2] for event in resource_events))
         self.assertTrue(root.destroyed)
         self.assertEqual(events[-1][0], "root-destroyed")
+        self.assertEqual(
+            shutdowns,
+            [
+                (True, True, threading.get_ident()),
+                (True, True, threading.get_ident()),
+            ],
+        )
 
 
 class SelectionTests(unittest.TestCase):
