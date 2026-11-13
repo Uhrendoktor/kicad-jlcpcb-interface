@@ -28,9 +28,10 @@ class PluginPackageTests(unittest.TestCase):
             if action["identifier"] == "passive-component"
         ]
         self.assertEqual(len(passive_actions), 1)
-        self.assertEqual(passive_actions[0]["name"], "JLCPCB Add or Update Passive")
+        self.assertEqual(passive_actions[0]["name"], "JLCPCB Add or Update Component")
         self.assertIn("with no selection", passive_actions[0]["description"])
-        self.assertIn("Device:R or Device:C selected", passive_actions[0]["description"])
+        self.assertIn("free-text query", passive_actions[0]["description"])
+        self.assertEqual(passive_actions[0]["entrypoint"], "component_populator.py")
 
         for action in manifest["actions"]:
             with self.subTest(action=action["identifier"]):
