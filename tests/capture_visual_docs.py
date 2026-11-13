@@ -679,7 +679,9 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             None,
         )
         if placed_symbol_readback is None:
-            raise RuntimeError("The direct-placed R3 symbol is missing from the schematic hierarchy.")
+            raise RuntimeError(
+                "The direct-placed R3 symbol is missing from the schematic hierarchy."
+            )
         raw_placed_fields = {
             field.name: field for field in placed_symbol_readback.user_fields
         }
