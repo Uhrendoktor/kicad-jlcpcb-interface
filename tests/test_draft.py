@@ -292,5 +292,94 @@ class ComponentDraftTests(unittest.TestCase):
         self.assertTrue(any("HTTPS" in warning for warning in draft.warnings))
 
 
+
+    def test_suggests_non_passive_symbols_and_only_maps_known_fields(self):
+        inductor = build_component_draft(
+            details(
+                lcsc="C70001",
+                description="10uH Shielded Power Inductor",
+                manufacturer="Wurth",
+                manufacturer_part_number="74404042100",
+                package="0603",
+                category="Inductors",
+                attributes={"Inductance": "10uH", "Current": "1.2A"},
+            )
+        )
+        self.assertEqual(inductor.kind, "inductor")
+        self.assertEqual(inductor.symbol_hint, "Device:L")
+        self.assertEqual(inductor.reference_prefix, "L")
+        self.assertEqual(inductor.value, "10uH")
+        self.assertEqual(
+            inductor.footprint, "Inductor_SMD:L_0603_1608Metric"
+        )
+
+        led = build_component_draft(
+            details(
+                lcsc="C70002",
+                description="Red LED 0603",
+                manufacturer="Kingbright",
+                manufacturer_part_number="APT1608SURCK",
+                package="0603",
+                category="Optoelectronics - LEDs",
+                attributes={"Forward Voltage": "2V", "Luminous Intensity": "20mcd"},
+            )
+        )
+        self.assertEqual(led.kind, "led")
+        self.assertEqual(led.symbol_hint, "Device:LED")
+        self.assertEqual(led.reference_prefix, "D")
+        self.assertEqual(led.value, "APT1608SURCK")
+        self.assertEqual(led.footprint, "LED_SMD:LED_0603_1608Metric")
+
+    def test_unknown_component_keeps_symbol_and_footprint_as_manual_choices(self):
+        draft = build_component_draft(
+            details(
+                lcsc="C70003",
+                description="Low power 32-bit microcontroller",
+                manufacturer_part_number="STM32G031K8T6",
+                package="LQFP-32",
+                category="Integrated Circuits - Microcontrollers",
+                attributes={"Core": "ARM Cortex-M0+"},
+            )
+        )
+        self.assertEqual(draft.kind, "unknown")
+        self.assertEqual(draft.symbol_hint, "")
+        self.assertEqual(draft.footprint, "")
+        self.assertEqual(draft.value, "")
+        self.assertIn("Library:Symbol", " ".join(draft.warnings))
+
+    def test_updates_any_selected_symbol_without_changing_its_library_identity(self):
+        draft = build_component_draft(details())
+        pins = ("1:IN+", "2:IN-", "3:VCC")
+        symbol = SimpleNamespace(
+            definition=SimpleNamespace(
+                id=SimpleNamespace(library="Amplifier_Operational", name="LM358"),
+                pins=pins,
+            ),
+            value="LM358",
+            footprint_field=SimpleNamespace(text=SimpleNamespace(value="Package_SO:SOIC-8_3.9x4.9mm_P1.27mm")),
+            datasheet_field=SimpleNamespace(text=SimpleNamespace(value="")),
+            description_field=SimpleNamespace(text=SimpleNamespace(value="")),
+            proto=SimpleNamespace(
+                value_field=RawField(),
+                user_fields=RepeatedFields(),
+            ),
+        )
+        identity_before = symbol.definition.id
+        pins_before = symbol.definition.pins
+
+        changed = apply_component_draft_fields(
+            symbol, draft, expected_library_id="Amplifier_Operational:LM358"
+        )
+
+        self.assertIn("Value", changed)
+        self.assertEqual(symbol.value, "10k")
+        self.assertIs(symbol.definition.id, identity_before)
+        self.assertEqual(symbol.definition.pins, pins_before)
+        self.assertEqual(
+            symbol.footprint_field.text.value,
+            "Resistor_SMD:R_0402_1005Metric",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
