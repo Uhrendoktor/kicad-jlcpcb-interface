@@ -127,9 +127,9 @@ def start_native_symbol_placement(
     pause(0.6)
     focused_id = send("getwindowfocus")
     if focused_id != str(editor_window_id):
-        focused_pid = read_window("getwindowpid", focused_id) if focused_id else ""
-        focused_title = read_window("getwindowname", focused_id) if focused_id else ""
-        chooser_title = read_window("getwindowname", chooser_id)
+        focused_pid = send("getwindowpid", focused_id) if focused_id else ""
+        focused_title = send("getwindowname", focused_id) if focused_id else ""
+        chooser_title = send("getwindowname", chooser_id)
         raise RuntimeError(
             "KiCad accepted the symbol chooser selection but did not return focus "
             f"to Eeschema. Editor={editor_window_id!r}/{editor_pid!r}; "
@@ -138,57 +138,3 @@ def start_native_symbol_placement(
             "Check the native chooser and retry placement."
         )
     return
-
-    def read_window(command: str, window_id: str) -> str:
-        result = command_runner(
-            [executable, command, str(window_id)],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=5,
-        )
-        if getattr(result, "returncode", 1) != 0:
-            return ""
-        return str(getattr(result, "stdout", "") or "").strip()
-
-    focused_id = send("getwindowfocus")
-    focused_pid = read_window("getwindowpid", focused_id) if focused_id else ""
-    tree_details = ""
-    window_info = ""
-    xwininfo = shutil.which("xwininfo")
-    if xwininfo:
-        for arguments, label in (
-            (["-id", str(chooser_id)], "chooser geometry"),
-            (["-id", str(chooser_id), "-tree"], "chooser children"),
-        ):
-            diagnostic = command_runner(
-                [xwininfo, *arguments],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=5,
-            )
-            details = str(getattr(diagnostic, "stdout", "") or "").strip()
-            if label == "chooser geometry":
-                window_info = details
-            else:
-                tree_details = details
-    focused_title = read_window("getwindowname", focused_id) if focused_id else ""
-    focused_class = (
-        read_window("getwindowclassname", focused_id) if focused_id else ""
-    )
-    chooser_title = read_window("getwindowname", chooser_id)
-    chooser_class = read_window("getwindowclassname", chooser_id)
-    editor_title = read_window("getwindowname", str(editor_window_id))
-    editor_class = read_window("getwindowclassname", str(editor_window_id))
-    raise RuntimeError(
-        "KiCad accepted the symbol chooser selection but did not return focus "
-        "to the Eeschema process. "
-        f"Editor={editor_window_id!r}/{editor_pid!r} "
-        f"({editor_class} {editor_title!r}); "
-        f"chooser={chooser_id!r} ({chooser_class} {chooser_title!r}); "
-        f"focused={focused_id!r}/{focused_pid!r} "
-        f"({focused_class} {focused_title!r}). "
-        f"{window_info} {tree_details[:3000]} "
-        "Check the native chooser and retry placement."
-    )
