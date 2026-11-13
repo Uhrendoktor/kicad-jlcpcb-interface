@@ -1139,8 +1139,11 @@ class ComponentBrowser:
         self._image_ref = None
         tk_variables.clear()
 
-        self._catalogue_executor.shutdown(wait=False, cancel_futures=True)
-        self._summary_executor.shutdown(wait=False, cancel_futures=True)
+        # Both pools may still have idle or completing workers. Join them
+        # before destroying the Tcl interpreter so no executor thread can
+        # outlive the Tk resources owned by this window.
+        self._catalogue_executor.shutdown(wait=True, cancel_futures=True)
+        self._summary_executor.shutdown(wait=True, cancel_futures=True)
         self.root.destroy()
 
     def run(self) -> None:
