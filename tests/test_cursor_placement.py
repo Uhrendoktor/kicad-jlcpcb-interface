@@ -83,6 +83,13 @@ class CursorPlacementTests(unittest.TestCase):
             ],
             runner.commands,
         )
+        self.assertEqual(
+            sum(
+                command == ["xdotool", "key", "--clearmodifiers", "Tab"]
+                for command in runner.commands
+            ),
+            2,
+        )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "Down"], runner.commands
         )

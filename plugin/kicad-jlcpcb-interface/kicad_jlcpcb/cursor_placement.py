@@ -101,10 +101,12 @@ def start_native_symbol_placement(
         )
 
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
-    # Let KiCad's debounced filter populate the library tree. The chooser starts
-    # with focus in the filter box; Down selects the filtered tree result and
-    # Return commits the selected library symbol.
+    # Let KiCad's debounced filter populate the library tree. Tab twice
+    # moves from the filter box through the sort control into the result tree.
+    # Down selects its first filtered row; Return activates that symbol.
     pause(0.6)
+    send("key", "--clearmodifiers", "Tab")
+    send("key", "--clearmodifiers", "Tab")
     send("key", "--clearmodifiers", "Down")
     pause(0.1)
     send("key", "--clearmodifiers", "Return")
