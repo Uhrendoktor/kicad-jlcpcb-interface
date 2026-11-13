@@ -67,6 +67,15 @@ class ComponentDraftTests(unittest.TestCase):
         self.assertEqual(fields["Tolerance"], "±1%")
         self.assertEqual(draft.confidence, "high")
 
+    def test_records_basic_and_extended_class_as_hidden_generation_metadata(self):
+        basic = build_component_draft(details(is_basic=True))
+        extended = build_component_draft(details(is_basic=False))
+        unknown = build_component_draft(details(is_basic=None))
+
+        self.assertEqual(dict(basic.custom_fields)["JLCPCB Library Type"], "Basic")
+        self.assertEqual(dict(extended.custom_fields)["JLCPCB Library Type"], "Extended")
+        self.assertNotIn("JLCPCB Library Type", dict(unknown.custom_fields))
+
     def test_infers_capacitor_value_and_package(self):
         draft = build_component_draft(
             details(

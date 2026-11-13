@@ -185,6 +185,7 @@ class ComponentDraft:
     confidence: str
     warnings: tuple[str, ...]
     source_label: str
+    library_type: str = ""
 
     @property
     def custom_fields(self) -> tuple[tuple[str, str], ...]:
@@ -193,6 +194,8 @@ class ComponentDraft:
             ("Manufacturer", self.manufacturer),
             ("MPN", self.mpn),
         ]
+        if self.library_type:
+            fields.append(("JLCPCB Library Type", self.library_type))
         if self.category:
             fields.append(("JLCPCB Category", self.category))
         for name, value in self.attributes:
@@ -445,6 +448,11 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
         confidence=confidence,
         warnings=tuple(warnings),
         source_label=details.source_label,
+        library_type=(
+            "Basic" if details.is_basic is True
+            else "Extended" if details.is_basic is False
+            else ""
+        ),
     )
 
 
