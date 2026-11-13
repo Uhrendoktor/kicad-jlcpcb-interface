@@ -300,31 +300,44 @@ def build_component_draft(details: JlcPartDetails) -> ComponentDraft:
     )
 
 
+def _library_id_matches_draft(library_id: str, draft: ComponentDraft) -> bool:
+    """Accept a stock symbol or this LCSC part's deterministic project-library ID."""
+    if library_id == draft.symbol_hint:
+        return True
+    parts = str(library_id or "").split(":", 1)
+    if len(parts) != 2:
+        return False
+    prefix = {"resistor": "R", "capacitor": "C"}.get(draft.kind)
+    if prefix is None:
+        return False
+    expected_name = f"{prefix}_{normalize_lcsc_code(draft.lcsc)}"
+    return (
+        re.fullmatch(r"JLCPCB_Generated(?:_\d+)?", parts[0]) is not None
+        and parts[1] == expected_name
+    )
+
+
 def apply_component_draft_fields(
     symbol: Any,
     draft: ComponentDraft,
     *,
     expected_library_id: str | None = None,
 ) -> tuple[str, ...]:
-    """Apply fields only after the selected/created symbol type is validated.
-
-    Existing selected symbols must expose their actual library ID. The direct
-    placement path may supply the explicit ID it just passed to
-    place_symbol_from_library(); a non-empty conflicting ID is still rejected.
-    """
+    """Apply fields only after validating the exact symbol/library identity."""
     actual_library_id = symbol_library_id(symbol)
     expected = str(expected_library_id or "").strip()
-    if expected and expected != draft.symbol_hint:
+    if expected and not _library_id_matches_draft(expected, draft):
         raise ValueError(
-            f"Expected library ID {expected} does not match draft type {draft.symbol_hint}."
+            f"Expected library ID {expected} does not identify this LCSC {draft.lcsc} draft."
         )
+    required_id = expected or draft.symbol_hint
     if (
-        not draft.symbol_hint
-        or (actual_library_id and actual_library_id != draft.symbol_hint)
-        or (not actual_library_id and expected != draft.symbol_hint)
+        not required_id
+        or (actual_library_id and actual_library_id != required_id)
+        or (not actual_library_id and required_id != draft.symbol_hint)
     ):
         raise ValueError(
-            f"Proposal requires {draft.symbol_hint or 'a known passive type'}, "
+            f"Proposal requires {required_id or 'a known passive type'}, "
             f"but the selected symbol is {actual_library_id or 'an unknown library symbol'}."
         )
     changed: list[str] = []

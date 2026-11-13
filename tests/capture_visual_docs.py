@@ -20,10 +20,16 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
+    ComponentDraft,
     apply_component_draft_fields,
     build_component_draft,
     symbol_library_id,
     update_schematic_symbol,
+)
+from kicad_jlcpcb.library import (  # noqa: E402
+    generate_project_library_symbol,
+    parse_sexpr,
+    reload_project_symbol_library,
 )
 from kicad_jlcpcb.model import (  # noqa: E402
     find_linked_components,
@@ -384,6 +390,13 @@ def _update_schematic_item_checked(schematic: Any, symbol: Any) -> None:
         raise RuntimeError(message)
 
 
+def _walk_sexpr(node):
+    if isinstance(node, list):
+        yield node
+        for child in node:
+            yield from _walk_sexpr(child)
+
+
 def _open_live_eeschema(output_dir: Path, work_dir: Path):
     """Launch Eeschema, connect with kicad-python, and create real linked symbols."""
     from kipy import KiCad
@@ -423,7 +436,40 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         '(sheet_instances (path "/" (page "1"))))\n',
         encoding="utf-8",
     )
-    (work_dir / "jlcpcb-live-demo.kicad_pro").write_text("{}\n", encoding="utf-8")
+    project_file = work_dir / "jlcpcb-live-demo.kicad_pro"
+    project_file.write_text("{}\n", encoding="utf-8")
+
+    # Project symbol tables are read when Eeschema opens a project. Pre-register
+    # the project-local nickname here so the live IPC test exercises the supported
+    # reload path for adding another symbol to an already-loaded project library.
+    seed_draft = ComponentDraft(
+        lcsc="C999999",
+        kind="resistor",
+        symbol_hint="Device:R",
+        reference_prefix="R",
+        value="1k",
+        footprint="Resistor_SMD:R_0402_1005Metric",
+        datasheet_url="",
+        manufacturer="Fixture",
+        mpn="IPC-RELOAD-SEED",
+        description="Project-local library reload fixture",
+        category="Resistors",
+        attributes=(),
+        confidence="high",
+        warnings=(),
+        source_label="CI fixture",
+    )
+    seeded_library = generate_project_library_symbol(
+        project_file,
+        seed_draft,
+        device_library=_find_symbol_library(),
+    )
+    if not seeded_library.created or not seeded_library.table_path.is_file():
+        raise RuntimeError("The live IPC fixture could not pre-register its project library.")
+    print(
+        f"live-project-library-preload=passed nickname={seeded_library.nickname}",
+        flush=True,
+    )
 
     env = os.environ.copy()
     for key in (
@@ -602,18 +648,95 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         update_schematic_symbol(schematic, created["R1"])
         schematic.save()
 
+        generated_library = generate_project_library_symbol(
+            schematic.get_project(),
+            draft,
+            device_library=_find_symbol_library(),
+            kicad=kicad,
+        )
+        reload_project_symbol_library(kicad, generated_library)
         placed = place_component_from_draft(
-            schematic, draft, 240.0, 175.0
+            schematic,
+            draft,
+            240.0,
+            175.0,
+            library_id=generated_library.library_id,
         )
         placed_library_id = symbol_library_id(placed)
         if (
             placed.reference != "R3"
-            or placed_library_id not in ("", "Device:R")
+            or placed_library_id != generated_library.library_id
             or placed.value != "10k"
             or placed.footprint_field.text.value
             != "Resistor_SMD:R_0402_1005Metric"
         ):
-            raise RuntimeError("Direct LCSC placement did not create the expected R3 resistor.")
+            raise RuntimeError(
+                "Direct LCSC placement did not retain the generated project-local library ID."
+            )
+        generated_root = parse_sexpr(
+            generated_library.library_path.read_text(encoding="utf-8")
+        )
+        generated_symbols = [
+            node for node in generated_root
+            if isinstance(node, list) and node and getattr(node[0], "value", "") == "symbol"
+        ]
+        generated_symbol = next(
+            (
+                node for node in generated_symbols
+                if len(node) > 1 and getattr(node[1], "value", "") == generated_library.symbol_name
+            ),
+            None,
+        )
+        if generated_symbol is None:
+            raise RuntimeError("The generated project library does not contain its new symbol.")
+        generated_properties = {
+            node[1].value: node[2].value
+            for node in generated_symbol
+            if isinstance(node, list)
+            and len(node) >= 3
+            and getattr(node[0], "value", "") == "property"
+        }
+        generated_pin_numbers = [
+            next(
+                child[1].value for child in pin
+                if isinstance(child, list) and getattr(child[0], "value", "") == "number"
+            )
+            for pin in _walk_sexpr(generated_symbol)
+            if isinstance(pin, list) and pin and getattr(pin[0], "value", "") == "pin"
+        ]
+        if (
+            generated_properties.get("LCSC") != draft.lcsc
+            or generated_properties.get("Description") != draft.description
+            or generated_properties.get("Datasheet") != draft.datasheet_url
+            or generated_properties.get("JLCPCB Generated By") != "kicad_jlcpcb_interface"
+            or sorted(generated_pin_numbers) != ["1", "2"]
+        ):
+            raise RuntimeError(
+                "The generated library symbol is missing required metadata "
+                "or stock two-pin topology."
+            )
+        generated_svg = work_dir / "generated-project-passive.svg"
+        _export_symbol(
+            cli, generated_library.library_path, generated_library.symbol_name, generated_svg
+        )
+        if not generated_svg.is_file() or generated_svg.stat().st_size < 250:
+            raise RuntimeError("KiCad CLI did not export the generated project-local symbol.")
+        table_text = generated_library.table_path.read_text(encoding="utf-8")
+        if generated_library.nickname not in table_text:
+            raise RuntimeError("The project symbol table does not register the generated library.")
+        saved_schematic = (work_dir / "jlcpcb-live-demo.kicad_sch").read_text(encoding="utf-8")
+        if generated_library.library_id not in saved_schematic:
+            raise RuntimeError(
+                "The saved schematic does not reference the generated project-local library ID."
+            )
+        print(
+            "live-project-library-generation=passed "
+            f"library_id={generated_library.library_id} "
+            f"symbol_file={generated_library.library_path.name} "
+            f"pins={','.join(sorted(generated_pin_numbers))} "
+            f"cli_svg={generated_svg.stat().st_size}",
+            flush=True,
+        )
 
         discovered = find_linked_components(schematic)
         expected = {item["lcsc"] for item in DEMO_PARTS}
