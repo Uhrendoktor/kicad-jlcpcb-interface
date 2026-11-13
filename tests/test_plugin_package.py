@@ -20,10 +20,18 @@ class PluginPackageTests(unittest.TestCase):
             {
                 "component-properties",
                 "component-overview",
-                "populate-component",
-                "create-component",
+                "passive-component",
             },
         )
+        passive_actions = [
+            action for action in manifest["actions"]
+            if action["identifier"] == "passive-component"
+        ]
+        self.assertEqual(len(passive_actions), 1)
+        self.assertEqual(passive_actions[0]["name"], "JLCPCB Add or Update Passive")
+        self.assertIn("with no selection", passive_actions[0]["description"])
+        self.assertIn("Device:R or Device:C selected", passive_actions[0]["description"])
+
         for action in manifest["actions"]:
             with self.subTest(action=action["identifier"]):
                 self.assertEqual(action["scopes"], ["schematic"])
