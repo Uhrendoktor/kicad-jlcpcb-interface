@@ -1227,13 +1227,69 @@ def _drive_populator_form(
                             f"confirmation screenshot failed: {type(exc).__name__}: {exc}"
                         )
                     try:
-                        result = subprocess.run(
-                            ["xdotool", "key", "Return"],
+                        search = subprocess.run(
+                            [
+                                "xdotool",
+                                "search",
+                                "--onlyvisible",
+                                "--name",
+                                title,
+                            ],
                             check=False,
                             capture_output=True,
                             text=True,
                             timeout=10,
                         )
+                        windows = [
+                            item.strip()
+                            for item in search.stdout.splitlines()
+                            if item.strip()
+                        ]
+                        if search.returncode == 0 and windows:
+                            # Message boxes are separate X11 windows. Focus the
+                            # exact title from askyesno, then send Return to that
+                            # window rather than whichever editor window happens
+                            # to own the global focus.
+                            window_id = windows[-1]
+                            focus = subprocess.run(
+                                ["xdotool", "windowfocus", "--sync", window_id],
+                                check=False,
+                                capture_output=True,
+                                text=True,
+                                timeout=10,
+                            )
+                            if focus.returncode:
+                                raise RuntimeError(
+                                    "could not focus confirmation window: "
+                                    + (focus.stderr.strip() or str(focus.returncode))
+                                )
+                            result = subprocess.run(
+                                [
+                                    "xdotool",
+                                    "key",
+                                    "--clearmodifiers",
+                                    "--window",
+                                    window_id,
+                                    "Return",
+                                ],
+                                check=False,
+                                capture_output=True,
+                                text=True,
+                                timeout=10,
+                            )
+                        else:
+                            result = subprocess.run(
+                                ["xdotool", "key", "--clearmodifiers", "Return"],
+                                check=False,
+                                capture_output=True,
+                                text=True,
+                                timeout=10,
+                            )
+                            if search.returncode:
+                                dismissal_errors.append(
+                                    "could not locate the confirmation window by title; "
+                                    "used the active-window fallback"
+                                )
                         if result.returncode:
                             dismissal_errors.append(
                                 "could not accept the confirmation dialog: "
