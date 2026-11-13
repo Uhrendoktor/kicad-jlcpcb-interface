@@ -136,6 +136,26 @@ def start_native_symbol_placement(
 
     focused_id = send("getwindowfocus")
     focused_pid = read_window("getwindowpid", focused_id) if focused_id else ""
+    tree_details = ""
+    window_info = ""
+    xwininfo = shutil.which("xwininfo")
+    if xwininfo:
+        for arguments, label in (
+            (["-id", str(chooser_id)], "chooser geometry"),
+            (["-id", str(chooser_id), "-tree"], "chooser children"),
+        ):
+            diagnostic = command_runner(
+                [xwininfo, *arguments],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+            details = str(getattr(diagnostic, "stdout", "") or "").strip()
+            if label == "chooser geometry":
+                window_info = details
+            else:
+                tree_details = details
     focused_title = read_window("getwindowname", focused_id) if focused_id else ""
     focused_class = (
         read_window("getwindowclassname", focused_id) if focused_id else ""
@@ -152,5 +172,6 @@ def start_native_symbol_placement(
         f"chooser={chooser_id!r} ({chooser_class} {chooser_title!r}); "
         f"focused={focused_id!r}/{focused_pid!r} "
         f"({focused_class} {focused_title!r}). "
+        f"{window_info} {tree_details[:3000]} "
         "Check the native chooser and retry placement."
     )
