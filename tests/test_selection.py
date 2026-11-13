@@ -187,7 +187,8 @@ class BrowserCleanupTests(unittest.TestCase):
         resource_events = [
             event
             for event in events
-            if event[0] not in {"root-destroyed", "shutdown:catalogue", "shutdown:summary"}
+            if event[0]
+            not in {"root-destroyed", "shutdown:catalogue", "shutdown:summary"}
         ]
         expected = set(direct_variables)
         expected.update(
@@ -197,15 +198,32 @@ class BrowserCleanupTests(unittest.TestCase):
         expected.update(
             f"detail:{name}" for name in ("reference", "value", "part")
         )
-        expected.add("product-image")
+        expected.update(("product-image", "widget"))
         released = {event[0] for event in resource_events}
         self.assertEqual(released, expected)
         self.assertTrue(
             all(event[1] == threading.get_ident() for event in resource_events)
         )
         self.assertTrue(all(not event[2] for event in resource_events))
+
+        shutdown_events = [
+            event for event in events if event[0].startswith("shutdown:")
+        ]
+        self.assertEqual(
+            [event[0] for event in shutdown_events],
+            ["shutdown:catalogue", "shutdown:summary"],
+        )
+        self.assertTrue(all(event[1] == threading.get_ident() for event in shutdown_events))
+        self.assertTrue(all(event[2] is False for event in shutdown_events))
+        self.assertTrue(all(event[3] is True for event in shutdown_events))
+        self.assertTrue(all(event[4] is True for event in shutdown_events))
+        self.assertLess(
+            max(events.index(event) for event in shutdown_events),
+            min(events.index(event) for event in resource_events),
+        )
         self.assertTrue(root.destroyed)
         self.assertEqual(events[-1][0], "root-destroyed")
+        self.assertEqual(browser.__dict__, {"_closed": True})
 
 
 class SelectionTests(unittest.TestCase):
