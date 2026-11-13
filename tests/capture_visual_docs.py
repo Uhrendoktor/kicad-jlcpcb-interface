@@ -39,8 +39,7 @@ from kicad_jlcpcb.model import (  # noqa: E402
 from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
-    resolve_passive_library_id,
-    resolve_selected_symbol,
+    resolve_passive_action_target,
 )
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 from kicad_jlcpcb.theme import apply_tk_theme  # noqa: E402
@@ -1393,7 +1392,7 @@ def _capture_passive_component_workflows(
     output_dir: Path,
     cache_dir: Path,
 ) -> None:
-    """Exercise both production LCSC dialogs against the live Eeschema connection."""
+    """Exercise both modes of the unified passive action against live Eeschema."""
     # Populate: the entrypoint requires exactly one selected generic passive.
     schematic.clear_selection()
     schematic.add_to_selection([symbols["R2"]])
@@ -1401,10 +1400,11 @@ def _capture_passive_component_workflows(
     if selected.reference != "R2":
         raise RuntimeError("The populate UI fixture did not select R2.")
 
-    editable_symbol = resolve_selected_symbol(schematic, selected.symbol)
-    resolved_library_id = resolve_passive_library_id(
-        editable_symbol, kicad, document=schematic.document
+    editable_symbol, resolved_library_id, create_mode = resolve_passive_action_target(
+        schematic, kicad, list(schematic.get_selection())
     )
+    if create_mode or editable_symbol is None:
+        raise RuntimeError("A single selected generic passive did not resolve to update mode.")
     print(
         "selected-symbol-resolution="
         + json.dumps(
@@ -1471,7 +1471,7 @@ def _capture_passive_component_workflows(
         validate_result=validate_populate_result,
     )
     print(
-        "live-populate-ui=passed selected=R2 lcsc=C60489 "
+        "live-update-mode-ui=passed selected=R2 lcsc=C60489 "
         "result=updated-and-saved",
         flush=True,
     )
@@ -1480,8 +1480,14 @@ def _capture_passive_component_workflows(
     # library is already registered by the live fixture, so this exercises the
     # same reload-and-place path that users get after the first-use reopen/retry.
     schematic.clear_selection()
-    if list(schematic.get_selection()):
-        raise RuntimeError("The add-component UI fixture did not clear the Eeschema selection.")
+    selection = list(schematic.get_selection())
+    if selection:
+        raise RuntimeError("The add-mode UI fixture did not clear the Eeschema selection.")
+    add_target, add_library_id, create_mode = resolve_passive_action_target(
+        schematic, kicad, selection
+    )
+    if not create_mode or add_target is not None or add_library_id:
+        raise RuntimeError("An empty selection did not resolve to add mode.")
 
     create = ComponentPopulator(
         schematic,
@@ -1545,7 +1551,7 @@ def _capture_passive_component_workflows(
         validate_result=validate_create_result,
     )
     print(
-        "live-add-component-ui=passed reference=R4 "
+        "live-add-mode-ui=passed reference=R4 "
         "library_id=JLCPCB_Generated:R_C105637",
         flush=True,
     )

@@ -28,24 +28,14 @@
       "entrypoint": "main.py"
     },
     {
-      "identifier": "populate-component",
-      "name": "JLCPCB Populate Selected Symbol",
-      "description": "Preview and populate fields on one selected compatible resistor or capacitor symbol from an LCSC part number.",
+      "identifier": "passive-component",
+      "name": "JLCPCB Add or Update Passive",
+      "description": "With one stock Device:R or Device:C selected, review and populate its fields; with no selection, search by LCSC code or passive value and add a reusable project-local symbol.",
       "show-button": true,
       "scopes": [
         "schematic"
       ],
-      "entrypoint": "populate_component.py"
-    },
-    {
-      "identifier": "create-component",
-      "name": "JLCPCB Add Component from LCSC",
-      "description": "Search by LCSC code or resistor/capacitor value, review exact Basic/Extended catalogue matches, generate a reusable project-local KiCad symbol and place it at the cursor or by X/Y coordinates.",
-      "show-button": true,
-      "scopes": [
-        "schematic"
-      ],
-      "entrypoint": "create_component.py"
+      "entrypoint": "passive_component.py"
     }
   ]
 }

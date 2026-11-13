@@ -1,6 +1,6 @@
-"""KiCad IPC action entrypoint for populating one selected symbol from LCSC."""
+"""Compatibility entrypoint for the unified passive add/update action."""
 
-from kicad_jlcpcb.populator import run_component_populator
+from kicad_jlcpcb.populator import run_passive_component_action
 
 if __name__ == "__main__":
-    run_component_populator()
+    run_passive_component_action()
