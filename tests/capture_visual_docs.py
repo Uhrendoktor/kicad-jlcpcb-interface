@@ -51,8 +51,10 @@ ASSET_NAMES = (
     "component-browser-workflow.gif",
     "component-properties-selected.png",
     "populate-component-proposed.png",
+    "populate-component-confirmation.png",
     "populate-component-applied.png",
     "add-component-proposed.png",
+    "add-component-confirmation.png",
     "add-component-placed.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
@@ -1151,6 +1153,7 @@ def _drive_populator_form(
     output_dir: Path,
     *,
     proposal_asset: str,
+    confirmation_asset: str,
     completed_asset: str,
     confirmation_title: str,
     required_confirmation_text: str,
@@ -1213,7 +1216,46 @@ def _drive_populator_form(
                         "The confirmation text omitted its required safety/behavior "
                         f"explanation: {message!r}"
                     )
-                return True
+
+                dismissal_errors: list[str] = []
+
+                def capture_and_accept() -> None:
+                    try:
+                        _capture_desktop(output_dir / confirmation_asset)
+                    except BaseException as exc:
+                        dismissal_errors.append(
+                            f"confirmation screenshot failed: {type(exc).__name__}: {exc}"
+                        )
+                    try:
+                        result = subprocess.run(
+                            ["xdotool", "key", "Return"],
+                            check=False,
+                            capture_output=True,
+                            text=True,
+                            timeout=10,
+                        )
+                        if result.returncode:
+                            dismissal_errors.append(
+                                "could not accept the confirmation dialog: "
+                                + (result.stderr.strip() or str(result.returncode))
+                            )
+                    except BaseException as exc:
+                        dismissal_errors.append(
+                            f"could not dismiss the confirmation dialog: "
+                            f"{type(exc).__name__}: {exc}"
+                        )
+
+                # askyesno runs a nested Tk event loop. A scheduled callback can
+                # capture the actual modal messagebox, then accept its Yes button.
+                root.after(500, capture_and_accept)
+                accepted = original_askyesno(
+                    title, message, parent=parent or root
+                )
+                if dismissal_errors:
+                    raise RuntimeError("; ".join(dismissal_errors))
+                if not accepted:
+                    raise RuntimeError("The automated visual fixture did not confirm the action.")
+                return accepted
 
             def unexpected_error(title: str, message: str, parent=None):
                 raise RuntimeError(f"{title}: {message}")
@@ -1320,6 +1362,7 @@ def _capture_passive_component_workflows(
         populate,
         output_dir,
         proposal_asset="populate-component-proposed.png",
+        confirmation_asset="populate-component-confirmation.png",
         completed_asset="populate-component-applied.png",
         confirmation_title="Confirm component property update",
         required_confirmation_text=(
@@ -1389,6 +1432,7 @@ def _capture_passive_component_workflows(
         create,
         output_dir,
         proposal_asset="add-component-proposed.png",
+        confirmation_asset="add-component-confirmation.png",
         completed_asset="add-component-placed.png",
         confirmation_title="Confirm new schematic component",
         required_confirmation_text=(
