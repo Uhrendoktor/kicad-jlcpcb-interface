@@ -133,8 +133,21 @@ class TkCleanupRoot:
 
 
 class TkCleanupExecutor:
+    def __init__(self, name, events, root):
+        self.name = name
+        self.events = events
+        self.root = root
+
     def shutdown(self, *, wait, cancel_futures):
-        pass
+        self.events.append(
+            (
+                f"shutdown:{self.name}",
+                threading.get_ident(),
+                self.root.destroyed,
+                wait,
+                cancel_futures,
+            )
+        )
 
 
 class BrowserCleanupTests(unittest.TestCase):
@@ -145,8 +158,8 @@ class BrowserCleanupTests(unittest.TestCase):
         browser._closed = False
         browser._poll_id = "poll-id"
         browser.root = root
-        browser._catalogue_executor = TkCleanupExecutor()
-        browser._summary_executor = TkCleanupExecutor()
+        browser._catalogue_executor = TkCleanupExecutor("catalogue", events, root)
+        browser._summary_executor = TkCleanupExecutor("summary", events, root)
 
         direct_variables = (
             "search_var",
@@ -167,10 +180,15 @@ class BrowserCleanupTests(unittest.TestCase):
             for name in ("reference", "value", "part")
         }
         browser._image_ref = TkCleanupResource("product-image", events, root)
+        browser.detail_canvas = TkCleanupResource("widget", events, root)
 
         ComponentBrowser.close(browser)
 
-        resource_events = [event for event in events if event[0] != "root-destroyed"]
+        resource_events = [
+            event
+            for event in events
+            if event[0] not in {"root-destroyed", "shutdown:catalogue", "shutdown:summary"}
+        ]
         expected = set(direct_variables)
         expected.update(
             f"summary:{name}"
