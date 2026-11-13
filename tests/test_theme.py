@@ -48,7 +48,10 @@ class ThemeResolutionTests(unittest.TestCase):
                     return_value=SimpleNamespace(returncode=0, stdout="'prefer-dark'"),
                 ) as run:
                     self.assertEqual(resolve_theme(), "dark")
-        self.assertEqual(run.call_args.args[0], ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"])
+        self.assertEqual(
+            run.call_args.args[0],
+            ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
+        )
 
     def test_gnome_light_color_scheme_is_respected(self):
         with patch.dict(os.environ, {THEME_ENVIRONMENT_VARIABLE: "system"}, clear=True):
