@@ -107,6 +107,8 @@ def parse_sexpr(text: str) -> Sexp:
         raise SymbolLibraryError("S-expression document is empty.")
     root = parse_node()
     if position != len(tokens):
+        if tokens[position] == ")":
+            raise SymbolLibraryError("Unexpected closing parenthesis in S-expression.")
         raise SymbolLibraryError("S-expression document contains multiple root forms.")
     if not isinstance(root, list):
         raise SymbolLibraryError("S-expression root must be a list.")
@@ -435,8 +437,13 @@ def _project_directory(project_or_path) -> Path:
 def find_device_symbol_library(kicad=None, explicit: str | Path | None = None) -> Path:
     """Locate KiCad's installed Device.kicad_sym without depending on a global table."""
     candidates: list[Path] = []
-    if explicit is not None:
-        candidates.append(Path(explicit).expanduser())
+    explicit_path = (
+        Path(explicit).expanduser().resolve(strict=False)
+        if explicit is not None
+        else None
+    )
+    if explicit_path is not None:
+        candidates.append(explicit_path)
     for key in ("KICAD_SYMBOL_DIR", "KICAD10_SYMBOL_DIR", "KICAD11_SYMBOL_DIR"):
         value = os.environ.get(key, "").strip()
         if value:
@@ -464,7 +471,9 @@ def find_device_symbol_library(kicad=None, explicit: str | Path | None = None) -
         if candidate in seen:
             continue
         seen.add(candidate)
-        if candidate.is_file() and candidate.name == "Device.kicad_sym":
+        if candidate.is_file() and (
+            candidate.name == "Device.kicad_sym" or candidate == explicit_path
+        ):
             return candidate
         for possible in (
             candidate / "Device.kicad_sym",

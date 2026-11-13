@@ -13,6 +13,7 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.draft import ComponentDraft  # noqa: E402
 from kicad_jlcpcb.library import (  # noqa: E402
+    Quoted,
     SymbolLibraryConflict,
     _atomic_write,
     dump_sexpr,
@@ -43,6 +44,30 @@ DEVICE_LIBRARY = r'''
       (rectangle (start -2.54 1.27) (end 2.54 -1.27)
         (stroke (width 0) (type default))
         (fill (type none)))
+      (pin passive line (at -7.62 0 0) (length 5.08)
+        (name "~") (number "1"))
+      (pin passive line (at 7.62 0 180) (length 5.08)
+        (name "~") (number "2"))))
+  (symbol "C"
+    (pin_names (offset 0))
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (property "Reference" "C" (id 0) (at 0 2.54 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "C" (id 1) (at 0 0 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (id 2) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (id 3) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Capacitor" (id 4) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide))
+    (symbol "C_0_1"
+      (polyline (pts (xy -2.54 1.27) (xy 2.54 1.27))
+        (stroke (width 0) (type default)) (fill (type none)))
+      (polyline (pts (xy -2.54 -1.27) (xy 2.54 -1.27))
+        (stroke (width 0) (type default)) (fill (type none)))
       (pin passive line (at -7.62 0 0) (length 5.08)
         (name "~") (number "1"))
       (pin passive line (at 7.62 0 180) (length 5.08)
@@ -254,7 +279,7 @@ class ProjectLibraryTests(unittest.TestCase):
         root = self.read_library(first.library_path)
         symbol = next(node for node in root if isinstance(node, list) and node and node[0].value == "symbol")
         value = next(node for node in symbol if isinstance(node, list) and node[0].value == "property" and node[1].value == "Value")
-        value[2].value = "manually edited"
+        value[2] = Quoted("manually edited")
         first.library_path.write_text(dump_sexpr(root), encoding="utf-8")
         before = first.library_path.read_bytes()
 
