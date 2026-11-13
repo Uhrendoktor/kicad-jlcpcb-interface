@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import replace
 import types
+import unittest
+from dataclasses import replace
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
