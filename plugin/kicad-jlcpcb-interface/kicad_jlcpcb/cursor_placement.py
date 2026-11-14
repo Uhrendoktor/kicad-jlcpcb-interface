@@ -223,9 +223,10 @@ def focus_symbol_chooser_search_at_point(
                 # Send actual keyboard events to the focused Search widget.
                 # EditableText.insertText/setTextContents can update the
                 # accessibility representation without updating wxGTK itself.
-                generated = bool(
-                    generate_key_event(0, text, key_string)
-                )
+                # PyAT-SPI's Registry wrapper returns None even though the
+                # underlying C API returns a boolean. Treat a non-raising call
+                # as dispatched; the visual fixture verifies the rendered UI.
+                generate_key_event(0, text, key_string)
                 time.sleep(0.1)
                 text_result = str(candidate.queryText().getText(0, -1))
                 candidate_details.append(
@@ -234,24 +235,22 @@ def focus_symbol_chooser_search_at_point(
                         role,
                         name,
                         bounds,
-                        f"keyboard-string={generated} text={text_result!r}",
+                        f"keyboard-string=dispatched cached_text={text_result!r}",
                     )
                 )
-                if generated:
-                    print(
-                        "chooser-atspi=keyboard-string-sent "
-                        f"focused={focused} depth={depth} role={role!r} "
-                        f"name={name!r} bounds={bounds!r} "
-                        f"key_type={key_string!r} "
-                        f"cached_text={text_result!r} "
-                        f"candidates={candidate_details[:20]!r}",
-                        flush=True,
-                    )
-                    # The accessible Text interface can lag behind wxGTK's
-                    # rendered control. A successful KEY_STRING event is the
-                    # delivery signal; the visual fixture captures the Search
-                    # field immediately afterward.
-                    return True
+                print(
+                    "chooser-atspi=keyboard-string-dispatched "
+                    f"focused={focused} depth={depth} role={role!r} "
+                    f"name={name!r} bounds={bounds!r} "
+                    f"key_type={key_string!r} "
+                    f"cached_text={text_result!r} "
+                    f"candidates={candidate_details[:20]!r}",
+                    flush=True,
+                )
+                # The accessible Text interface can lag behind wxGTK's
+                # rendered control. The visual fixture captures the Search
+                # field immediately after the keyboard event.
+                return True
             except Exception as exc:
                 candidate_details.append(
                     (depth, role, name, bounds, f"keyboard:{type(exc).__name__}:{exc}")

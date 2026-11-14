@@ -195,9 +195,7 @@ class CursorPlacementTests(unittest.TestCase):
             @staticmethod
             def generateKeyboardEvent(keycode, keystring, kind):
                 generated_events.append((keycode, keystring, kind))
-                # The accessibility Text cache may remain stale even though
-                # the keyboard event was delivered to the focused widget.
-                return True
+                # pyatspi.Registry.generateKeyboardEvent returns None.
 
         atspi = SimpleNamespace(
             Registry=Registry,
