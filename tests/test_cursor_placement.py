@@ -29,9 +29,15 @@ class FakeRunner:
         self.command_kwargs.append(kwargs)
         if arguments[1] == "getwindowgeometry":
             return SimpleNamespace(
-                stdout=(
-                    "WINDOW=0x200\\nX=521\\nY=439\\n"
-                    "WIDTH=880\\nHEIGHT=680\\nSCREEN=0"
+                stdout="\\n".join(
+                    [
+                        "WINDOW=0x200",
+                        "X=521",
+                        "Y=439",
+                        "WIDTH=880",
+                        "HEIGHT=680",
+                        "SCREEN=0",
+                    ]
                 ),
                 returncode=0,
             )
