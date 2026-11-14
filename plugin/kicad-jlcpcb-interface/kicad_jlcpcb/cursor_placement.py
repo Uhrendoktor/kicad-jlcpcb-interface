@@ -211,52 +211,16 @@ def focus_symbol_chooser_search_at_point(
 
         text_result = None
         if focused and text is not None:
-            try:
-                if not text.isascii():
-                    raise RuntimeError(
-                        "The chooser filter fallback supports ASCII text only."
-                    )
-
-                # Use the actual EditableText interface on the hit-tested Search
-                # entry first. setTextContents() can update an accessibility
-                # cache without changing wxGTK's rendered widget; insertText()
-                # exercises the control's editable-text operation directly.
-                editable = candidate.queryEditableText()
-                existing = str(candidate.queryText().getText(0, -1))
-                if existing:
-                    editable.deleteText(0, len(existing))
-                inserted = editable.insertText(0, text, len(text))
-                time.sleep(0.05)
-                text_result = str(candidate.queryText().getText(0, -1))
-                if text_result == text:
-                    print(
-                        "chooser-atspi=editable-text-inserted "
-                        f"focused={focused} depth={depth} role={role!r} "
-                        f"name={name!r} bounds={bounds!r} "
-                        f"insert_result={inserted!r} text={text_result!r}",
-                        flush=True,
-                    )
-                    return True
-
+            if not text.isascii():
                 candidate_details.append(
-                    (
-                        depth,
-                        role,
-                        name,
-                        bounds,
-                        f"insertText-result={inserted!r} "
-                        f"cached_text={text_result!r} expected={text!r}",
-                    )
+                    (depth, role, name, bounds, "keyboard input supports ASCII only")
                 )
-            except Exception as exc:
-                candidate_details.append(
-                    (depth, role, name, bounds, f"editable-text:{type(exc).__name__}:{exc}")
-                )
-                last_error = exc
+                continue
 
-            # The widget may expose Text but not EditableText, or insertText may
-            # be unsupported. Try keyboard events on the same exact target and
-            # only accept success when its Text interface reads back the query.
+            # EditableText.insertText() can update AT-SPI's cached text without
+            # changing wxGTK's rendered Search widget. Don't treat cached text
+            # as success: send AT-SPI key events to the focused, hit-tested
+            # Search control and verify the text interface afterward.
             try:
                 registry = atspi_module.Registry
                 generate_key_event = getattr(
