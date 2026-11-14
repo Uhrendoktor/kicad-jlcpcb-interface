@@ -95,7 +95,10 @@ def start_native_symbol_placement(
     def shell_geometry(output: str) -> dict[str, int]:
         values = dict(re.findall(r"^([A-Z_]+)=(-?\d+)$", output, re.MULTILINE))
         try:
-            return {key: int(value) for key, value in values.items()}
+            return {
+                key: int(value, 0) if value.lower().startswith("0x") else int(value)
+                for key, value in values.items()
+            }
         except ValueError as exc:
             raise RuntimeError("Could not read KiCad chooser window geometry.") from exc
 
