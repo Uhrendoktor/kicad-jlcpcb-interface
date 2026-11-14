@@ -480,7 +480,7 @@ class ComponentPopulatorCleanupTests(unittest.TestCase):
         self.assertTrue(all(not event[2] for event in shutdown_events))
         self.assertTrue(all(event[3] and event[4] for event in shutdown_events))
 
-        resource_events = events[2:-1]
+        resource_events = events[2:-2]
         expected_resources = set(resource_names) | {
             "catalogue:description",
             "catalogue:manufacturer",
