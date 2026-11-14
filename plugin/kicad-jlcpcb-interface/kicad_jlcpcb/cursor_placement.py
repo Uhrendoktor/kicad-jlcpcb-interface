@@ -10,6 +10,56 @@ import time
 from collections.abc import Callable
 
 
+def send_text_to_focused_search(
+    text: str,
+    *,
+    atspi_module=None,
+) -> bool:
+    """Send composed text to KiCad's currently focused native Search control."""
+    if not text:
+        return True
+
+    if atspi_module is None:
+        try:
+            from gi.repository import Atspi as atspi_module
+        except Exception as exc:
+            print(
+                f"chooser-atspi=unavailable error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return False
+
+    key_synth_type = getattr(atspi_module, "KeySynthType", None)
+    string_kind = getattr(key_synth_type, "STRING", None)
+    generate = getattr(atspi_module, "generate_keyboard_event", None)
+    if not callable(generate) or string_kind is None:
+        print(
+            "chooser-atspi=string-synthesis-unavailable "
+            f"module={atspi_module!r}",
+            flush=True,
+        )
+        return False
+
+    try:
+        # Use libatspi's modern composed-string API. The legacy
+        # pyatspi.Registry.generateKeyboardEvent path delegates to a device
+        # controller that raises NotImplementedError on some X11 builds.
+        result = generate(0, text, string_kind)
+        print(
+            "chooser-atspi=string-synthesized "
+            f"text={text!r} result={result!r}",
+            flush=True,
+        )
+        return result is not False
+    except Exception as exc:
+        print(
+            "chooser-atspi=string-synthesis-failed "
+            f"error={type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return False
+
+
 def capture_eeschema_window_id(
     *,
     xdotool: str | None = None,
@@ -462,12 +512,18 @@ def start_native_symbol_placement(
     # generated symbol's lowercase library suffix directly into that control.
     # No automation-supplied symbol placement coordinates are used.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
-    send("type", "--clearmodifiers", "--delay", "35", filter_text)
-    print(
-        f"chooser-input=native-initial-focus text={filter_text!r}",
-        flush=True,
-    )
-    pause(0.15)
+    if send_text_to_focused_search(filter_text):
+        print(
+            f"chooser-input=atspi-string text={filter_text!r}",
+            flush=True,
+        )
+    else:
+        send("type", "--clearmodifiers", "--delay", "35", filter_text)
+        print(
+            f"chooser-input=xtest-fallback text={filter_text!r}",
+            flush=True,
+        )
+    pause(0.35)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
