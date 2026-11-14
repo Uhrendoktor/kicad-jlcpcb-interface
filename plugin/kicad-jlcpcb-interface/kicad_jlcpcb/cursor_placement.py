@@ -179,7 +179,7 @@ def start_native_symbol_placement(
                 "The Add Symbol focus click did not land inside Eeschema's "
                 "window bounds: "
                 f"target=({target_x},{target_y}), pointer={pointer!r}, "
-                f"editor={editor_window_id!r}/{editor_geometry!r}."
+                f"editor={editor_window_id!r}/{geometry!r}."
             )
         send("key", "--clearmodifiers", "a")
 
