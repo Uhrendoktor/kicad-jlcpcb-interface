@@ -96,6 +96,16 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
         self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "Down"], runner.commands
+        )
+        down = runner.commands.index(
+            ["xdotool", "key", "--clearmodifiers", "Down"]
+        )
+        enter = runner.commands.index(
+            ["xdotool", "key", "--clearmodifiers", "Return"]
+        )
+        self.assertLess(down, enter)
+        self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
         )
 
