@@ -138,8 +138,11 @@ def start_native_symbol_placement(
                     or "select symbol" in current_title
                 )
                 if same_process or is_chooser:
-                    return current_id, current_pid, current_title, current_id
+                    return current_id, current_id, current_pid, current_title
             pause(0.1)
+        if current_id:
+            current_pid = send("getwindowpid", current_id)
+            current_title = send("getwindowname", current_id).casefold()
         return "", current_id, current_pid, current_title
 
     chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
