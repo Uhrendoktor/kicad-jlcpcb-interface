@@ -122,10 +122,15 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
         chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
+        title_command = ["xdotool", "getwindowname", "0x200"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
+        self.assertLess(
+            runner.commands.index(title_command),
+            runner.commands.index(chooser_focus),
+        )
         self.assertLess(
             runner.commands.index(chooser_focus),
             runner.commands.index(type_command),

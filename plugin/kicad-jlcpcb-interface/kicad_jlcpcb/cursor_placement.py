@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -129,15 +130,46 @@ def start_native_symbol_placement(
             "then retry."
         )
 
-    # Match the verified KiCad Blocks interaction: focus the chooser window,
-    # type the exact symbol name into KiCad's default-focused Filter control,
-    # then accept it. Avoid window geometry/click synthesis; KiCad's wx focus
-    # target and the native chooser handle filtering themselves.
-    chooser_title = send("getwindowname", chooser_id)
+    # Wait for KiCad to finish populating the library tree before sending
+    # search keystrokes; early XTest input can be dropped while wx builds the
+    # catalogue. Then use the verified KiCad Blocks sequence: focus the chooser,
+    # type the symbol into its default Filter target, and accept it.
+    chooser_title = ""
+    chooser_ready = False
+    for _ in range(150):
+        chooser_title = send("getwindowname", chooser_id)
+        if "items loaded" in chooser_title.casefold():
+            chooser_ready = True
+            break
+        pause(0.1)
+    if not chooser_ready:
+        raise RuntimeError(
+            "KiCad's native symbol chooser did not finish loading its catalog "
+            f"within 15 seconds: {chooser_title!r}."
+        )
+
     chooser_pid = focused_pid or editor_pid
     send("windowfocus", "--sync", chooser_id)
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
+    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
+    if debug_capture:
+        try:
+            from PIL import ImageGrab
+
+            typed_capture = debug_capture.replace(".png", "-typed.png")
+            ImageGrab.grab().save(typed_capture)
+            print(
+                f"chooser-search-debug=typed focus={send('getwindowfocus')!r} "
+                f"screenshot={typed_capture!r}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"chooser-search-debug=capture-failed "
+                f"error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
     send("key", "--clearmodifiers", "Return")
 
     for _ in range(30):
