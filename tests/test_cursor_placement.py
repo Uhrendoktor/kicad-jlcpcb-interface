@@ -130,7 +130,7 @@ class CursorPlacementTests(unittest.TestCase):
         filter_move = ["xdotool", "mousemove", "--sync", "601", "439"]
         filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
         clipboard_command = [
-            "xclip", "-selection", "primary", "-in", "-loops", "1"
+            "xclip", "-selection", "primary", "-in", "-loops", "10"
         ]
         paste_click = ["xdotool", "click", "2"]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
