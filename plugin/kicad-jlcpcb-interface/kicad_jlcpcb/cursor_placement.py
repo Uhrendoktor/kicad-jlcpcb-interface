@@ -61,15 +61,27 @@ def start_native_symbol_placement(
         raise ValueError("The generated KiCad symbol name is invalid.")
 
     executable = xdotool or shutil.which("xdotool")
+    kicad_type = (
+        f"{type(kicad).__module__}.{type(kicad).__qualname__}"
+        if kicad is not None
+        else "None"
+    )
     run_action = getattr(kicad, "run_action", None)
     action_started = False
+    ipc_status = f"run_action unavailable on {kicad_type}"
     if callable(run_action):
         try:
-            run_action("eeschema.InteractiveDrawing.placeSymbol")
+            action_result = run_action("eeschema.InteractiveDrawing.placeSymbol")
             action_started = True
-        except Exception:
-            # Older KiCad IPC builds do not expose the interactive tool action.
-            action_started = False
+            ipc_status = (
+                "started; result_type="
+                f"{type(action_result).__module__}.{type(action_result).__qualname__}"
+            )
+        except Exception as exc:
+            # Keep the keyboard compatibility path, but preserve the IPC error
+            # so a failed native action is diagnosable from CI and user reports.
+            ipc_status = f"failed: {type(exc).__name__}: {exc}"
+    print(f"cursor-placement-ipc={ipc_status}", flush=True)
 
     if action_started and not executable:
         # The native chooser is already open. Let the user select the symbol
@@ -160,7 +172,8 @@ def start_native_symbol_placement(
             "KiCad's native symbol chooser did not open. "
             f"Editor={editor_window_id!r}/{editor_pid!r}; "
             f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
-            "Confirm the schematic editor is active and Add Symbol is available."
+            "Confirm the schematic editor is active and Add Symbol is available. "
+            f"IPC handoff: {ipc_status}."
         )
 
     chooser_pid = focused_pid or editor_pid
