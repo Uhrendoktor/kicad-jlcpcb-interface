@@ -1209,6 +1209,7 @@ class ComponentPopulator:
         generated_symbol = state.get("generated_library_symbol")
         cursor_started = bool(state.get("cursor_placement_started"))
         messagebox = state.get("messagebox")
+        tk_module = state.get("tk")
         gc_lease = bool(state.get("_gc_lease"))
         state.clear()
         self.closed = True
@@ -1218,6 +1219,7 @@ class ComponentPopulator:
         # finalize Tcl_AsyncDelete on the wrong thread while executors unwind.
         self.root = root
         self.messagebox = messagebox
+        self.tk = tk_module
         if create_mode:
             self.create_mode = True
             self.generated_library_symbol = generated_symbol
