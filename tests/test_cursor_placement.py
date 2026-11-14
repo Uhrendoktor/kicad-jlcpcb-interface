@@ -155,7 +155,10 @@ class CursorPlacementTests(unittest.TestCase):
         ]
         self.assertEqual(len(pointer_checks), 2)
         self.assertIn(click_filter, runner.commands)
-        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_geometry))
+        self.assertLess(
+            runner.commands.index(chooser_focus),
+            runner.commands.index(filter_geometry),
+        )
         self.assertLess(runner.commands.index(filter_geometry), runner.commands.index(focus_filter))
         self.assertLess(runner.commands.index(focus_filter), pointer_checks[1])
         self.assertLess(pointer_checks[1], runner.commands.index(click_filter))
