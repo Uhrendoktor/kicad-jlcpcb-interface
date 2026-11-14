@@ -216,8 +216,8 @@ def start_native_symbol_placement(
     # Use coordinates relative to the chooser client window. X11's window
     # manager frame offsets differ between xdotool and xwininfo geometry;
     # relative coordinates keep the click in the actual filter row.
-    send("mousemove", "--window", chooser_id, "90", "30")
-    send("click", "1")
+    send("mousemove", "--window", chooser_id, "90", "15")
+    send("click", "--window", chooser_id, "1")
     pause(0.1)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
