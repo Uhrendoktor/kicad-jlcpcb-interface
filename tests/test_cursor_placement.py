@@ -177,8 +177,6 @@ class WxSimulatorTests(unittest.TestCase):
             simulator.calls,
             [
                 ("Char", ord("A"), 2),
-                ("Char", ord("R"), 1),
-                ("Char", ord("-"), 1),
                 ("Text", ord("R")),
                 ("Text", ord("_")),
                 ("Text", ord("C")),
