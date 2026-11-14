@@ -263,7 +263,10 @@ class CursorPlacementTests(unittest.TestCase):
         type_index = runner.commands.index(type_command)
         self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_move))
         self.assertLess(runner.commands.index(filter_move), runner.commands.index(filter_click))
-        self.assertLess(runner.commands.index(filter_click), runner.commands.index(select_all_command))
+        self.assertLess(
+            runner.commands.index(filter_click),
+            runner.commands.index(select_all_command),
+        )
         self.assertLess(runner.commands.index(select_all_command), type_index)
         self.assertLess(type_index, runner.commands.index(return_command))
         self.assertLess(
