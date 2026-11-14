@@ -156,14 +156,14 @@ The direct JLCPCB detail and MPN endpoints are undocumented website endpoints, n
 | Nothing selected | **Add** | Search the catalogue, review a suggested or manually selected KiCad symbol, then create and place a project-local copy. |
 | Multiple items or a non-symbol object | — | The action rejects the selection. Select one symbol to update it, or clear the selection to add a component. |
 
-Both contexts use the same window size and information hierarchy: catalogue search, a product preview card, a match list, editable KiCad details, proposed fields, review notes and one persistent action footer. The preview shows the supplier image when one is available, plus description, manufacturer, MPN, LCSC code, package, stock, indicative unit price, library class and source freshness. Product-page and datasheet links are enabled only when the catalogue provides HTTPS URLs. Add mode reveals the extra **Library:Symbol**, **Reference prefix** and **Placement** controls in the same layout; update mode keeps the selected symbol identity visible and retains its pin mapping.
+Both contexts use the same window size and information hierarchy: catalogue search, a product preview card, a match list, editable KiCad details, proposed fields, review notes and one persistent action footer. The preview shows the supplier image when one is available, plus description, manufacturer, MPN, LCSC code, package, stock, indicative unit price, library class and source freshness. Product-page and datasheet links are enabled only when the catalogue provides HTTPS URLs. Add mode automatically maps common passives and exposes a manual **Library:Symbol** override only when required. All Add-mode placement is performed by KiCad's native cursor tool; there are no coordinate controls.
 
 ### Shared review process
 
 1. Launch **JLCPCB Add or Update Component** from the active Schematic Editor.
 2. Look up the catalogue part. Update mode accepts an LCSC part number. Add mode accepts an LCSC code, manufacturer part number, device name or free-text keyword.
 3. Review the proposed fields, inference confidence, catalogue source/freshness and warnings before applying anything.
-4. Edit the suggested **Value** and **Footprint** as needed. In add mode, also review or edit **KiCad Library:Symbol** and **Reference prefix**. A suggested value is a proposal, not a verified electrical equivalence.
+4. Edit the suggested **Value** and **Footprint** as needed. For passives, the stock **KiCad Library:Symbol** and **Reference prefix** are selected automatically; review the automatic mapping note. For other parts, manually review or edit the suggested symbol when required. A suggested value is a proposal, not a verified electrical equivalence.
 5. Confirm the update or generation action. Nothing is written or placed before confirmation.
 
 The review controls are deliberately editable. An uncertain symbol or footprint is not silently treated as correct, and an optional footprint can be filled in later. Catalogue images load in the background; a missing or unavailable image uses an explicit placeholder and does not block the review workflow.
@@ -176,7 +176,7 @@ The confidence label describes how complete the catalogue-to-symbol suggestion i
 - **Partial** — a component family was recognized, but the value or reviewed footprint may be incomplete, or the symbol is a generic template such as a diode, LED, fuse or crystal.
 - **Metadata only** — the catalogue record does not support a confident stock-symbol classification. In add mode, select a KiCad `Library:Symbol` manually.
 
-Exact-value candidate filtering is limited to supported resistor and capacitor queries, and keeps only high-confidence matching records. General keyword results are catalogue candidates to inspect, not declared drop-in replacements.
+Exact-value resistor/capacitor searches return at most five high-confidence exact matches. Basic listings rank first; Extended or unclassified listings fill remaining slots only when fewer than five suitable Basic parts are available. Stock and price are secondary ranking factors, not a guarantee of purchase availability. General keyword results are catalogue candidates to inspect, not declared drop-in replacements.
 
 ### Update an existing schematic symbol
 
@@ -194,13 +194,13 @@ Existing fields with matching names are updated; unrelated custom fields are pre
 
 ### Add a new project-local symbol
 
-Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a reusable project-local symbol copied from a standalone KiCad stock-library symbol, then places an instance.
+Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a project-local symbol copied from a standalone KiCad stock-library symbol, then hands it to KiCad's native cursor tool for mouse placement.
 
 1. Save the KiCad project and clear the Eeschema selection.
-2. Search by LCSC code, manufacturer part number, device name or another keyword. Resistor/capacitor value queries such as 10k, 4k7, 470R, 100nF and 4.7uF use exact-value candidate filtering; other free-text searches show catalogue candidates to review.
-3. Select a catalogue row when the search returns multiple parts. Review the suggested symbol, Value, package, Footprint, metadata, confidence and warnings.
-4. In **Component details**, accept or edit the suggested KiCad `Library:Symbol`. When no confident symbol mapping is available, enter a stock ID manually, for example `Amplifier_Operational:LM358`. You can also replace an uncertain automatic suggestion. Edit Value, optional Footprint and Reference prefix as required.
-5. Choose **Place at cursor in KiCad** or **Use X/Y coordinates (mm)**, then confirm **Generate and place component**.
+2. Search by LCSC code, manufacturer part number, device name or another keyword. For a simple passive, just enter its value—for example `10k`, `4k7`, `470R`, `100nF` or `4.7uF`.
+3. For a passive value search, choose from the shortlist of up to five exact matches. Basic parts are listed first. Selecting a candidate automatically fills the stock `Device:R` or `Device:C` symbol, reference prefix, Value, reviewed footprint mapping and catalogue metadata. The product preview shows the supplier photo and available specifications. You can still edit Value or Footprint before generation.
+4. For other part searches, select a catalogue row and review the suggested symbol, Value, package, Footprint, metadata, confidence and warnings. When no confident symbol mapping is available, enter a stock ID manually, for example `Amplifier_Operational:LM358`.
+5. Confirm **Generate & place at cursor**. KiCad opens its native Add Symbol chooser with the project-local generated symbol selected and attached to the mouse cursor. Click in the schematic to place the part or press Escape to cancel.
 
 Automatic symbol suggestions currently cover common resistors, capacitors, inductors, diodes, LEDs, fuses and crystals. The suggestions are generic symbol templates, not manufacturer-specific pin maps. When classification is ambiguous, the symbol field remains for manual selection rather than guessing an IC pinout.
 
@@ -215,7 +215,7 @@ For the selected KiCad Library:Symbol, the add-on:
 - Refuses symbols that extend another library symbol, because the generator copies a standalone definition rather than resolving inherited definitions. Choose a standalone stock symbol instead.
 - Writes the selected Value, optional Footprint, Datasheet and Description plus hidden LCSC, Manufacturer, MPN, category and catalogue attribute properties.
 - Writes or extends the project-local JLCPCB_Generated.kicad_sym library and registers it in sym-lib-table using a project-relative KiCad project variable URI.
-- Reloads the project library before opening KiCad's native chooser or placing an instance at the entered X/Y coordinates.
+- Reloads the project library, then opens KiCad's native Add Symbol chooser and leaves the generated part attached to the schematic cursor.
 
 The generated symbol ID uses the selected reference prefix and LCSC part number, so repeat generation for the same part can reuse the existing project-local symbol. The generator protects unowned files and refuses to overwrite a generated symbol that has been manually modified. The library writer uses atomic file replacement and creates a backup when extending an existing generated library.
 
@@ -233,7 +233,7 @@ The existing generated symbol is detected and reused; placement can continue whe
 
 #### Placement and electrical checks
 
-Cursor placement uses the native Eeschema Add Symbol hotkey A through xdotool. It requires the action to have been launched while the Eeschema window was focused on an X11 desktop. Check Eeschema Preferences → Hotkeys if the native chooser does not open. X/Y placement remains available when cursor handoff cannot be used.
+Cursor placement uses KiCad's native Place Symbol IPC action when available. Older builds use the native Eeschema Add Symbol hotkey through xdotool on X11. Launch the action from Eeschema; check Preferences → Hotkeys if the compatibility hotkey does not open the chooser. If neither cursor route is available, Add mode reports the limitation; it does not fall back to coordinate placement.
 
 The optional Footprint field is a KiCad footprint-library reference, not a footprint generator. A symbol can be created without a footprint, but it will need a suitable footprint before PCB layout. Always inspect the symbol/footprint pair and verify pin numbers, electrical types, package dimensions and ratings against the manufacturer datasheet.
 
@@ -266,7 +266,7 @@ The optional Footprint field is a KiCad footprint-library reference, not a footp
 The add-on is an early prototype, with a deliberately conservative scope:
 
 - Update mode writes reviewed catalogue fields to one selected editable schematic symbol of any component family; it does not replace the symbol or rewrite pins.
-- Add mode can copy a standalone KiCad stock symbol selected by the user. Current automatic suggestions cover common resistor/capacitor/inductor, diode, LED, fuse and crystal categories; ambiguous categories require manual symbol selection.
+- Add mode generates a project-local copy of a standalone KiCad stock symbol. Common resistor/capacitor value searches offer up to five exact candidates with Basic parts first and automatically select the generic stock symbol, reference prefix and mapped footprint when available. Other recognized categories receive cautious symbol suggestions; ambiguous categories require manual symbol selection. Placement uses KiCad's native cursor workflow only.
 - The generator does not infer manufacturer-specific pin maps, electrical pin types or IC symbol geometry. It copies the pin definitions of the symbol selected by the user.
 - Footprint suggestions cover only reviewed package/type combinations. Footprint creation, pad mapping, footprint preview and 3D model generation are not implemented.
 - Catalogue endpoints are unofficial website endpoints and may change without notice.

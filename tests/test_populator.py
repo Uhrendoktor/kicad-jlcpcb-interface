@@ -10,10 +10,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
+from kicad_jlcpcb import populator as populator_module  # noqa: E402
 from kicad_jlcpcb.draft import symbol_library_id  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     MAX_CATALOGUE_IMAGE_BYTES,
     _download_catalogue_image,
+    _is_automatically_mapped_passive,
     resolve_component_action_target,
     resolve_passive_action_target,
     resolve_passive_library_id,
@@ -67,6 +69,71 @@ class FakeKiCad:
     def get_library_symbol(self, library_id: str, document=None):
         self.requests.append((library_id, document))
         return self.symbols[library_id]
+
+
+class TkGarbageCollectionLeaseTests(unittest.TestCase):
+    def test_collection_is_deferred_until_the_last_root_releases_its_lease(self):
+        with (
+            patch.object(populator_module, "_TK_GC_LEASES", 0),
+            patch.object(populator_module, "_TK_GC_WAS_ENABLED", False),
+            patch.object(populator_module.gc, "isenabled", return_value=True),
+            patch.object(populator_module.gc, "disable") as disable,
+            patch.object(populator_module.gc, "collect") as collect,
+            patch.object(populator_module.gc, "enable") as enable,
+        ):
+            populator_module._acquire_tk_gc_lease()
+            populator_module._acquire_tk_gc_lease()
+
+            disable.assert_called_once_with()
+            collect.assert_not_called()
+            enable.assert_not_called()
+
+            populator_module._release_tk_gc_lease()
+            collect.assert_not_called()
+            enable.assert_not_called()
+
+            populator_module._release_tk_gc_lease()
+            collect.assert_called_once_with()
+            enable.assert_called_once_with()
+
+    def test_does_not_enable_collection_if_it_was_already_disabled(self):
+        with (
+            patch.object(populator_module, "_TK_GC_LEASES", 0),
+            patch.object(populator_module, "_TK_GC_WAS_ENABLED", False),
+            patch.object(populator_module.gc, "isenabled", return_value=False),
+            patch.object(populator_module.gc, "disable") as disable,
+            patch.object(populator_module.gc, "collect") as collect,
+            patch.object(populator_module.gc, "enable") as enable,
+        ):
+            populator_module._acquire_tk_gc_lease()
+            populator_module._release_tk_gc_lease()
+
+            disable.assert_not_called()
+            collect.assert_called_once_with()
+            enable.assert_not_called()
+
+
+class AutomaticPassiveMappingTests(unittest.TestCase):
+    def test_recognizes_only_stock_resistor_and_capacitor_mappings(self):
+        self.assertTrue(
+            _is_automatically_mapped_passive(
+                SimpleNamespace(kind="resistor", symbol_hint="Device:R")
+            )
+        )
+        self.assertTrue(
+            _is_automatically_mapped_passive(
+                SimpleNamespace(kind="capacitor", symbol_hint="Device:C")
+            )
+        )
+
+    def test_does_not_auto_hide_manual_symbol_selection_for_other_parts(self):
+        for draft in (
+            SimpleNamespace(kind="inductor", symbol_hint="Device:L"),
+            SimpleNamespace(kind="resistor", symbol_hint="Custom:R"),
+            SimpleNamespace(kind="unknown", symbol_hint=""),
+        ):
+            with self.subTest(draft=draft):
+                self.assertFalse(_is_automatically_mapped_passive(draft))
 
 
 class CatalogueImageDownloadTests(unittest.TestCase):

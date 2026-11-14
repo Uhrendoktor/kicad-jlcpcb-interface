@@ -22,6 +22,8 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
+from kicad_jlcpcb import populator as populator_module  # noqa: E402
+from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -38,9 +40,7 @@ from kicad_jlcpcb.media import download_product_image  # noqa: E402
 from kicad_jlcpcb.model import (  # noqa: E402
     find_linked_components,
     find_selected_component,
-    iter_schematic_symbols,
 )
-from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
     resolve_component_action_target,
@@ -59,7 +59,7 @@ ASSET_NAMES = (
     "populate-component-applied.png",
     "add-component-proposed.png",
     "add-component-confirmation.png",
-    "add-component-placed.png",
+    "add-component-cursor.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
     "schematic-properties-opened.png",
@@ -95,6 +95,15 @@ DEMO_PARTS = (
         "mpn": "RC0402JR-071KL",
         "footprint": "Resistor_SMD:R_0402_1005Metric",
         "position": (120.0, 125.0),
+    },
+    {
+        "reference": "R3",
+        "value": "10k",
+        "lib_id": "Device:R",
+        "lcsc": "C60489",
+        "mpn": "RC0402JR-0710KL",
+        "footprint": "Resistor_SMD:R_0402_1005Metric",
+        "position": (170.0, 80.0),
     },
     {
         "reference": "C1",
@@ -678,24 +687,6 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             kicad=kicad,
         )
         reload_project_symbol_library(kicad, generated_library)
-        placed = place_component_from_draft(
-            schematic,
-            draft,
-            240.0,
-            175.0,
-            library_id=generated_library.library_id,
-        )
-        placed_library_id = symbol_library_id(placed)
-        if (
-            placed.reference != "R3"
-            or placed_library_id != generated_library.library_id
-            or placed.value != "10k"
-            or placed.footprint_field.text.value
-            != "Resistor_SMD:R_0402_1005Metric"
-        ):
-            raise RuntimeError(
-                "Direct LCSC placement did not retain the generated project-local library ID."
-            )
         generated_root = parse_sexpr(
             generated_library.library_path.read_text(encoding="utf-8")
         )
@@ -748,10 +739,8 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         if generated_library.nickname not in table_text:
             raise RuntimeError("The project symbol table does not register the generated library.")
         saved_schematic = (work_dir / "jlcpcb-live-demo.kicad_sch").read_text(encoding="utf-8")
-        if generated_library.library_id not in saved_schematic:
-            raise RuntimeError(
-                "The saved schematic does not reference the generated project-local library ID."
-            )
+        if not saved_schematic.strip():
+            raise RuntimeError("The live schematic was not saved after catalogue field population.")
         print(
             "live-project-library-generation=passed "
             f"library_id={generated_library.library_id} "
@@ -801,61 +790,6 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             raise RuntimeError("Generated metadata fields should not clutter the symbol drawing.")
         if created["R1"].description_field.text.value != draft.description:
             raise RuntimeError("KiCad did not retain the native R1 Description property.")
-        placed_components = find_linked_components(schematic)
-        placed_reference = next(
-            (item for item in placed_components if item.reference == "R3"), None
-        )
-        if (
-            placed_reference is None
-            or placed_reference.part_code != "C60489"
-            or placed_reference.value != "10k"
-            or placed_reference.footprint != "Resistor_SMD:R_0402_1005Metric"
-            or placed_reference.datasheet != draft.datasheet_url
-            or placed_reference.manufacturer_part_number != draft.mpn
-        ):
-            raise RuntimeError(
-                "Direct LCSC placement did not preserve the linked value, footprint, "
-                "datasheet and MPN fields in the live schematic."
-            )
-        placed_symbol_readback = next(
-            (
-                item
-                for item in iter_schematic_symbols(schematic)
-                if item.reference == "R3"
-            ),
-            None,
-        )
-        if placed_symbol_readback is None:
-            raise RuntimeError(
-                "The direct-placed R3 symbol is missing from the schematic hierarchy."
-            )
-        raw_placed_fields = {
-            field.name: field for field in placed_symbol_readback.user_fields
-        }
-        for name, expected_value in (
-            ("LCSC", draft.lcsc),
-            ("MPN", draft.mpn),
-            ("Manufacturer", draft.manufacturer),
-        ):
-            field = raw_placed_fields.get(name)
-            if field is None or field.text.value != expected_value:
-                raise RuntimeError(
-                    f"Direct LCSC placement did not retain custom field {name!r}."
-                )
-        if placed_symbol_readback.description_field.text.value != draft.description:
-            raise RuntimeError(
-                "Direct LCSC placement did not retain the built-in Description property."
-            )
-        print(
-            "live-lcsc-direct-placement=passed "
-            f"reference={placed_reference.reference} "
-            f"part={placed_reference.part_code} value={placed_reference.value} "
-            f"footprint={placed_reference.footprint} "
-            f"datasheet={bool(placed_reference.datasheet)} "
-            f"mpn={placed_reference.manufacturer_part_number} "
-            f"custom_fields={len(raw_placed_fields)}",
-            flush=True,
-        )
         print(
             "live-lcsc-field-population=passed "
             f"lcsc={draft.lcsc} kind={draft.kind} value={draft.value} "
@@ -1187,11 +1121,15 @@ def _drive_populator_form(
     completed_asset: str,
     confirmation_title: str,
     required_confirmation_text: str,
-    expected_lcsc: str,
+    expected_lcsc: str | None,
     expected_value: str,
-    expected_footprint: str,
+    expected_footprint: str | None,
     validate_result,
     require_image: bool = False,
+    assert_basic_shortlist: bool = False,
+    preferred_lcsc: str | None = None,
+    avoid_lcsc: str | None = None,
+    capture_cursor: bool = False,
 ) -> None:
     """Capture the real LCSC proposal form, confirm it, and verify the IPC result."""
     root = populator.root
@@ -1209,6 +1147,31 @@ def _drive_populator_form(
     def advance() -> None:
         try:
             root.update()
+            if populator.candidate_rows:
+                selected_iid = None
+                if preferred_lcsc:
+                    selected_iid = next(
+                        (
+                            iid for iid, (details, _draft) in populator.candidate_rows.items()
+                            if details.lcsc == preferred_lcsc
+                        ),
+                        None,
+                    )
+                if selected_iid is None and avoid_lcsc:
+                    current = populator.candidate_tree.selection()
+                    current_details = populator.candidate_rows.get(current[0]) if current else None
+                    if current_details and current_details[0].lcsc == avoid_lcsc:
+                        selected_iid = next(
+                            (
+                                iid for iid, (details, _draft) in populator.candidate_rows.items()
+                                if details.lcsc != avoid_lcsc
+                            ),
+                            None,
+                        )
+                if selected_iid and populator.candidate_tree.selection() != (selected_iid,):
+                    populator.candidate_tree.selection_set(selected_iid)
+                    populator.candidate_tree.focus(selected_iid)
+                    populator._on_candidate_selected()
             if (
                 populator.draft is None
                 or str(populator.apply_button.cget("state")) != "normal"
@@ -1227,11 +1190,31 @@ def _drive_populator_form(
                 raise RuntimeError(
                     "The shared catalogue match list did not render a selected part."
                 )
-            if populator.catalogue_vars["lcsc"].get() != expected_lcsc:
+            if (
+                expected_lcsc is not None
+                and populator.catalogue_vars["lcsc"].get() != expected_lcsc
+            ):
                 raise RuntimeError(
                     "The shared catalogue preview does not match the selected part: "
                     f"{populator.catalogue_vars['lcsc'].get()!r} != {expected_lcsc!r}"
                 )
+            candidate_iids = populator.candidate_tree.get_children()
+            if assert_basic_shortlist:
+                if len(candidate_iids) > 5:
+                    raise RuntimeError(
+                        "Passive value search returned "
+                        f"{len(candidate_iids)} rows; expected at most five."
+                    )
+                classes = [
+                    (
+                        0 if populator.candidate_rows[iid][0].is_basic is True
+                        else 1 if populator.candidate_rows[iid][0].is_basic is False
+                        else 2
+                    )
+                    for iid in candidate_iids
+                ]
+                if classes != sorted(classes):
+                    raise RuntimeError("Passive shortlist did not rank Basic parts first.")
             image_name = str(populator.image_label.cget("image") or "")
             image_placeholder = str(populator.image_label.cget("text") or "")
             if require_image and not image_name:
@@ -1256,17 +1239,22 @@ def _drive_populator_form(
                     "The shared preview has neither a supplier photo nor an explicit "
                     f"image fallback: {image_placeholder!r}"
                 )
+            expected_source = (
+                "JLCPCB keyword search"
+                if expected_lcsc is None
+                else "JLCPCB parts-page endpoint"
+            )
             if (
-                draft.lcsc != expected_lcsc
+                (expected_lcsc is not None and draft.lcsc != expected_lcsc)
                 or draft.kind != "resistor"
                 or draft.value != expected_value
-                or draft.footprint != expected_footprint
-                or "JLCPCB parts-page endpoint" not in draft.source_label
+                or (expected_footprint is not None and draft.footprint != expected_footprint)
+                or expected_source not in draft.source_label
                 or "live response" not in draft.source_label
             ):
                 raise RuntimeError(
                     "The LCSC form is not showing the expected fresh "
-                    f"{expected_value}/0402 draft for {expected_lcsc}: "
+                    f"{expected_value} draft for {expected_lcsc or 'value search'}: "
                     f"lcsc={draft.lcsc!r}, kind={draft.kind!r}, value={draft.value!r}, "
                     f"footprint={draft.footprint!r}, source={draft.source_label!r}"
                 )
@@ -1415,8 +1403,47 @@ def _drive_populator_form(
                 populator.messagebox.showerror = original_showerror
 
             validate_result(populator)
-            root.update()
-            _capture_window(root, output_dir / completed_asset)
+            if capture_cursor:
+                focused = subprocess.run(
+                    ["xdotool", "getwindowfocus"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=10,
+                ).stdout.strip()
+                title = subprocess.run(
+                    ["xdotool", "getwindowname", focused],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=10,
+                ).stdout.strip()
+                window_class = subprocess.run(
+                    ["xdotool", "getwindowclassname", focused],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=10,
+                ).stdout.strip()
+                is_editor_class = "eeschema" in window_class.casefold()
+                is_editor_title = "schematic editor" in title.casefold()
+                if not (is_editor_class or is_editor_title):
+                    raise RuntimeError(
+                        "The native cursor handoff did not return focus to Eeschema: "
+                        f"{window_class!r} / {title!r}"
+                    )
+                time.sleep(0.25)
+                _capture_desktop(output_dir / completed_asset)
+                subprocess.run(
+                    ["xdotool", "key", "--clearmodifiers", "Escape"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            else:
+                root.update()
+                _capture_window(root, output_dir / completed_asset)
             state["done"] = True
             close_populator()
         except BaseException as exc:
@@ -1446,6 +1473,35 @@ def _capture_passive_component_workflows(
     cache_dir: Path,
 ) -> None:
     """Exercise both modes of the unified component action against live Eeschema."""
+    # Mimic the production entrypoint: ensure Eeschema is the focused window and
+    # capture its ID before either mode opens a Tk component dialog.
+    windows = subprocess.run(
+        ["xdotool", "search", "--onlyvisible", "--class", "eeschema"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    editor_candidates = [
+        item.strip() for item in windows.stdout.splitlines() if item.strip()
+    ]
+    if windows.returncode or not editor_candidates:
+        raise RuntimeError(
+            "The live GUI fixture could not find a visible Eeschema window."
+        )
+    subprocess.run(
+        ["xdotool", "windowfocus", "--sync", editor_candidates[0]],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    editor_window_id = capture_eeschema_window_id()
+    if not editor_window_id:
+        raise RuntimeError(
+            "The live GUI fixture could not capture the focused Eeschema window."
+        )
+
     # Populate: the entrypoint requires exactly one selected generic passive.
     schematic.clear_selection()
     schematic.add_to_selection([symbols["R2"]])
@@ -1552,64 +1608,183 @@ def _capture_passive_component_workflows(
         create_mode=True,
         kicad=kicad,
         theme="light",
+        editor_window_id=editor_window_id,
     )
     create.root.geometry("1024x768+780+30")
-    create.placement_mode_var.set("coordinates")
-    create.lcsc_var.set("C105637")
-    create.x_var.set("205.0")
-    create.y_var.set("160.0")
+    create.lcsc_var.set("10k")
     create.lookup()
 
     def validate_create_result(populator: ComponentPopulator) -> None:
-        added = populator.symbol
+        details = populator.selected_details
+        generated = populator.generated_library
         if (
-            added is None
-            or added.reference != "R4"
-            or symbol_library_id(added) != "JLCPCB_Generated:R_C105637"
-            or added.value != "1k"
-            or added.footprint_field.text.value
-            != "Resistor_SMD:R_0402_1005Metric"
+            details is None
+            or populator.draft is None
+            or populator.draft.kind != "resistor"
+            or populator.draft.value != "10k"
+            or generated is None
+            or generated.symbol_name != f"R_{details.lcsc}"
+            or generated.library_id != f"JLCPCB_Generated:R_{details.lcsc}"
+            or not generated.library_path.is_file()
+            or populator.symbol is not None
         ):
             raise RuntimeError(
-                "The confirmed add-component UI action did not place R4 linked to the "
-                "project-local generated LCSC symbol."
+                "The passive value-search Add action did not generate the selected "
+                "project-local resistor symbol or incorrectly inserted an instance "
+                "before the cursor placement."
             )
-        linked = next(
-            (item for item in find_linked_components(schematic) if item.reference == "R4"),
+        generated_root = parse_sexpr(
+            generated.library_path.read_text(encoding="utf-8")
+        )
+        generated_symbol = next(
+            (
+                node for node in generated_root
+                if isinstance(node, list)
+                and node
+                and getattr(node[0], "value", "") == "symbol"
+                and len(node) > 1
+                and getattr(node[1], "value", "") == generated.symbol_name
+            ),
             None,
         )
+        if generated_symbol is None:
+            raise RuntimeError("The selected passive symbol is missing from the generated library.")
+        generated_properties = {
+            node[1].value: node[2].value
+            for node in generated_symbol
+            if isinstance(node, list)
+            and len(node) >= 3
+            and getattr(node[0], "value", "") == "property"
+        }
         if (
-            linked is None
-            or linked.part_code != "C105637"
-            or linked.value != "1k"
-            or linked.manufacturer_part_number != "RC0402JR-071KL"
+            generated_properties.get("Value") != "10k"
+            or generated_properties.get("LCSC") != details.lcsc
+            or generated_properties.get("MPN") != details.manufacturer_part_number
         ):
             raise RuntimeError(
-                "The add-component UI action did not persist the LCSC metadata in the "
-                "schematic hierarchy."
+                "Generated passive symbol is missing the chosen catalogue value or metadata."
             )
 
-    _drive_populator_form(
-        create,
-        output_dir,
-        proposal_asset="add-component-proposed.png",
-        light_asset="add-component-light.png",
-        dark_asset="add-component-dark.png",
-        confirmation_asset="add-component-confirmation.png",
-        completed_asset="add-component-placed.png",
-        confirmation_title="Confirm new schematic component",
-        required_confirmation_text=(
-            "original KiCad symbol pin numbers, pin types, units and graphics are retained"
-        ),
-        expected_lcsc="C105637",
-        expected_value="1k",
-        expected_footprint="Resistor_SMD:R_0402_1005Metric",
-        validate_result=validate_create_result,
-        require_image=True,
-    )
+    original_native_handoff = populator_module.start_native_symbol_placement
+
+    def capture_failed_native_handoff(*args, **kwargs):
+        try:
+            return original_native_handoff(*args, **kwargs)
+        except Exception as exc:
+            # Preserve the exact native chooser state for CI diagnosis. The
+            # failure artifact is uploaded with if: always() by the visual job.
+            _capture_desktop(output_dir / "add-component-chooser-failure.png")
+            focused = subprocess.run(
+                ["xdotool", "getwindowfocus"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            ).stdout.strip()
+            title = subprocess.run(
+                ["xdotool", "getwindowname", focused],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            ).stdout.strip() if focused else ""
+            chooser_search = subprocess.run(
+                [
+                    "xdotool", "search", "--onlyvisible", "--name", "Choose Symbol"
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+            window_details = []
+            for window_id in chooser_search.stdout.splitlines():
+                window_id = window_id.strip()
+                if not window_id:
+                    continue
+                details = []
+                for command in (
+                    ["xdotool", "getwindowname", window_id],
+                    ["xdotool", "getwindowpid", window_id],
+                    ["xdotool", "getwindowgeometry", "--shell", window_id],
+                ):
+                    result = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        timeout=10,
+                    )
+                    details.append(result.stdout.strip())
+                window_details.append(
+                    f"window={window_id}\\n" + "\\n".join(details)
+                )
+            focused_geometry = subprocess.run(
+                ["xdotool", "getwindowgeometry", "--shell", focused],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            ) if focused else None
+            chooser_tree = subprocess.run(
+                ["xwininfo", "-id", focused, "-tree"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            ) if focused else None
+            mouse_location = subprocess.run(
+                ["xdotool", "getmouselocation", "--shell"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+            (output_dir / "add-component-chooser-failure.txt").write_text(
+                f"exception={type(exc).__name__}: {exc}\n"
+                f"mouse_location={getattr(mouse_location, 'stdout', '')}\n"
+                f"focused_window={focused!r}\n"
+                f"focused_title={title!r}\n"
+                f"focused_geometry={getattr(focused_geometry, 'stdout', '')}\n"
+                f"chooser_tree={getattr(chooser_tree, 'stdout', '')}\n"
+                f"chooser_search_rc={chooser_search.returncode}\n"
+                f"chooser_windows\\n" + "\\n---\\n".join(window_details) + "\\n",
+                encoding="utf-8",
+            )
+            raise
+
+    populator_module.start_native_symbol_placement = capture_failed_native_handoff
+    chooser_debug_capture = output_dir / "add-component-chooser-after-filter.png"
+    os.environ["KICAD_CHOOSER_DEBUG_CAPTURE"] = str(chooser_debug_capture)
+    try:
+        _drive_populator_form(
+            create,
+            output_dir,
+            proposal_asset="add-component-proposed.png",
+            light_asset="add-component-light.png",
+            dark_asset="add-component-dark.png",
+            confirmation_asset="add-component-confirmation.png",
+            completed_asset="add-component-cursor.png",
+            confirmation_title="Confirm new schematic component",
+            required_confirmation_text=(
+                "selected stock symbol's pin numbers, electrical types, units and graphics "
+                "are copied as-is"
+            ),
+            expected_lcsc=None,
+            expected_value="10k",
+            expected_footprint=None,
+            validate_result=validate_create_result,
+            assert_basic_shortlist=True,
+            avoid_lcsc="C60489",
+            capture_cursor=True,
+        )
+    finally:
+        populator_module.start_native_symbol_placement = original_native_handoff
+        os.environ.pop("KICAD_CHOOSER_DEBUG_CAPTURE", None)
     print(
-        "live-add-mode-ui=passed reference=R4 "
-        "library_id=JLCPCB_Generated:R_C105637",
+        "live-add-mode-ui=passed "
+        f"query=10k selected={create.selected_details.lcsc} "
+        f"library_id={create.generated_library.library_id} native_cursor=true",
         flush=True,
     )
 
