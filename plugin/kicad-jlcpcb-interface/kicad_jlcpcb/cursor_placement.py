@@ -180,17 +180,19 @@ def start_native_symbol_placement(
         for key, value in (line.split("=", 1),)
     }
     try:
+        chooser_x = int(geometry_values.get("X", "0"))
+        chooser_y = int(geometry_values.get("Y", "0"))
         chooser_width = int(geometry_values.get("WIDTH", "0"))
     except ValueError:
-        chooser_width = 0
+        chooser_x = chooser_y = chooser_width = 0
     search_x = max(100, min(250, chooser_width // 4)) if chooser_width else 150
+    # Use root-screen coordinates: xdotool's --window mode can target the
+    # focused child XID rather than the dialog client area under wxGTK.
     send(
         "mousemove",
         "--sync",
-        "--window",
-        chooser_id,
-        str(search_x),
-        "20",
+        str(chooser_x + search_x),
+        str(chooser_y + 20),
     )
     send("click", "1")
     pause(0.1)
