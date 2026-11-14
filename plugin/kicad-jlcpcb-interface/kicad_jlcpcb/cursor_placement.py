@@ -146,10 +146,35 @@ def start_native_symbol_placement(
             "and check that Add Symbol is available in Preferences → Hotkeys."
         )
 
-    # KiCad's LIB_TREE constructor clears its query and focuses the filter
-    # control before the chooser is shown. Preserve that native focus: do not
-    # windowfocus the dialog or target synthetic keys at the top-level XID,
-    # because either can bypass the wxSearchCtrl child control.
+    # Activate the native modal, then click the LIB_TREE search control. The
+    # IPC action can expose the chooser before its internal wxSearchCtrl has
+    # keyboard focus even though the chooser itself is the active X11 window.
+    send("windowactivate", "--sync", chooser_id, check=False)
+    pause(0.2)
+    geometry = send("getwindowgeometry", "--shell", chooser_id)
+    geometry_values = {
+        key: value
+        for line in geometry.splitlines()
+        if "=" in line
+        for key, value in (line.split("=", 1),)
+    }
+    try:
+        chooser_x = int(geometry_values.get("X", "0"))
+        chooser_y = int(geometry_values.get("Y", "0"))
+        chooser_width = int(geometry_values.get("WIDTH", "0"))
+    except ValueError:
+        chooser_x = chooser_y = chooser_width = 0
+    search_x = chooser_x + (
+        max(100, min(250, chooser_width // 4)) if chooser_width else 150
+    )
+    search_y = chooser_y + 20
+    send("mousemove", "--sync", str(search_x), str(search_y))
+    send("click", "1")
+    pause(0.1)
+    # LIB_TREE constructs with an empty query, but replace the text defensively
+    # in case a user preference or KiCad build retained an older filter.
+    send("key", "--clearmodifiers", "ctrl+a")
+    send("key", "--clearmodifiers", "BackSpace")
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     # KiCad debounces symbol-search updates for 200 ms.
     pause(0.4)
