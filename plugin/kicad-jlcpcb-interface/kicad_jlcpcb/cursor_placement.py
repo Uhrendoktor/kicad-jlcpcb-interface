@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -91,6 +92,17 @@ def start_native_symbol_placement(
         )
         return str(getattr(result, "stdout", "") or "").strip()
 
+    def shell_geometry(output: str) -> dict[str, int]:
+        values = dict(re.findall(r"^([A-Z_]+)=(-?\d+)$", output, re.MULTILINE))
+        try:
+            return {key: int(value) for key, value in values.items()}
+        except ValueError as exc:
+            raise RuntimeError("Could not read KiCad chooser window geometry.") from exc
+
+    original_pointer = shell_geometry(send("getmouselocation", "--shell"))
+    if "X" not in original_pointer or "Y" not in original_pointer:
+        raise RuntimeError("Could not record the mouse position before opening the symbol chooser.")
+
     editor_pid = send("getwindowpid", str(editor_window_id))
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
@@ -149,11 +161,30 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
-    # KiCad sets the search control as the dialog's initial focus target,
-    # but the "items loaded" title update can precede the dialog's first
-    # activation/paint. Let that focus handoff complete before sending text;
-    # forcing focus to the top-level chooser resets the search control focus.
-    pause(0.15)
+    # The chooser title is updated when the catalogue finishes loading, but
+    # its wxSearchCtrl does not reliably retain keyboard focus after the modal
+    # handoff in some X11 sessions. Click the actual Filter control, then put
+    # the pointer back where it was before the chooser opened. This only
+    # focuses the search field; KiCad still owns the symbol-placement cursor.
+    chooser_geometry = shell_geometry(
+        send("getwindowgeometry", "--shell", chooser_id)
+    )
+    try:
+        chooser_x = chooser_geometry["X"]
+        chooser_y = chooser_geometry["Y"]
+        chooser_width = chooser_geometry["WIDTH"]
+        chooser_height = chooser_geometry["HEIGHT"]
+    except KeyError as exc:
+        raise RuntimeError("Could not locate the native symbol chooser Filter field.") from exc
+    filter_x = chooser_x + min(100, max(40, chooser_width // 4))
+    filter_y = chooser_y + min(16, max(10, chooser_height // 30))
+    send("mousemove", "--sync", str(filter_x), str(filter_y))
+    send("click", "--clearmodifiers", "1")
+    pause(0.1)
+    send(
+        "mousemove", "--sync",
+        str(original_pointer["X"]), str(original_pointer["Y"]),
+    )
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()

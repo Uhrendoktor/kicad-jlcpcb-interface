@@ -34,7 +34,7 @@ class FakeRunner:
             return SimpleNamespace(stdout=geometry, returncode=0)
         if command == "getmouselocation":
             return SimpleNamespace(
-                stdout="X=230\nY=380\nSCREEN=0\nWINDOW=0x200",
+                stdout="X=500\nY=150\nSCREEN=0\nWINDOW=0x100",
                 returncode=0,
             )
         if command == "getwindowfocus":
@@ -145,13 +145,36 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertLess(
             type_index, runner.commands.index(return_command)
         )
-        self.assertIn(0.15, pauses)
-        self.assertNotIn(
-            ["xdotool", "getwindowgeometry", "--shell", "0x200"],
-            runner.commands,
+        geometry_command = ["xdotool", "getwindowgeometry", "--shell", "0x200"]
+        filter_move = ["xdotool", "mousemove", "--sync", "130", "376"]
+        filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
+        restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
+        self.assertIn(geometry_command, runner.commands)
+        self.assertLess(
+            runner.commands.index(geometry_command),
+            runner.commands.index(filter_move),
         )
+        self.assertLess(
+            runner.commands.index(filter_move),
+            runner.commands.index(filter_click),
+        )
+        self.assertLess(
+            runner.commands.index(filter_click),
+            runner.commands.index(restore_pointer),
+        )
+        self.assertLess(
+            runner.commands.index(restore_pointer),
+            runner.commands.index(type_command),
+        )
+        self.assertLess(
+            runner.commands.index(type_command),
+            runner.commands.index(return_command),
+        )
+        self.assertIn(0.1, pauses)
+        self.assertIn(0.15, pauses)
         self.assertFalse(
-            any(command[1] in {"mousemove", "click"} for command in runner.commands)
+            any(command[1] == "click" for command in runner.commands
+                if command != filter_click)
         )
 
     def test_falls_back_to_add_hotkey_when_ipc_action_is_unavailable(self):
