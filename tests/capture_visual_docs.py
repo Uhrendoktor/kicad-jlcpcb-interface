@@ -217,12 +217,17 @@ def _verify_x11_keyboard_input() -> None:
         time.sleep(0.15)
         root.update()
         actual = value.get()
+        focused = subprocess.run(
+            [xdotool, "getwindowfocus"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
         print(
             "x11-keyboard-smoke="
             f"{'passed' if actual == 'x11-smoke' else 'failed'} "
-            f"text={actual!r} focus={subprocess.run([xdotool, 'getwindowfocus'], "
-            "check=True, capture_output=True, text=True, timeout=5).stdout.strip()!r} "
-            f"entry=({x},{y})",
+            f"text={actual!r} focus={focused!r} entry=({x},{y})",
             flush=True,
         )
         if actual != "x11-smoke":
