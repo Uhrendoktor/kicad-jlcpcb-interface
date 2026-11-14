@@ -980,7 +980,8 @@ class ComponentPopulator:
             warning = (
                 f"Copy {draft.symbol_hint} into the project-local library for "
                 f"{draft.value} ({draft.lcsc}) and insert it at the center of "
-                "the current schematic sheet?\n\n"
+                "the current schematic sheet using the JLCPCB_Generated project "
+                "library?\n\n"
                 "The selected symbol's pin numbers and electrical types are retained; "
                 "they are not inferred from catalogue data. Verify pin mapping against "
                 "the datasheet. Footprint is optional. After insertion, KiCad will bring "
