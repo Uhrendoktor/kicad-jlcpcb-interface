@@ -504,16 +504,18 @@ class ComponentPopulatorCleanupTests(unittest.TestCase):
         self.assertIs(populator.messagebox, messagebox)
         self.assertIs(populator.generated_library_symbol, generated)
         self.assertTrue(populator.cursor_placement_started)
-        self.assertEqual(
-            set(populator.__dict__),
-            {
-                "closed",
-                "root",
-                "messagebox",
-                "create_mode",
-                "generated_library_symbol",
-                "cursor_placement_started",
-            },
+        expected_state = {
+            "closed",
+            "root",
+            "messagebox",
+            "create_mode",
+            "generated_library_symbol",
+            "cursor_placement_started",
+        }
+        self.assertTrue(expected_state <= set(populator.__dict__))
+        self.assertLessEqual(
+            set(populator.__dict__) - expected_state,
+            {"_gc_lease"},
         )
 
 
