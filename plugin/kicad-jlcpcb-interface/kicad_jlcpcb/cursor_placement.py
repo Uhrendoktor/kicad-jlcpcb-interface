@@ -534,47 +534,13 @@ def start_native_symbol_placement(
     send("click", "--clearmodifiers", "1")
     pause(0.1)
 
-    # Filter on the lowercase LCSC suffix to avoid shifted punctuation.
+    # The physical click above has already focused the Search text editor.
+    # Do not call AT-SPI grabFocus() on wxSearchCtrl: in wxGTK it can focus the
+    # wrapper while leaving the embedded text editor without keyboard focus.
+    # Send XTest text directly to the currently focused Search entry.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
-    # Prefer real key events routed to the exact nested Search text entry.
-    # The helper reports success only when AT-SPI reads back the requested text.
-    # Otherwise paste into the already-focused field; only use XTest character
-    # events if clipboard support is unavailable.
-    filter_set_accessibly = focus_symbol_chooser_search_at_point(
-        filter_x, filter_y, text=filter_text
-    )
-    clipboard_pasted = False
-    if filter_set_accessibly:
-        print("chooser-input=atspi-search-entry", flush=True)
-    else:
-        xclip = shutil.which("xclip")
-        if xclip:
-            try:
-                command_runner(
-                    [xclip, "-selection", "clipboard", "-in", "-loops", "10"],
-                    input=filter_text,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    text=True,
-                    check=True,
-                    timeout=5,
-                )
-                send("key", "--clearmodifiers", "ctrl+a")
-                send("key", "--clearmodifiers", "ctrl+v")
-                clipboard_pasted = True
-                print("chooser-input=clipboard-ctrl-v", flush=True)
-            except (OSError, subprocess.SubprocessError) as exc:
-                print(
-                    "chooser-input=clipboard-paste-failed "
-                    f"{type(exc).__name__}: {exc}",
-                    flush=True,
-                )
-        if not clipboard_pasted:
-            send("key", "--clearmodifiers", "ctrl+a")
-            for character in filter_text:
-                send("key", "--clearmodifiers", character)
-                pause(0.04)
-            print("chooser-input=xtest-keys", flush=True)
+    send("key", "--clearmodifiers", "ctrl+a")
+    send("type", "--clearmodifiers", "--delay", "35", filter_text)
     pause(0.15)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
