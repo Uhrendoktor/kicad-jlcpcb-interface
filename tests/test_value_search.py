@@ -120,6 +120,38 @@ class PassiveValueSearchTests(unittest.TestCase):
             all(draft.symbol_hint == "Device:R" for _, draft in matches)
         )
 
+    def test_shortlist_is_limited_and_keeps_basic_parts_ahead_of_extended(self):
+        parts = [
+            self.resistor(f"C{index:05d}", is_basic=True, price=0.02 + index / 1000)
+            for index in range(1, 8)
+        ] + [
+            self.resistor(f"C{index:05d}", is_basic=False, price=0.001)
+            for index in range(8, 12)
+        ]
+
+        matches = exact_passive_candidates("10k", parts)
+
+        self.assertEqual(len(matches), 5)
+        self.assertTrue(all(details.is_basic is True for details, _draft in matches))
+        self.assertEqual(
+            [details.lcsc for details, _draft in matches],
+            ["C00001", "C00002", "C00003", "C00004", "C00005"],
+        )
+
+    def test_extended_parts_fill_only_when_basic_shortlist_is_short(self):
+        parts = [
+            self.resistor("C10001", is_basic=True),
+            self.resistor("C10002", is_basic=False),
+            self.resistor("C10003", is_basic=False, price=0.005),
+        ]
+
+        matches = exact_passive_candidates("10k", parts)
+
+        self.assertEqual(
+            [details.lcsc for details, _draft in matches],
+            ["C10001", "C10003", "C10002"],
+        )
+
     def test_capacitor_candidates_match_equivalent_units(self):
         details = JlcPartDetails(
             lcsc="C20001",
