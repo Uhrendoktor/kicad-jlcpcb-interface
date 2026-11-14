@@ -149,7 +149,9 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
-    send("windowfocus", "--sync", chooser_id)
+    # Do not refocus the top-level chooser after its first paint: KiCad's
+    # OnPaint handler has already focused the Filter child control, and
+    # windowfocus here steals that child focus back to the frame.
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()

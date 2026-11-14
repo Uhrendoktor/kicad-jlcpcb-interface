@@ -121,7 +121,6 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
         title_command = ["xdotool", "getwindowname", "0x200"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
@@ -129,11 +128,11 @@ class CursorPlacementTests(unittest.TestCase):
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         self.assertLess(
             runner.commands.index(title_command),
-            runner.commands.index(chooser_focus),
-        )
-        self.assertLess(
-            runner.commands.index(chooser_focus),
             runner.commands.index(type_command),
+        )
+        self.assertNotIn(
+            ["xdotool", "windowfocus", "--sync", "0x200"],
+            runner.commands,
         )
         self.assertLess(
             runner.commands.index(type_command),
