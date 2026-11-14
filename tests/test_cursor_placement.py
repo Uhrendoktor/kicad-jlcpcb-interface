@@ -139,7 +139,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertNotIn(add_symbol_hotkey, runner.commands)
         self.assertLess(runner.commands.index(title_command), type_index)
         self.assertEqual(len(title_checks), 2)
-        chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
+        chooser_focus = ["xdotool", "windowactivate", "--sync", "0x200"]
         self.assertIn(chooser_focus, runner.commands)
         focus_filter = ["xdotool", "mousemove", "--window", "0x200", "90", "15"]
         click_filter = ["xdotool", "click", "1"]
@@ -188,7 +188,7 @@ class CursorPlacementTests(unittest.TestCase):
         chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
         self.assertIn(chooser_focus, runner.commands)
         self.assertNotIn(
-            ["xdotool", "windowactivate", "--sync", "0x200"], runner.commands
+            ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
         self.assertLess(
             runner.commands.index(chooser_focus),
@@ -208,7 +208,7 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
 
-    def test_uses_direct_chooser_focus_as_in_kicad_blocks(self):
+    def test_activates_native_chooser_before_x_test_input(self):
         runner = FakeRunner(["0x200", "0x100"])
         start_native_symbol_placement(
             "0x100",
