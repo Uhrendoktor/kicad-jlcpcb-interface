@@ -150,6 +150,10 @@ def start_native_symbol_placement(
     # generated symbol name to the plugin window or another application.
     send("windowfocus", "--sync", chooser_id)
     pause(0.1)
+    # KiCad remembers the last symbol search between sessions. Replace it
+    # instead of appending to stale filter text from the user's previous use.
+    send("key", "--clearmodifiers", "ctrl+a")
+    send("key", "--clearmodifiers", "BackSpace")
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     # KiCad debounces symbol-search updates for 200 ms. Wait longer than that
     # before Enter so the newly generated symbol is actually selected in the
