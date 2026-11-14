@@ -503,7 +503,7 @@ class CursorPlacementTests(unittest.TestCase):
         filter_click = ["xdotool", "click", "1"]
         clear_search = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
         type_search = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "35", "c60489"
+            "xdotool", "type", "--clearmodifiers", "--delay", "50", "c60489"
         ]
         self.assertIn(filter_click, runner.commands)
         self.assertIn(clear_search, runner.commands)
