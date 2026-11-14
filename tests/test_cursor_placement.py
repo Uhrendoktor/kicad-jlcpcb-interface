@@ -254,11 +254,11 @@ class CursorPlacementTests(unittest.TestCase):
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     @patch(
-        "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
-        return_value=False,
+        "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
+        return_value=True,
     )
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
-        self, _send_text, _which
+        self, _focus_search, _which
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
         kicad = FakeKiCad()
@@ -275,9 +275,6 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(
             kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
         )
-        type_command = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "35", "c60489"
-        ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         self.assertNotIn(
@@ -314,14 +311,16 @@ class CursorPlacementTests(unittest.TestCase):
             max(i for i,c in enumerate(runner.commands) if c == pointer_check),
             runner.commands.index(filter_click),
         )
-        self.assertLess(
-            runner.commands.index(filter_click),
-            runner.commands.index(type_command),
+        _focus_search.assert_called_once_with(
+            601, 449, text="c60489"
         )
-        _send_text.assert_called_once_with("c60489")
-        clear_search = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
-        self.assertIn(clear_search, runner.commands)
-        self.assertIn(type_command, runner.commands)
+        self.assertNotIn(
+            ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
+        )
+        self.assertNotIn(
+            ["xdotool", "type", "--clearmodifiers", "--delay", "35", "c60489"],
+            runner.commands,
+        )
         self.assertIn(return_command, runner.commands)
         self.assertLess(
             runner.commands.index(filter_click),
@@ -329,11 +328,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertLess(
             runner.commands.index(client_click),
-            runner.commands.index(clear_search),
-        )
-        self.assertLess(
-            runner.commands.index(clear_search),
-            runner.commands.index(type_command),
+            runner.commands.index(return_command),
         )
         self.assertIn(restore_pointer, runner.commands)
         self.assertLess(
@@ -346,11 +341,11 @@ class CursorPlacementTests(unittest.TestCase):
         )
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     @patch(
-        "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
+        "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
         return_value=False,
     )
     def test_uses_add_hotkey_when_ipc_action_is_unavailable(
-        self, _send_text, _which
+        self, _focus_search, _which
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
         kicad = FakeKiCad(raises=True)
@@ -397,11 +392,11 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     @patch(
-        "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
+        "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
         return_value=False,
     )
     def test_uses_native_place_menu_when_add_hotkey_does_not_open_chooser(
-        self, _send_text
+        self, _focus_search
     ):
         runner = FakeRunner(
             ["0x100"] * 50 + ["0x200", "0x200", "0x100"]
@@ -430,11 +425,11 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     @patch(
-        "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
+        "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
         return_value=False,
     )
     def test_accepts_focus_return_to_another_eeschema_child_window(
-        self, _send_text
+        self, _focus_search
     ):
         runner = FakeRunner(
             ["0x200", "0x200", "0x300"],
