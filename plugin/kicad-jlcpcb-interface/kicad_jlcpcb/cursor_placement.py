@@ -101,13 +101,18 @@ def start_native_symbol_placement(
             "Preferences → Hotkeys and bind Add Symbol to A, then retry."
         )
 
-    # Match the proven native Eeschema handoff used by the KiCad Blocks
-    # integration test: when Add Symbol opens, the chooser's default focus is
-    # its Filter entry. Type the exact library symbol name and accept it.
-    # Do not move the modal window or inject pointer events; those can disturb
-    # the native chooser's own focus management. Its Filter field is only ready
-    # after the symbol catalog is indexed, which is reflected in the window
-    # title's loaded-item count.
+    # Activate the modal chooser through the window manager as soon as it
+    # appears. KiCad's first-paint handler then focuses its native wxSearchCtrl.
+    # Under a minimal Xvfb server there may be no WM, so retain windowfocus as
+    # a fallback for local/headless sessions.
+    try:
+        send("windowactivate", "--sync", chooser_id)
+    except subprocess.CalledProcessError:
+        send("windowraise", chooser_id)
+        send("windowfocus", "--sync", chooser_id)
+
+    # The chooser is ready for search after its catalog is indexed, reflected
+    # in the title's loaded-item count.
     chooser_ready = False
     chooser_title = ""
     for _ in range(150):
@@ -122,35 +127,7 @@ def start_native_symbol_placement(
             f"within 15 seconds: {chooser_title!r}."
         )
     pause(0.2)
-    # Focus the library tree itself, then send the query through its native
-    # wxEVT_CHAR_HOOK path. KiCad's LIB_TREE forwards printable keys received
-    # by the tree control to its wxSearchCtrl, which is more reliable than
-    # synthesizing a mouse click on the embedded search widget under Xvfb.
-    send(
-        "mousemove", "--sync", "--window", str(editor_window_id), "180", "450"
-    )
-    send("click", "1")
-    # The tree is now the active child. Shift+Tab follows wx tab order back
-    # to the preceding wxSearchCtrl in the chooser panel.
-    send("key", "--clearmodifiers", "shift+Tab")
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
-    if debug_capture:
-        try:
-            from PIL import ImageGrab
-
-            focused_capture = debug_capture.replace(".png", "-focused.png")
-            ImageGrab.grab().save(focused_capture)
-            print(
-                f"chooser-filter-focus-debug=focus={send('getwindowfocus')!r} "
-                f"screenshot={focused_capture!r}",
-                flush=True,
-            )
-        except Exception as exc:
-            print(
-                f"chooser-filter-focus-debug=failed error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
-    send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "15", symbol_name)
     if debug_capture:
         try:

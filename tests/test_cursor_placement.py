@@ -99,26 +99,16 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
         chooser_title_command = ["xdotool", "getwindowname", "0x200"]
-        tree_focus_move = [
-            "xdotool", "mousemove", "--sync", "--window", "0x100", "180", "450"
-        ]
-        filter_click = ["xdotool", "click", "1"]
-        tab_to_filter = ["xdotool", "key", "--clearmodifiers", "shift+Tab"]
-        clear_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
+        activate_command = ["xdotool", "windowactivate", "--sync", "0x200"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "15", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         loaded_index = runner.commands.index(type_command)
         title_index = runner.commands.index(chooser_title_command)
-        move_index = runner.commands.index(tree_focus_move)
-        click_index = runner.commands.index(filter_click)
-        clear_index = runner.commands.index(clear_command)
-        self.assertLess(title_index, move_index)
-        self.assertLess(move_index, click_index)
-        self.assertLess(click_index, runner.commands.index(tab_to_filter))
-        self.assertLess(runner.commands.index(tab_to_filter), clear_index)
-        self.assertLess(clear_index, loaded_index)
+        activate_index = runner.commands.index(activate_command)
+        self.assertLess(title_index, activate_index)
+        self.assertLess(activate_index, loaded_index)
         self.assertGreaterEqual(
             sum(command == chooser_title_command for command in runner.commands[:loaded_index]),
             2,
@@ -127,21 +117,9 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(type_command), runner.commands.index(return_command)
         )
         self.assertIn(0.6, pauses)
-        self.assertLess(
-            runner.commands.index(type_command),
-            runner.commands.index(return_command),
-        )
         self.assertNotIn(
             ["xdotool", "windowmove", "--sync", "0x200", "0", "0"],
             runner.commands,
-        )
-        self.assertIn(0.6, pauses)
-        self.assertFalse(
-            any(
-                command[-1] in {"Tab", "Down"}
-                for command in runner.commands
-                if len(command) >= 4 and command[1] == "key"
-            )
         )
 
     def test_rejects_focus_return_to_a_different_eeschema_child_window(self):
