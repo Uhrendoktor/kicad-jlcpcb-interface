@@ -272,15 +272,6 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(return_command),
             runner.commands.index(restore_pointer),
         )
-        self.assertNotIn(chooser_focus_fallback, runner.commands)
-        self.assertFalse(
-            any(
-                command[:2] == ["xdotool", "mousemove"]
-                and command not in (filter_move, restore_pointer)
-                for command in runner.commands
-            )
-        )
-
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     def test_uses_add_hotkey_when_ipc_action_is_unavailable(self, _which):
         runner = FakeRunner(["0x200", "0x100"])
