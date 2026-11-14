@@ -46,7 +46,6 @@ def start_native_symbol_placement(
     editor_window_id: str | None,
     symbol_name: str,
     *,
-    kicad=None,
     xdotool: str | None = None,
     command_runner: Callable = subprocess.run,
     pause: Callable[[float], None] = time.sleep,
@@ -101,45 +100,45 @@ def start_native_symbol_placement(
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
 
-    run_action = getattr(kicad, "run_action", None)
-    action_started = False
-    action_detail = "KiCad IPC run_action is unavailable"
-    hotkey_attempted = False
-    if callable(run_action):
-        try:
-            # RunAction returns a status enum. A non-raising response does not
-            # mean the editor accepted the action; only RAS_OK starts the tool.
-            action_response = run_action("eeschema.InteractiveDrawing.placeSymbol")
-            raw_status = getattr(action_response, "status", None)
-            if raw_status is None:
-                action_detail = (
-                    "KiCad IPC run_action returned no RunActionResponse.status"
-                )
-            else:
-                status_code = int(raw_status)
-                status_names = {
-                    0: "RAS_UNKNOWN",
-                    1: "RAS_OK",
-                    2: "RAS_INVALID",
-                    3: "RAS_FRAME_NOT_OPEN",
-                }
-                status_name = status_names.get(
-                    status_code, f"UNKNOWN_STATUS_{status_code}"
-                )
-                action_detail = f"{status_name} ({status_code})"
-                action_started = status_code == 1
-        except Exception as exc:
-            action_detail = f"KiCad IPC run_action raised {type(exc).__name__}: {exc}"
-
-    if not action_started:
-        # The compatibility hotkey needs Eeschema to be the active X11 window.
-        try:
-            send("windowactivate", "--sync", str(editor_window_id))
-        except subprocess.SubprocessError:
-            send("windowfocus", "--sync", str(editor_window_id))
-        pause(0.1)
-        send("key", "--clearmodifiers", "a")
-        hotkey_attempted = True
+    # A must reach the schematic drawing tool, not only the top-level frame.
+    # Focus a blank point in the visible canvas, away from the left-side panels
+    # and the existing fixture symbols, then send the standard Add Symbol key.
+    try:
+        send("windowactivate", "--sync", str(editor_window_id))
+    except subprocess.SubprocessError:
+        send("windowfocus", "--sync", str(editor_window_id))
+    editor_geometry = shell_geometry(
+        send("getwindowgeometry", "--shell", str(editor_window_id))
+    )
+    try:
+        editor_width = editor_geometry["WIDTH"]
+        editor_height = editor_geometry["HEIGHT"]
+    except KeyError as exc:
+        raise RuntimeError(
+            "Could not locate the Eeschema drawing area for Add Symbol."
+        ) from exc
+    focus_x = max(300, editor_width // 4)
+    focus_y = max(1, editor_height // 4)
+    send(
+        "mousemove", "--sync", "--window", str(editor_window_id),
+        str(focus_x), str(focus_y),
+    )
+    send("click", "--clearmodifiers", "1")
+    pause(0.1)
+    pointer = shell_geometry(send("getmouselocation", "--shell"))
+    pointer_window = pointer.get("WINDOW", 0)
+    pointer_pid = (
+        send("getwindowpid", str(pointer_window))
+        if pointer_window
+        else ""
+    )
+    if pointer_window == 0 or pointer_pid != editor_pid:
+        raise RuntimeError(
+            "Could not focus the Eeschema drawing area before invoking Add Symbol. "
+            f"Editor PID={editor_pid!r}; pointer={pointer!r}; "
+            f"pointer PID={pointer_pid!r}."
+        )
+    send("key", "--clearmodifiers", "a")
 
     def wait_for_chooser() -> tuple[str, str, str, str]:
         """Return the chooser XID and current focus details, if it opened."""
@@ -165,37 +164,16 @@ def start_native_symbol_placement(
         return "", current_id, current_pid, current_title
 
     chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
-    if not chooser_id and action_started:
-        # KiCad may acknowledge the IPC action before the modal chooser becomes
-        # the active X11 window. Retry through the standard Add Symbol hotkey.
-        try:
-            send("windowactivate", "--sync", str(editor_window_id))
-        except subprocess.SubprocessError:
-            send("windowfocus", "--sync", str(editor_window_id))
-        pause(0.1)
-        send("key", "--clearmodifiers", "a")
-        hotkey_attempted = True
-        chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
-
     if not chooser_id:
-        if focused_pid == editor_pid:
-            try:
-                send("key", "--clearmodifiers", "Escape")
-            except subprocess.SubprocessError:
-                pass
-        fallback_detail = (
-            "Add Symbol hotkey was attempted"
-            if hotkey_attempted
-            else "Add Symbol hotkey was not attempted"
-        )
         raise RuntimeError(
-            "KiCad's native symbol chooser did not open. "
-            f"IPC Place Symbol result: {action_detail}; {fallback_detail}. "
+            "KiCad's native symbol chooser did not open after focusing the "
+            "Eeschema drawing area and sending the Add Symbol shortcut. "
             f"Editor={editor_window_id!r}/{editor_pid!r}; "
             f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
-            "Check that the connected KiCad instance has Eeschema active and "
-            "that Add Symbol is available in its tool manager."
+            "Check the Eeschema Place Symbol hotkey and drawing-area focus."
         )
+
+    chooser_pid = focused_pid or editor_pid
 
     # Wait for KiCad to finish populating the library tree before sending
     # search keystrokes; early XTest input can be dropped while wx builds it.

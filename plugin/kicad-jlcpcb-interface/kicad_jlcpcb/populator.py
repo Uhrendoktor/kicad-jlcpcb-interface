@@ -1046,7 +1046,6 @@ class ComponentPopulator:
                 start_native_symbol_placement(
                     self.editor_window_id,
                     generated.symbol_name,
-                    kicad=self.kicad,
                 )
                 self.cursor_placement_started = True
                 self.close()
