@@ -1726,6 +1726,13 @@ def _capture_passive_component_workflows(
                 check=False,
                 timeout=10,
             ) if focused else None
+            chooser_tree = subprocess.run(
+                ["xwininfo", "-id", focused, "-tree"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            ) if focused else None
             mouse_location = subprocess.run(
                 ["xdotool", "getmouselocation", "--shell"],
                 capture_output=True,
@@ -1739,6 +1746,7 @@ def _capture_passive_component_workflows(
                 f"focused_window={focused!r}\n"
                 f"focused_title={title!r}\n"
                 f"focused_geometry={getattr(focused_geometry, 'stdout', '')}\n"
+                f"chooser_tree={getattr(chooser_tree, 'stdout', '')}\n"
                 f"chooser_search_rc={chooser_search.returncode}\n"
                 f"chooser_windows\\n" + "\\n---\\n".join(window_details) + "\\n",
                 encoding="utf-8",
