@@ -93,7 +93,13 @@ def start_native_symbol_placement(
         return str(getattr(result, "stdout", "") or "").strip()
 
     def shell_geometry(output: str) -> dict[str, int]:
-        values = dict(re.findall(r"^([A-Z_]+)=(-?\d+)$", output, re.MULTILINE))
+        values = dict(
+            re.findall(
+                r"^([A-Z_]+)=((?:0[xX][0-9a-fA-F]+)|-?\d+)$",
+                output,
+                re.MULTILINE,
+            )
+        )
         try:
             return {
                 key: int(value, 0) if value.lower().startswith("0x") else int(value)
