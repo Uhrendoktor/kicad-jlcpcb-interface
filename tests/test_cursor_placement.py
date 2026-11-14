@@ -373,15 +373,21 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
-        self.assertNotIn(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
+        filter_click = ["xdotool", "click", "1"]
+        clear_search = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
+        type_search = [
+            "xdotool", "type", "--clearmodifiers", "--delay", "35", "c60489"
+        ]
+        self.assertIn(filter_click, runner.commands)
+        self.assertIn(clear_search, runner.commands)
+        self.assertIn(type_search, runner.commands)
+        self.assertLess(
+            runner.commands.index(filter_click),
+            runner.commands.index(clear_search),
         )
-        self.assertIn(
-            [
-                "xdotool", "type", "--clearmodifiers", "--delay", "35",
-                "c60489",
-            ],
-            runner.commands,
+        self.assertLess(
+            runner.commands.index(clear_search),
+            runner.commands.index(type_search),
         )
 
     @patch(
