@@ -44,59 +44,6 @@ def capture_eeschema_window_id(
 
 
 
-_WX_ACTION_APP = None
-
-
-def type_focused_widget_with_wx(
-    text: str,
-    *,
-    wx_module=None,
-) -> bool:
-    """Type ASCII text through wxWidgets' native UI action simulator."""
-    global _WX_ACTION_APP
-    if not text or not text.isascii():
-        return False
-    if wx_module is None:
-        try:
-            import wx as wx_module
-        except Exception as exc:
-            print(
-                f"chooser-wx-simulator=unavailable error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
-            return False
-    try:
-        get_app = getattr(wx_module, "GetApp", None)
-        app = get_app() if callable(get_app) else None
-        if app is None:
-            if _WX_ACTION_APP is None:
-                _WX_ACTION_APP = wx_module.App(False)
-        simulator = wx_module.UIActionSimulator()
-        yield_events = getattr(wx_module, "YieldIfNeeded", None)
-        for character in text:
-            sent = bool(simulator.Char(ord(character)))
-            if not sent:
-                print(
-                    "chooser-wx-simulator=key-failed "
-                    f"character={character!r}",
-                    flush=True,
-                )
-                return False
-            if callable(yield_events):
-                yield_events()
-            time.sleep(0.025)
-        print(
-            f"chooser-wx-simulator=keys-sent count={len(text)}",
-            flush=True,
-        )
-        return True
-    except Exception as exc:
-        print(
-            f"chooser-wx-simulator=failed error={type(exc).__name__}: {exc}",
-            flush=True,
-        )
-        return False
-
 
 
 def focus_symbol_chooser_search_at_point(
@@ -555,52 +502,45 @@ def start_native_symbol_placement(
 
     # Filter on the lowercase LCSC suffix to avoid shifted punctuation.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
-    # Use AT-SPI to target the nested text-entry child of the Search widget.
-    # A successful UIActionSimulator.Char() only means an event was queued; it
-    # does not prove wxGTK in another process received it. Use the simulator
-    # only when AT-SPI cannot focus and populate the exact Search child.
+    # Prefer real key events routed to the exact nested Search text entry.
+    # The helper reports success only when AT-SPI reads back the requested text.
+    # Otherwise paste into the already-focused field; only use XTest character
+    # events if clipboard support is unavailable.
     filter_set_accessibly = focus_symbol_chooser_search_at_point(
         filter_x, filter_y, text=filter_text
     )
+    clipboard_pasted = False
     if filter_set_accessibly:
         print("chooser-input=atspi-search-entry", flush=True)
     else:
-        wx_text_sent = type_focused_widget_with_wx(filter_text)
-        filter_set_accessibly = wx_text_sent
-        if wx_text_sent:
-            print("chooser-input=wx-ui-action-simulator", flush=True)
-    xclip = shutil.which("xclip")
-    primary_pasted = False
-    if not filter_set_accessibly and xclip:
-        try:
-            command_runner(
-                [xclip, "-selection", "clipboard", "-in", "-loops", "10"],
-                input=filter_text,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                check=True,
-                timeout=5,
-            )
-            send("key", "--clearmodifiers", "ctrl+v")
-            primary_pasted = True
-            print("chooser-input=clipboard-ctrl-v", flush=True)
-        except (OSError, subprocess.SubprocessError) as exc:
-            print(
-                f"chooser-input=clipboard-paste-failed {type(exc).__name__}: {exc}",
-                flush=True,
-            )
-    if not filter_set_accessibly:
-        send("key", "--clearmodifiers", "ctrl+a")
-        for character in filter_text:
-            send("key", "--clearmodifiers", character)
-            pause(0.04)
-        print(
-            "chooser-input=clipboard-ctrl-v-plus-xtest"
-            if primary_pasted
-            else "chooser-input=xtest-keys",
-            flush=True,
-        )
+        xclip = shutil.which("xclip")
+        if xclip:
+            try:
+                command_runner(
+                    [xclip, "-selection", "clipboard", "-in", "-loops", "10"],
+                    input=filter_text,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    check=True,
+                    timeout=5,
+                )
+                send("key", "--clearmodifiers", "ctrl+a")
+                send("key", "--clearmodifiers", "ctrl+v")
+                clipboard_pasted = True
+                print("chooser-input=clipboard-ctrl-v", flush=True)
+            except (OSError, subprocess.SubprocessError) as exc:
+                print(
+                    "chooser-input=clipboard-paste-failed "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+        if not clipboard_pasted:
+            send("key", "--clearmodifiers", "ctrl+a")
+            for character in filter_text:
+                send("key", "--clearmodifiers", character)
+                pause(0.04)
+            print("chooser-input=xtest-keys", flush=True)
     pause(0.15)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()

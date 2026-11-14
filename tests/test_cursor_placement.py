@@ -14,7 +14,6 @@ from kicad_jlcpcb.cursor_placement import (  # noqa: E402
     capture_eeschema_window_id,
     focus_symbol_chooser_search_at_point,
     start_native_symbol_placement,
-    type_focused_widget_with_wx,
 )
 
 
@@ -176,42 +175,6 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
-    def test_types_focused_text_with_wx_action_simulator(self):
-        calls = []
-
-        class FakeSimulator:
-            def Char(self, keycode):
-                calls.append(keycode)
-                return True
-
-        class FakeWx:
-            @staticmethod
-            def GetApp():
-                return object()
-
-            @staticmethod
-            def UIActionSimulator():
-                return FakeSimulator()
-
-            @staticmethod
-            def YieldIfNeeded():
-                return None
-
-        self.assertTrue(
-            type_focused_widget_with_wx("c25744", wx_module=FakeWx)
-        )
-        self.assertEqual(calls, [ord(character) for character in "c25744"])
-
-    def test_wx_action_simulator_rejects_non_ascii_filter_text(self):
-        class UnusedWx:
-            @staticmethod
-            def UIActionSimulator():
-                raise AssertionError("wx must not be created for non-ASCII input")
-
-        self.assertFalse(
-            type_focused_widget_with_wx("µF", wx_module=UnusedWx)
-        )
-
     def test_atspi_synthesizes_keyboard_string_into_nested_search_entry(self):
         search_entry = FakeAccessible("")
         search_entry.extents = (545, 424, 378, 34)
@@ -284,7 +247,6 @@ class CursorPlacementTests(unittest.TestCase):
         ]
         paste_command = ["xdotool", "key", "--clearmodifiers", "ctrl+v"]
         select_all_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
-        type_first_character = ["xdotool", "key", "--clearmodifiers", "c"]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         self.assertIn(chooser_focus, runner.commands)
@@ -294,7 +256,9 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(clipboard_command, runner.commands)
         self.assertIn(paste_command, runner.commands)
         self.assertIn(select_all_command, runner.commands)
-        self.assertIn(type_first_character, runner.commands)
+        self.assertNotIn(
+            ["xdotool", "key", "--clearmodifiers", "c"], runner.commands
+        )
         self.assertIn(return_command, runner.commands)
         self.assertIn(restore_pointer, runner.commands)
         clipboard_index = runner.commands.index(clipboard_command)
@@ -304,15 +268,11 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertLess(runner.commands.index(filter_click), clipboard_index)
         self.assertLess(clipboard_index, runner.commands.index(paste_command))
         self.assertLess(
+            runner.commands.index(select_all_command),
             runner.commands.index(paste_command),
-            runner.commands.index(select_all_command),
         )
         self.assertLess(
-            runner.commands.index(select_all_command),
-            runner.commands.index(type_first_character),
-        )
-        self.assertLess(
-            runner.commands.index(type_first_character),
+            runner.commands.index(paste_command),
             runner.commands.index(return_command),
         )
         self.assertLess(
