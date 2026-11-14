@@ -155,6 +155,11 @@ def start_native_symbol_placement(
     # before Enter so the newly generated symbol is actually selected in the
     # refreshed result tree rather than the stale pre-filter selection.
     pause(0.4)
+    # The chooser can retain a library-node selection after filtering. Move
+    # onto the first visible symbol row before Enter; Enter on a library node
+    # only expands/collapses it and leaves the chooser open.
+    send("key", "--clearmodifiers", "Down")
+    pause(0.1)
     send("key", "--clearmodifiers", "Return")
 
     last_focus: tuple[str, str, str, str] = ("", "", "", "")
