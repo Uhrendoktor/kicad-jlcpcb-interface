@@ -431,6 +431,7 @@ class ComponentPopulatorCleanupTests(unittest.TestCase):
         populator.executor = TkCleanupExecutor("catalogue-shutdown", events, root)
         populator.image_executor = TkCleanupExecutor("image-shutdown", events, root)
         populator.messagebox = messagebox
+        populator._gc_lease = True
         populator.create_mode = True
         populator.generated_library_symbol = generated
         populator.cursor_placement_started = True
@@ -457,7 +458,16 @@ class ComponentPopulatorCleanupTests(unittest.TestCase):
             for name in ("description", "manufacturer", "mpn", "lcsc", "source")
         }
 
-        ComponentPopulator.close(populator)
+        def release_lease():
+            events.append(
+                ("gc-lease-release", threading.get_ident(), root.destroyed)
+            )
+
+        with patch(
+            "kicad_jlcpcb.populator._release_tk_gc_lease",
+            side_effect=release_lease,
+        ):
+            ComponentPopulator.close(populator)
 
         shutdown_events = events[:2]
         self.assertEqual(
@@ -483,7 +493,10 @@ class ComponentPopulatorCleanupTests(unittest.TestCase):
             all(event[1] == threading.get_ident() for event in resource_events)
         )
         self.assertTrue(all(not event[2] for event in resource_events))
-        self.assertEqual(events[-1][0], "root-destroyed")
+        self.assertEqual(events[-2][0], "root-destroyed")
+        self.assertEqual(events[-1][0], "gc-lease-release")
+        self.assertEqual(events[-1][1], threading.get_ident())
+        self.assertTrue(events[-1][2])
         self.assertTrue(root.destroyed)
         self.assertIs(populator.root, root)
         self.assertTrue(populator.closed)

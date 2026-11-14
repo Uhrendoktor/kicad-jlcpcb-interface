@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import gc
 import queue
 import shutil
+import threading
 import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
