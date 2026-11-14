@@ -1190,6 +1190,7 @@ def _drive_populator_form(
     expected_value: str,
     expected_footprint: str,
     validate_result,
+    require_image: bool = False,
 ) -> None:
     """Capture the real LCSC proposal form, confirm it, and verify the IPC result."""
     root = populator.root
@@ -1232,6 +1233,17 @@ def _drive_populator_form(
                 )
             image_name = str(populator.image_label.cget("image") or "")
             image_placeholder = str(populator.image_label.cget("text") or "")
+            if require_image and not image_name:
+                details = populator.selected_details
+                image_urls = tuple(
+                    getattr(details, "image_urls", ())
+                    or ((getattr(details, "image_url", ""),) if details else ())
+                )
+                paths = tuple(urlparse(url).path for url in image_urls if url)
+                raise RuntimeError(
+                    "The fixture part has supplier image URLs but no rendered photo: "
+                    f"{paths!r}; placeholder={image_placeholder!r}"
+                )
             if not image_name and image_placeholder not in {
                 "No catalogue image",
                 "Image unavailable",
@@ -1589,6 +1601,7 @@ def _capture_passive_component_workflows(
         expected_value="1k",
         expected_footprint="Resistor_SMD:R_0402_1005Metric",
         validate_result=validate_create_result,
+        require_image=True,
     )
     print(
         "live-add-mode-ui=passed reference=R4 "
