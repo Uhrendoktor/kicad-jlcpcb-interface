@@ -15,8 +15,8 @@ sys.path.insert(0, str(PLUGIN))
 from kicad_jlcpcb.draft import build_component_draft, symbol_library_id  # noqa: E402
 from kicad_jlcpcb.placement import (  # noqa: E402
     next_component_reference,
-    place_component_from_draft,
     place_and_select_component_from_draft,
+    place_component_from_draft,
     schematic_page_center_mm,
 )
 from kicad_jlcpcb.provider import JlcPartDetails  # noqa: E402
@@ -176,8 +176,14 @@ class PlacementTests(unittest.TestCase):
         )
         draft = resistor_draft()
         with (
-            patch("kicad_jlcpcb.placement.place_component_from_draft", return_value=symbol) as place,
-            patch("kicad_jlcpcb.placement.focus_schematic_items_in_editor", return_value=target) as focus,
+            patch(
+                "kicad_jlcpcb.placement.place_component_from_draft",
+                return_value=symbol,
+            ) as place,
+            patch(
+                "kicad_jlcpcb.placement.focus_schematic_items_in_editor",
+                return_value=target,
+            ) as focus,
         ):
             result = place_and_select_component_from_draft(
                 schematic,

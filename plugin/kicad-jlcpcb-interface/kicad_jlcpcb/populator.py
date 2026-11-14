@@ -24,8 +24,8 @@ from .draft import (
 from .library import generate_project_library_symbol, reload_project_symbol_library
 from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
-from .provider import JlcSearchProvider, normalize_lcsc_code
 from .placement import place_and_select_component_from_draft
+from .provider import JlcSearchProvider, normalize_lcsc_code
 from .theme import apply_tk_theme
 from .value_search import (
     exact_passive_candidates,
