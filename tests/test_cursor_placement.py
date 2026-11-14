@@ -295,9 +295,7 @@ class CursorPlacementTests(unittest.TestCase):
             max(i for i,c in enumerate(runner.commands) if c == pointer_check),
             runner.commands.index(filter_click),
         )
-        _focus_search.assert_called_once_with(
-            601, 449, text="c60489"
-        )
+        _focus_search.assert_called_once_with(601, 449)
         clear_search = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
         type_search = [
             "xdotool", "type", "--clearmodifiers", "--delay", "35", "c60489"
