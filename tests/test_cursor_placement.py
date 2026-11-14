@@ -83,6 +83,7 @@ class FakeAccessible:
         self.point_target = None
         self.hit_test_calls = []
         self.focused = False
+        self.text = ""
 
     @property
     def childCount(self):
@@ -106,6 +107,27 @@ class FakeAccessible:
 
     def grabFocus(self):
         self.focused = True
+        return True
+
+    def queryEditableText(self):
+        return self
+
+    def queryText(self):
+        return self
+
+    def getText(self, _start, _end):
+        return self.text
+
+    def deleteText(self, start, end):
+        self.text = self.text[:start] + self.text[end:]
+        return True
+
+    def insertText(self, position, value, _length):
+        self.text = self.text[:position] + value + self.text[position:]
+        return True
+
+    def setTextContents(self, value):
+        self.text = value
         return True
 
 
@@ -168,11 +190,12 @@ class CursorPlacementTests(unittest.TestCase):
 
         self.assertTrue(
             focus_symbol_chooser_search_at_point(
-                601, 439, atspi_module=atspi
+                601, 439, text="c60489", atspi_module=atspi
             )
         )
         self.assertEqual(chooser.hit_test_calls, [(601, 439, 0)])
         self.assertTrue(search.focused)
+        self.assertEqual(search.text, "c60489")
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(

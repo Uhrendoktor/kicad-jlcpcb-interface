@@ -48,6 +48,7 @@ def focus_symbol_chooser_search_at_point(
     x: int,
     y: int,
     *,
+    text: str | None = None,
     atspi_module=None,
 ) -> bool:
     """Give keyboard focus to the actual native Search widget under an X11 point."""
@@ -145,6 +146,24 @@ def focus_symbol_chooser_search_at_point(
         focused = bool(component.grabFocus())
         role = str(target.getRoleName())
         name = str(getattr(target, "name", "") or "")
+        text_result = None
+        if focused and text is not None:
+            editable = target.queryEditableText()
+            text_iface = target.queryText()
+            before = str(text_iface.getText(0, -1))
+            if before:
+                editable.deleteText(0, len(before))
+            inserted = editable.insertText(0, text, len(text))
+            text_result = str(text_iface.getText(0, -1))
+            if text_result != text:
+                replaced = editable.setTextContents(text)
+                text_result = str(text_iface.getText(0, -1))
+                print(
+                    "chooser-atspi=editable-fallback "
+                    f"inserted={bool(inserted)} set={bool(replaced)} "
+                    f"observed={text_result!r}",
+                    flush=True,
+                )
     except Exception as exc:
         print(
             "chooser-atspi=focus-failed "
@@ -156,9 +175,11 @@ def focus_symbol_chooser_search_at_point(
     print(
         "chooser-atspi=focus-target "
         f"focused={focused} x={x} y={y} role={role!r} "
-        f"name={name!r} path={path!r}",
+        f"name={name!r} text={text_result!r} path={path!r}",
         flush=True,
     )
+    if text is not None:
+        return focused and text_result == text
     return focused
 
 
@@ -349,16 +370,20 @@ def start_native_symbol_placement(
     send("mousemove", "--sync", str(filter_x), str(filter_y))
     send("click", "--clearmodifiers", "1")
     pause(0.1)
-    focus_symbol_chooser_search_at_point(filter_x, filter_y)
 
     # Filter on the lowercase LCSC suffix to avoid shifted punctuation.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
+    filter_set_accessibly = focus_symbol_chooser_search_at_point(
+        filter_x, filter_y, text=filter_text
+    )
     # The wxWidgets text entry may ignore XTest key events in this modal dialog.
     # Use the X11 PRIMARY selection and a middle-click paste first; fall back to
     # the tested XTest path only when xclip is not installed or cannot run.
     xclip = shutil.which("xclip")
     primary_pasted = False
-    if xclip:
+    if filter_set_accessibly:
+        print("chooser-input=atspi-editable-text", flush=True)
+    elif xclip:
         try:
             command_runner(
                 [xclip, "-selection", "clipboard", "-in", "-loops", "10"],
@@ -377,20 +402,19 @@ def start_native_symbol_placement(
                 f"chooser-input=primary-paste-failed {type(exc).__name__}: {exc}",
                 flush=True,
             )
-    # Regardless of whether the paste request was handled, replace the
-    # field with a direct XTest key sequence. Ctrl+A makes this idempotent:
-    # successful paste text is replaced, while ignored paste leaves an empty
-    # field ready for the same character sequence.
-    send("key", "--clearmodifiers", "ctrl+a")
-    for character in filter_text:
-        send("key", "--clearmodifiers", character)
-        pause(0.04)
-    print(
-        "chooser-input=clipboard-ctrl-v-plus-xtest"
-        if primary_pasted
-        else "chooser-input=xtest-keys",
-        flush=True,
-    )
+    # When AT-SPI has edited the actual Search widget successfully, do not
+    # overwrite it. Otherwise, replace any pasted text and retry with XTest.
+    if not filter_set_accessibly:
+        send("key", "--clearmodifiers", "ctrl+a")
+        for character in filter_text:
+            send("key", "--clearmodifiers", character)
+            pause(0.04)
+        print(
+            "chooser-input=clipboard-ctrl-v-plus-xtest"
+            if primary_pasted
+            else "chooser-input=xtest-keys",
+            flush=True,
+        )
     pause(0.15)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
