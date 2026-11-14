@@ -173,15 +173,23 @@ def start_native_symbol_placement(
     pause(0.1)
     # LIB_TREE constructs with an empty query, but replace the text defensively
     # in case a user preference or KiCad build retained an older filter.
-    send("key", "--clearmodifiers", "ctrl+a")
-    send("key", "--clearmodifiers", "BackSpace")
-    send("type", "--clearmodifiers", "--delay", "12", symbol_name)
+    send("key", "--window", chooser_id, "--clearmodifiers", "ctrl+a")
+    send("key", "--window", chooser_id, "--clearmodifiers", "BackSpace")
+    send(
+        "type",
+        "--window",
+        chooser_id,
+        "--clearmodifiers",
+        "--delay",
+        "12",
+        symbol_name,
+    )
     # KiCad debounces symbol-search updates for 200 ms.
     pause(0.4)
     # Select the first visible symbol result, then accept it.
-    send("key", "--clearmodifiers", "Down")
+    send("key", "--window", chooser_id, "--clearmodifiers", "Down")
     pause(0.1)
-    send("key", "--clearmodifiers", "Return")
+    send("key", "--window", chooser_id, "--clearmodifiers", "Return")
 
     last_focus: tuple[str, str, str, str] = ("", "", "", "")
     for _ in range(30):
