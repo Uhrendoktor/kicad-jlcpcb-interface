@@ -245,24 +245,35 @@ def type_symbol_name_with_wx_simulator(symbol_name: str, *, wx_module=None) -> b
         if not simulator.Char(ord("A"), control_modifier):
             return False
         sent = 0
+        text_api_sent = 0
         for character in symbol_name:
-            if character == "_":
-                keycode, modifiers = ord("-"), shift_modifier
-            elif character.isalpha() and character.isupper():
-                keycode, modifiers = ord(character), shift_modifier
+            try:
+                # wxPython 4.2's generated binding exposes Text as an integer
+                # code-point call despite the prose signature describing a
+                # string. Send one ASCII character at a time through that API.
+                text_sent = bool(simulator.Text(ord(character)))
+            except (TypeError, ValueError):
+                text_sent = False
+            if text_sent:
+                text_api_sent += 1
             else:
-                keycode, modifiers = ord(character), 0
-            if not simulator.Char(keycode, modifiers):
-                print(
-                    "chooser-wx-simulator=key-failed "
-                    f"character={character!r} keycode={keycode} modifiers={modifiers}",
-                    flush=True,
-                )
-                return False
+                if character == "_":
+                    keycode, modifiers = ord("-"), shift_modifier
+                elif character.isalpha() and character.isupper():
+                    keycode, modifiers = ord(character), shift_modifier
+                else:
+                    keycode, modifiers = ord(character), 0
+                if not simulator.Char(keycode, modifiers):
+                    print(
+                        "chooser-wx-simulator=key-failed "
+                        f"character={character!r} keycode={keycode} modifiers={modifiers}",
+                        flush=True,
+                    )
+                    return False
             sent += 1
         print(
             f"chooser-wx-simulator=typed result=True chars={sent} "
-            f"symbol={symbol_name!r}",
+            f"text_api_chars={text_api_sent} symbol={symbol_name!r}",
             flush=True,
         )
         return sent == len(symbol_name)

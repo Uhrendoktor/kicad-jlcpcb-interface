@@ -154,6 +154,10 @@ class WxSimulatorTests(unittest.TestCase):
                 self.calls.append(("Char", keycode, modifiers))
                 return True
 
+            def Text(self, value):
+                self.calls.append(("Text", value))
+                return True
+
         simulator = FakeSimulator()
 
         class FakeWx:
@@ -175,12 +179,14 @@ class WxSimulatorTests(unittest.TestCase):
                 ("Char", ord("A"), 2),
                 ("Char", ord("R"), 1),
                 ("Char", ord("-"), 1),
-                ("Char", ord("C"), 1),
-                ("Char", ord("2"), 0),
-                ("Char", ord("5"), 0),
-                ("Char", ord("7"), 0),
-                ("Char", ord("4"), 0),
-                ("Char", ord("4"), 0),
+                ("Text", ord("R")),
+                ("Text", ord("_")),
+                ("Text", ord("C")),
+                ("Text", ord("2")),
+                ("Text", ord("5")),
+                ("Text", ord("7")),
+                ("Text", ord("4")),
+                ("Text", ord("4")),
             ],
         )
 
