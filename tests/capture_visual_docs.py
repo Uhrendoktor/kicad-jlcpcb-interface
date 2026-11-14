@@ -29,12 +29,12 @@ from kicad_jlcpcb.draft import (  # noqa: E402
     symbol_library_id,
     update_schematic_symbol,
 )
-from kicad_jlcpcb.media import download_product_image  # noqa: E402
 from kicad_jlcpcb.library import (  # noqa: E402
     generate_project_library_symbol,
     parse_sexpr,
     reload_project_symbol_library,
 )
+from kicad_jlcpcb.media import download_product_image  # noqa: E402
 from kicad_jlcpcb.model import (  # noqa: E402
     find_linked_components,
     find_selected_component,
