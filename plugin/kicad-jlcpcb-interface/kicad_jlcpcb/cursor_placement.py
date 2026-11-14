@@ -141,46 +141,120 @@ def focus_symbol_chooser_search_at_point(
             extents = None
         path.append((role, name, extents))
 
+    # The point hit-test can return a wrapper for wxSearchCtrl rather than
+    # its nested text-entry child. Walk only descendants whose component bounds
+    # remain inside the Search control and prefer the deepest editable node.
+    candidates = [(target, 0)]
+    search_bounds = None
     try:
-        component = target.queryComponent()
-        focused = bool(component.grabFocus())
-        role = str(target.getRoleName())
-        name = str(getattr(target, "name", "") or "")
+        search_bounds = target.queryComponent().getExtents(coord_type)
+    except Exception:
+        pass
+
+    stack = [(target, 0)]
+    inspected = 0
+    while stack and inspected < 120:
+        parent, depth = stack.pop()
+        inspected += 1
+        try:
+            child_count = min(int(parent.childCount), 40)
+        except Exception:
+            child_count = 0
+        for index in range(child_count):
+            try:
+                child = parent.getChildAtIndex(index)
+                bounds = child.queryComponent().getExtents(coord_type)
+                child_depth = depth + 1
+                if search_bounds is not None and bounds is not None:
+                    sx, sy, sw, sh = search_bounds
+                    cx, cy, cw, ch = bounds
+                    contained = (
+                        cx >= sx - 2 and cy >= sy - 2
+                        and cx + cw <= sx + sw + 2
+                        and cy + ch <= sy + sh + 2
+                    )
+                else:
+                    contained = True
+                if contained:
+                    candidates.append((child, child_depth))
+                    stack.append((child, child_depth))
+            except Exception:
+                continue
+
+    candidate_details = []
+    candidates.sort(key=lambda item: item[1], reverse=True)
+    last_error = None
+    for candidate, depth in candidates:
+        try:
+            role = str(candidate.getRoleName())
+        except Exception:
+            role = ""
+        try:
+            name = str(getattr(candidate, "name", "") or "")
+        except Exception:
+            name = ""
+        try:
+            bounds = candidate.queryComponent().getExtents(coord_type)
+        except Exception:
+            bounds = None
+        try:
+            component = candidate.queryComponent()
+            focused = bool(component.grabFocus())
+        except Exception as exc:
+            candidate_details.append(
+                (depth, role, name, bounds, f"focus:{type(exc).__name__}:{exc}")
+            )
+            last_error = exc
+            continue
+
         text_result = None
         if focused and text is not None:
-            editable = target.queryEditableText()
-            text_iface = target.queryText()
-            before = str(text_iface.getText(0, -1))
-            if before:
-                editable.deleteText(0, len(before))
-            inserted = editable.insertText(0, text, len(text))
-            text_result = str(text_iface.getText(0, -1))
-            if text_result != text:
-                replaced = editable.setTextContents(text)
+            try:
+                editable = candidate.queryEditableText()
+                text_iface = candidate.queryText()
+                before = str(text_iface.getText(0, -1))
+                if before:
+                    editable.deleteText(0, len(before))
+                inserted = editable.insertText(0, text, len(text))
                 text_result = str(text_iface.getText(0, -1))
-                print(
-                    "chooser-atspi=editable-fallback "
-                    f"inserted={bool(inserted)} set={bool(replaced)} "
-                    f"observed={text_result!r}",
-                    flush=True,
+                if text_result != text:
+                    replaced = editable.setTextContents(text)
+                    text_result = str(text_iface.getText(0, -1))
+                candidate_details.append(
+                    (depth, role, name, bounds, text_result)
                 )
-    except Exception as exc:
-        print(
-            "chooser-atspi=focus-failed "
-            f"error={type(exc).__name__}: {exc} path={path!r}",
-            flush=True,
-        )
-        return False
+                if text_result == text:
+                    print(
+                        "chooser-atspi=editable-child-set "
+                        f"focused={focused} depth={depth} role={role!r} "
+                        f"name={name!r} bounds={bounds!r} "
+                        f"inserted={bool(inserted)} "
+                        f"candidates={candidate_details[:20]!r}",
+                        flush=True,
+                    )
+                    return True
+            except Exception as exc:
+                candidate_details.append(
+                    (depth, role, name, bounds, f"text:{type(exc).__name__}:{exc}")
+                )
+                last_error = exc
+        elif focused and text is None:
+            print(
+                "chooser-atspi=focus-target "
+                f"focused={focused} depth={depth} role={role!r} "
+                f"name={name!r} bounds={bounds!r} path={path!r}",
+                flush=True,
+            )
+            return True
 
     print(
-        "chooser-atspi=focus-target "
-        f"focused={focused} x={x} y={y} role={role!r} "
-        f"name={name!r} text={text_result!r} path={path!r}",
+        "chooser-atspi=editable-child-not-found "
+        f"x={x} y={y} search_bounds={search_bounds!r} "
+        f"inspected={inspected} candidates={candidate_details[:30]!r} "
+        f"last_error={type(last_error).__name__ if last_error else None}",
         flush=True,
     )
-    if text is not None:
-        return focused and text_result == text
-    return focused
+    return False
 
 
 def start_native_symbol_placement(

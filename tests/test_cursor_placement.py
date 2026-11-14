@@ -84,6 +84,7 @@ class FakeAccessible:
         self.hit_test_calls = []
         self.focused = False
         self.text = ""
+        self.extents = (525, 424, 398, 34)
 
     @property
     def childCount(self):
@@ -103,7 +104,7 @@ class FakeAccessible:
         return self.point_target
 
     def getExtents(self, coord_type):
-        return (525, 424, 398, 34)
+        return self.extents
 
     def grabFocus(self):
         self.focused = True
@@ -172,13 +173,17 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
-    def test_atspi_grabs_keyboard_focus_on_search_widget_under_pointer(self):
-        search = FakeAccessible("Search")
+    def test_atspi_edits_nested_search_entry_under_pointer(self):
+        search_entry = FakeAccessible("")
+        search_entry.extents = (545, 424, 378, 34)
+        search_wrapper = FakeAccessible("Search", children=[search_entry])
+        search_wrapper.extents = (525, 424, 398, 34)
         chooser = FakeAccessible(
             "Choose Symbol (22936 items loaded)",
-            children=[search],
+            children=[search_wrapper],
         )
-        chooser.point_target = search
+        chooser.point_target = search_wrapper
+        chooser.extents = (519, 399, 882, 705)
         desktop = FakeAccessible(children=[chooser])
 
         class Registry:
@@ -194,7 +199,9 @@ class CursorPlacementTests(unittest.TestCase):
             )
         )
         self.assertEqual(chooser.hit_test_calls, [(601, 439, 0)])
-        self.assertTrue(search.focused)
+        self.assertFalse(search_wrapper.focused)
+        self.assertTrue(search_entry.focused)
+        self.assertEqual(search_entry.text, "c60489")
         self.assertEqual(search.text, "c60489")
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
