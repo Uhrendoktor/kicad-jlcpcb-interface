@@ -118,13 +118,22 @@ class CursorPlacementTests(unittest.TestCase):
         ]
         move_command = ["xdotool", "mousemove", "--sync", "170", "280"]
         click_command = ["xdotool", "click", "1"]
-        clear_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
-        backspace_command = ["xdotool", "key", "--clearmodifiers", "BackSpace"]
-        type_command = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
+        clear_command = [
+            "xdotool", "key", "--window", "0x200", "--clearmodifiers", "ctrl+a"
         ]
-        down_command = ["xdotool", "key", "--clearmodifiers", "Down"]
-        enter_command = ["xdotool", "key", "--clearmodifiers", "Return"]
+        backspace_command = [
+            "xdotool", "key", "--window", "0x200", "--clearmodifiers", "BackSpace"
+        ]
+        type_command = [
+            "xdotool", "type", "--window", "0x200",
+            "--clearmodifiers", "--delay", "12", "R_C60489"
+        ]
+        down_command = [
+            "xdotool", "key", "--window", "0x200", "--clearmodifiers", "Down"
+        ]
+        enter_command = [
+            "xdotool", "key", "--window", "0x200", "--clearmodifiers", "Return"
+        ]
         for command in (
             activate_command,
             move_command,
@@ -147,10 +156,8 @@ class CursorPlacementTests(unittest.TestCase):
             enter_command,
         )]
         self.assertEqual(positions, sorted(positions))
-        self.assertFalse(
-            any("--window" in command for command in runner.commands),
-            "Keyboard events must reach the active chooser search control.",
-        )
+        self.assertIn(["xdotool", "windowactivate", "--sync", "0x200"], runner.commands)
+        self.assertIn(["xdotool", "click", "1"], runner.commands)
 
     def test_prefers_kicad_native_place_symbol_ipc_action(self):
         runner = FakeRunner(["0x200", "0x100"])
