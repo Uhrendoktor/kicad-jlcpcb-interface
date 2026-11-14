@@ -157,7 +157,7 @@ def start_native_symbol_placement(
             belongs_to_editor = False
             for _ in range(20):
                 result = command_runner(
-                    [xwininfo, "-id", str(current_xid)],
+                    [xwininfo, "-id", hex(current_xid)],
                     capture_output=True,
                     text=True,
                     check=False,
