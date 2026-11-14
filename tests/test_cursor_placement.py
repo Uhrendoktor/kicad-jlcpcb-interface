@@ -70,6 +70,9 @@ class FakeAccessible:
         self.interfaces = list(interfaces)
         self.text = ""
         self.focused = False
+        self.point_target = None
+        self.hit_test_calls = []
+        self.extents = (0, 0, 0, 0)
 
     @property
     def childCount(self):
@@ -90,6 +93,13 @@ class FakeAccessible:
     def grabFocus(self):
         self.focused = True
         return True
+
+    def getAccessibleAtPoint(self, x, y, coord_type):
+        self.hit_test_calls.append((x, y, coord_type))
+        return self.point_target
+
+    def getExtents(self, coord_type):
+        return self.extents
 
     def queryEditableText(self):
         return self
@@ -146,16 +156,20 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
-    def test_sets_chooser_search_entry_through_atspi(self):
+    def test_sets_actual_filter_entry_under_atspi_screen_point(self):
         search_entry = FakeAccessible(
+            name="",
             role="text",
             interfaces=["Accessible", "Component", "Text", "EditableText"],
         )
+        search_entry.extents = (521, 445, 300, 24)
         chooser = FakeAccessible(
             name="Choose Symbol (22936 items loaded)",
             role="dialog",
-            children=[search_entry],
+            children=[],
         )
+        chooser.point_target = search_entry
+        chooser.extents = (521, 439, 880, 680)
         desktop = FakeAccessible(children=[chooser])
 
         class FakeRegistry:
@@ -165,12 +179,14 @@ class CursorPlacementTests(unittest.TestCase):
 
         class FakeATspi:
             Registry = FakeRegistry
+            DESKTOP_COORDS = 0
 
         self.assertTrue(
             set_symbol_chooser_filter_accessibly(
-                "R_C60489", atspi_module=FakeATspi
+                "R_C60489", x=611, y=445, atspi_module=FakeATspi
             )
         )
+        self.assertEqual(search_entry.hit_test_calls, [(611, 445, 0)])
         self.assertEqual(search_entry.text, "R_C60489")
         self.assertTrue(search_entry.focused)
 
@@ -185,7 +201,7 @@ class CursorPlacementTests(unittest.TestCase):
 
         self.assertFalse(
             set_symbol_chooser_filter_accessibly(
-                "R_C60489", atspi_module=FakeATspi
+                "R_C60489", x=611, y=445, atspi_module=FakeATspi
             )
         )
 

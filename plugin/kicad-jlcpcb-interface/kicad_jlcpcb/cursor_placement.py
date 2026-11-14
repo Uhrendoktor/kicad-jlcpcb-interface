@@ -45,9 +45,11 @@ def capture_eeschema_window_id(
 def set_symbol_chooser_filter_accessibly(
     symbol_name: str,
     *,
+    x: int | None = None,
+    y: int | None = None,
     atspi_module=None,
 ) -> bool:
-    """Set the native chooser's search entry through AT-SPI when available."""
+    """Set the text field directly under the native chooser filter point."""
     if atspi_module is None:
         try:
             import pyatspi as atspi_module
@@ -58,6 +60,10 @@ def set_symbol_chooser_filter_accessibly(
             )
             return False
 
+    if x is None or y is None:
+        print("chooser-atspi=screen-coordinate-not-provided", flush=True)
+        return False
+
     try:
         desktop = atspi_module.Registry.getDesktop(0)
     except Exception as exc:
@@ -67,13 +73,48 @@ def set_symbol_chooser_filter_accessibly(
         )
         return False
 
-    stack = [(desktop, False, 0)]
+    coord_type = getattr(atspi_module, "DESKTOP_COORDS", None)
+    if coord_type is None:
+        coord_type = getattr(atspi_module, "XY_SCREEN", None)
+    if coord_type is None:
+        coord_type = getattr(
+            getattr(atspi_module, "CoordType", None), "SCREEN", 0
+        )
+
+    # Locate the modal chooser by its accessible window name. Do not choose a
+    # generic "text" node from the dialog tree: the chooser contains other text
+    # controls, including the body-style editor.
+    stack = [desktop]
     visited = 0
-    dialog_found = False
-    accessible_nodes = []
+    chooser = None
     while stack and visited < 1200:
-        node, in_chooser, depth = stack.pop()
+        node = stack.pop()
         visited += 1
+        try:
+            name = str(getattr(node, "name", "") or "")
+        except Exception:
+            name = ""
+        if "choose symbol" in name.casefold():
+            chooser = node
+            break
+        try:
+            child_count = min(int(node.childCount), 100)
+        except Exception:
+            child_count = 0
+        for index in range(child_count):
+            try:
+                stack.append(node.getChildAtIndex(index))
+            except Exception:
+                continue
+
+    if chooser is None:
+        print(
+            f"chooser-atspi=dialog-not-found inspected={visited}",
+            flush=True,
+        )
+        return False
+
+    def describe(node) -> tuple[str, str, list[str], object]:
         try:
             name = str(getattr(node, "name", "") or "")
         except Exception:
@@ -82,49 +123,62 @@ def set_symbol_chooser_filter_accessibly(
             role = str(node.getRoleName())
         except Exception:
             role = ""
-        chooser_node = in_chooser or "choose symbol" in name.casefold()
-        if chooser_node:
-            dialog_found = True
-            try:
-                interfaces = list(node.getInterfaces())
-            except Exception:
-                interfaces = []
-            accessible_nodes.append((name, role, interfaces))
-            if "EditableText" in interfaces or role.casefold() in {
-                "entry", "text", "search box",
-            }:
-                try:
-                    component = node.queryComponent()
-                    component.grabFocus()
-                    editable = node.queryEditableText()
-                    editable.setTextContents(symbol_name)
-                    entered = node.queryText().getText(0, -1)
-                    if str(entered) == symbol_name:
-                        print(
-                            "chooser-atspi=filter-set "
-                            f"role={role!r} interfaces={interfaces!r}",
-                            flush=True,
-                        )
-                        return True
-                except Exception as exc:
-                    accessible_nodes.append(
-                        (name, role, [*interfaces, f"set-failed:{type(exc).__name__}:{exc}"])
-                    )
-        if depth < 12:
-            try:
-                child_count = int(node.childCount)
-            except Exception:
-                child_count = 0
-            for index in range(min(child_count, 100)):
-                try:
-                    stack.append((node.getChildAtIndex(index), chooser_node, depth + 1))
-                except Exception:
-                    continue
+        try:
+            interfaces = list(node.getInterfaces())
+        except Exception:
+            interfaces = []
+        extents = None
+        try:
+            extents = node.queryComponent().getExtents(coord_type)
+        except Exception:
+            pass
+        return name, role, interfaces, extents
 
+    # AT-SPI Component.GetAccessibleAtPoint returns the child occupying a
+    # screen point. Repeating the hit-test drills down to the actual entry,
+    # rather than guessing which accessible "text" node represents the filter.
+    hit_path = [chooser]
+    hit_errors = []
+    for _ in range(8):
+        current = hit_path[-1]
+        try:
+            component = current.queryComponent()
+            child = component.getAccessibleAtPoint(int(x), int(y), coord_type)
+        except Exception as exc:
+            hit_errors.append(f"{type(exc).__name__}:{exc}")
+            break
+        if child is None or child is current:
+            break
+        hit_path.append(child)
+
+    path_details = [describe(node) for node in hit_path]
+    for node in reversed(hit_path[1:]):
+        name, role, interfaces, extents = describe(node)
+        try:
+            component = node.queryComponent()
+            component.grabFocus()
+            editable = node.queryEditableText()
+            editable.setTextContents(symbol_name)
+            entered = str(node.queryText().getText(0, -1))
+            if entered == symbol_name:
+                print(
+                    "chooser-atspi=point-target-set "
+                    f"x={x} y={y} role={role!r} name={name!r} "
+                    f"interfaces={interfaces!r} extents={extents!r} "
+                    f"path={path_details!r}",
+                    flush=True,
+                )
+                return True
+        except Exception as exc:
+            hit_errors.append(
+                f"{role!r}/{name!r}:{type(exc).__name__}:{exc}"
+            )
+
+    # Retain a bounded diagnostic for this chooser build. The screenshot remains
+    # the final verification that the visible search field actually changed.
     print(
-        "chooser-atspi=editable-text-not-found "
-        f"dialog_found={dialog_found} inspected={visited} "
-        f"nodes={accessible_nodes[:30]!r}",
+        "chooser-atspi=point-target-not-editable "
+        f"x={x} y={y} path={path_details!r} errors={hit_errors[:8]!r}",
         flush=True,
     )
     return False
@@ -387,7 +441,9 @@ def start_native_symbol_placement(
                 flush=True,
             )
     if not primary_pasted:
-        filter_set_accessibly = set_symbol_chooser_filter_accessibly(symbol_name)
+        filter_set_accessibly = set_symbol_chooser_filter_accessibly(
+            symbol_name, x=filter_x, y=filter_y
+        )
         if not filter_set_accessibly:
             send("type", "--clearmodifiers", "--delay", "50", symbol_name)
             print("chooser-input=xtest-type", flush=True)
