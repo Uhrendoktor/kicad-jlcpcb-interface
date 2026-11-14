@@ -282,7 +282,7 @@ def start_native_symbol_placement(
                 f"error={type(exc).__name__}: {exc}",
                 flush=True,
             )
-    send("key", "--window", str(chooser_id), "--clearmodifiers", "Return")
+    send("key", "--clearmodifiers", "Return")
 
     def restore_placement_pointer() -> None:
         # Restore the user's original cursor after KiCad has attached the
