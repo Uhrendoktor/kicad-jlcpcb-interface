@@ -185,6 +185,33 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
+    chooser_geometry = shell_geometry(
+        send("getwindowgeometry", "--shell", chooser_id)
+    )
+    try:
+        chooser_width = chooser_geometry["WIDTH"]
+        chooser_height = chooser_geometry["HEIGHT"]
+    except KeyError as exc:
+        raise RuntimeError(
+            "Could not locate the native symbol chooser Filter field."
+        ) from exc
+    # The Filter control sits at the top-left of the chooser client area.
+    # Click it explicitly: focus can remain on the modal frame after first paint.
+    filter_x = min(48, max(32, chooser_width // 16))
+    filter_y = min(34, max(26, chooser_height // 16))
+    send(
+        "mousemove", "--sync", "--window", str(chooser_id),
+        str(filter_x), str(filter_y),
+    )
+    send("click", "--clearmodifiers", "1")
+    pause(0.1)
+    filter_pointer = shell_geometry(send("getmouselocation", "--shell"))
+    if filter_pointer.get("WINDOW", 0) == 0:
+        raise RuntimeError(
+            "The click intended for the native chooser Filter field landed "
+            f"on the X11 root window: geometry={chooser_geometry!r}; "
+            f"pointer={filter_pointer!r}."
+        )
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         xwininfo = shutil.which("xwininfo")
