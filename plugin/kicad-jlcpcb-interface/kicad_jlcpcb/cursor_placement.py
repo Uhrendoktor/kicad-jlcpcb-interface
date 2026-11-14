@@ -101,18 +101,12 @@ def start_native_symbol_placement(
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
 
-    # Activate the Eeschema top-level window before invoking the native action.
-    # Under a window manager, windowactivate updates both EWMH and X input focus.
-    try:
-        send("windowactivate", "--sync", str(editor_window_id))
-    except subprocess.SubprocessError:
-        # Retain compatibility with minimal X11 sessions without an EWMH WM.
-        send("windowfocus", "--sync", str(editor_window_id))
-
     run_action = getattr(kicad, "run_action", None)
     action_started = False
     if callable(run_action):
         try:
+            # Invoke the native tool through IPC without changing Eeschema's
+            # active-window state; KiCad owns the modal chooser focus handoff.
             run_action("eeschema.InteractiveDrawing.placeSymbol")
             action_started = True
         except Exception:
@@ -120,6 +114,11 @@ def start_native_symbol_placement(
             action_started = False
 
     if not action_started:
+        # The compatibility hotkey needs Eeschema to be the active X11 window.
+        try:
+            send("windowactivate", "--sync", str(editor_window_id))
+        except subprocess.SubprocessError:
+            send("windowfocus", "--sync", str(editor_window_id))
         pause(0.1)
         send("key", "--clearmodifiers", "a")
 

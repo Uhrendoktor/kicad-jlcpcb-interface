@@ -135,9 +135,9 @@ class CursorPlacementTests(unittest.TestCase):
             index for index, command in enumerate(runner.commands)
             if command == title_command
         ]
-        self.assertIn(editor_activate, runner.commands)
+        self.assertNotIn(editor_activate, runner.commands)
         self.assertNotIn(add_symbol_hotkey, runner.commands)
-        self.assertLess(runner.commands.index(editor_activate), title_checks[0])
+        self.assertLess(runner.commands.index(title_command), runner.commands.index(type_command))
         self.assertEqual(len(title_checks), 2)
         self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
