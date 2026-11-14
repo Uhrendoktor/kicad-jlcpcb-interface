@@ -38,7 +38,7 @@ class FakeRunner:
             output = (
                 "X=500\nY=150\nSCREEN=0\nWINDOW=0x100"
                 if self.mouse_reads == 1
-                else "X=130\nY=400\nSCREEN=0\nWINDOW=0x200"
+                else "X=120\nY=366\nSCREEN=0\nWINDOW=0x200"
             )
             return SimpleNamespace(stdout=output, returncode=0)
         if command == "getwindowfocus":
@@ -141,12 +141,20 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(len(title_checks), 2)
         chooser_focus = ["xdotool", "windowactivate", "--sync", "0x200"]
         self.assertIn(chooser_focus, runner.commands)
-        focus_filter = ["xdotool", "mousemove", "--window", "0x200", "90", "15"]
-        click_filter = ["xdotool", "click", "--window", "0x200", "1"]
+        filter_geometry = [
+            "xdotool", "getwindowgeometry", "--shell", "0x200"
+        ]
+        focus_filter = ["xdotool", "mousemove", "--sync", "120", "366"]
+        verify_pointer = ["xdotool", "getmouselocation", "--shell"]
+        click_filter = ["xdotool", "click", "1"]
+        self.assertIn(filter_geometry, runner.commands)
         self.assertIn(focus_filter, runner.commands)
+        self.assertIn(verify_pointer, runner.commands)
         self.assertIn(click_filter, runner.commands)
-        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(focus_filter))
-        self.assertLess(runner.commands.index(focus_filter), runner.commands.index(click_filter))
+        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_geometry))
+        self.assertLess(runner.commands.index(filter_geometry), runner.commands.index(focus_filter))
+        self.assertLess(runner.commands.index(focus_filter), runner.commands.index(verify_pointer))
+        self.assertLess(runner.commands.index(verify_pointer), runner.commands.index(click_filter))
         self.assertLess(runner.commands.index(click_filter), type_index)
         self.assertLess(type_index, runner.commands.index(return_command))
         focus_checks = [
