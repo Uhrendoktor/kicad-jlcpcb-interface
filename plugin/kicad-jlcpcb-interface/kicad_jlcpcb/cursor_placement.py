@@ -94,7 +94,7 @@ def start_native_symbol_placement(
     def shell_geometry(output: str) -> dict[str, int]:
         values = dict(
             re.findall(
-                r"^([A-Z_]+)=((?:0[xX][0-9a-fA-F]+)|-?\\d+)$",
+                r"^([A-Z_]+)=((?:0[xX][0-9a-fA-F]+)|-?\d+)$",
                 output,
                 re.MULTILINE,
             )
