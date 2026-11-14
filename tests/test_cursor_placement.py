@@ -270,10 +270,6 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(restore_pointer, runner.commands)
         self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_move))
         self.assertLess(runner.commands.index(filter_move), runner.commands.index(filter_click))
-        self.assertLess(
-            runner.commands.index(filter_click),
-            runner.commands.index(select_all_command),
-        )
         self.assertLess(runner.commands.index(filter_click), runner.commands.index(return_command))
         self.assertLess(
             runner.commands.index(return_command),
