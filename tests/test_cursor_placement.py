@@ -317,8 +317,18 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(type_command),
         )
         _send_text.assert_called_once_with("c60489")
+        clear_search = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
+        self.assertIn(clear_search, runner.commands)
         self.assertIn(type_command, runner.commands)
         self.assertIn(return_command, runner.commands)
+        self.assertLess(
+            runner.commands.index(filter_click),
+            runner.commands.index(clear_search),
+        )
+        self.assertLess(
+            runner.commands.index(clear_search),
+            runner.commands.index(type_command),
+        )
         self.assertIn(restore_pointer, runner.commands)
         self.assertLess(
             runner.commands.index(type_command),
