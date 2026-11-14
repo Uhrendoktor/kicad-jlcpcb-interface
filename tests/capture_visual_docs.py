@@ -1221,7 +1221,9 @@ def _drive_populator_form(
 
             draft = populator.draft
             if not populator.candidate_tree.get_children():
-                raise RuntimeError("The shared catalogue match list did not render a selected part.")
+                raise RuntimeError(
+                    "The shared catalogue match list did not render a selected part."
+                )
             if populator.catalogue_vars["lcsc"].get() != expected_lcsc:
                 raise RuntimeError(
                     "The shared catalogue preview does not match the selected part: "
