@@ -102,7 +102,7 @@ class CursorPlacementTests(unittest.TestCase):
 
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(self):
         runner = FakeRunner(
-            ["0x200", "0x100"],
+            ["0x200", "0x300", "0x100"],
             ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
         )
         pauses = []
@@ -126,6 +126,7 @@ class CursorPlacementTests(unittest.TestCase):
         chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
         filter_move = ["xdotool", "mousemove", "--sync", "110", "371"]
         filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
+        filter_child_focus = ["xdotool", "windowfocus", "--sync", "0x300"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
@@ -134,6 +135,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(chooser_focus, runner.commands)
         self.assertIn(filter_move, runner.commands)
         self.assertIn(filter_click, runner.commands)
+        self.assertIn(filter_child_focus, runner.commands)
         self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
@@ -147,6 +149,10 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertLess(
             runner.commands.index(filter_click),
+            runner.commands.index(filter_child_focus),
+        )
+        self.assertLess(
+            runner.commands.index(filter_child_focus),
             runner.commands.index(type_command),
         )
         self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
@@ -175,9 +181,28 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
 
+    def test_rejects_filter_child_that_does_not_receive_keyboard_focus(self):
+        runner = FakeRunner(
+            ["0x200", "0x999"],
+            ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
+        )
+        with self.assertRaisesRegex(RuntimeError, "did not receive keyboard focus"):
+            start_native_symbol_placement(
+                "0x100",
+                "R_C60489",
+                kicad=FakeKiCad(),
+                xdotool="xdotool",
+                command_runner=runner,
+                pause=lambda _seconds: None,
+            )
+        self.assertIn(
+            ["xdotool", "windowfocus", "--sync", "0x300"],
+            runner.commands,
+        )
+
     def test_falls_back_to_add_hotkey_when_ipc_action_is_unavailable(self):
         runner = FakeRunner(
-            ["0x200", "0x100"],
+            ["0x200", "0x300", "0x100"],
             ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
         )
         kicad = FakeKiCad(raises=True)

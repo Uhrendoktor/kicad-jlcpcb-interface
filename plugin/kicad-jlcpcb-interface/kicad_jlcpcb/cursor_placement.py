@@ -284,6 +284,34 @@ def start_native_symbol_placement(
             f"target=({filter_x},{filter_y}), pointer={filter_pointer!r}, "
             f"chooser={chooser_geometry!r}."
         )
+
+    # The pointer identifies the actual X11 child under the Filter field.
+    # Focusing the chooser frame alone leaves keyboard focus on that frame,
+    # even though the text caret is visible in the child control.
+    filter_window_id = f"0x{pointer_window:x}"
+    send("windowfocus", "--sync", filter_window_id)
+    focused_filter_window = send("getwindowfocus")
+    try:
+        focused_filter_id = (
+            int(focused_filter_window, 0)
+            if focused_filter_window.lower().startswith("0x")
+            else int(focused_filter_window)
+        )
+    except ValueError as exc:
+        raise RuntimeError(
+            "Could not verify keyboard focus in KiCad's native Filter field: "
+            f"reported window={focused_filter_window!r}."
+        ) from exc
+    if focused_filter_id != pointer_window:
+        raise RuntimeError(
+            "KiCad's native Filter child did not receive keyboard focus: "
+            f"target=0x{pointer_window:x}, actual={focused_filter_window!r}."
+        )
+    print(
+        "cursor-placement-filter-keyboard-focus="
+        f"window=0x{pointer_window:x} focus={focused_filter_window!r}",
+        flush=True,
+    )
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         try:
