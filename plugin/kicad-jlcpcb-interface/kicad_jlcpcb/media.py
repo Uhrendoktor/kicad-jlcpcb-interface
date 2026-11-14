@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from urllib.error import HTTPError
 from pathlib import PurePosixPath
+from urllib.error import HTTPError
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
