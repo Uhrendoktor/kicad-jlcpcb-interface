@@ -166,7 +166,7 @@ class CursorPlacementTests(unittest.TestCase):
     def test_refuses_hotkey_when_canvas_click_hits_another_window(self):
         runner = FakeRunner(["0x100"] * 56, pointer_pid="7777")
         with self.assertRaisesRegex(
-            RuntimeError, "Could not focus the Eeschema drawing area"
+            RuntimeError, "drawing-area click landed in another application"
         ):
             start_native_symbol_placement(
                 "0x100",
