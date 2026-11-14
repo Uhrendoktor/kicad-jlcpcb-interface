@@ -113,16 +113,12 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
         self.assertIn(
-            [
-                "xdotool", "mousemove", "--sync", "--window", "0x200", "150", "20"
-            ],
+            ["xdotool", "mousemove", "--sync", "170", "280"],
             runner.commands,
         )
         self.assertIn(["xdotool", "click", "1"], runner.commands)
         mousemove = runner.commands.index(
-            [
-                "xdotool", "mousemove", "--sync", "--window", "0x200", "150", "20"
-            ]
+            ["xdotool", "mousemove", "--sync", "170", "280"]
         )
         click = runner.commands.index(["xdotool", "click", "1"])
         clear = runner.commands.index(
