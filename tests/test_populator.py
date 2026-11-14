@@ -541,7 +541,10 @@ class ComponentPlacementHandoffTests(unittest.TestCase):
         populator = object.__new__(ComponentPopulator)
         populator.schematic = object()
         populator.placed_symbol = None
-        generated = SimpleNamespace(library_id="JLCPCB_Generated:R_C60489")
+        generated = SimpleNamespace(
+            library_id="JLCPCB_Generated:R_C60489",
+            reference_prefix="R",
+        )
         draft = SimpleNamespace(reference_prefix="R")
         placed = object()
 
