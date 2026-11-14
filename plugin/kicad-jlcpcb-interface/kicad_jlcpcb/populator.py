@@ -314,11 +314,12 @@ class ComponentPopulator:
 
         self.candidate_section = ttk.Frame(content)
         self.candidate_section.columnconfigure(0, weight=1)
-        ttk.Label(
+        self.candidate_title = ttk.Label(
             self.candidate_section,
-            text="Matching parts · Basic first",
+            text="Matching parts",
             style="Section.TLabel",
-        ).grid(row=0, column=0, sticky="w", pady=(0, 5))
+        )
+        self.candidate_title.grid(row=0, column=0, sticky="w", pady=(0, 5))
         self.candidate_tree = ttk.Treeview(
             self.candidate_section,
             columns=("part", "mpn", "package", "library", "stock", "price"),
@@ -600,6 +601,13 @@ class ComponentPopulator:
 
                 self.lookup_button.configure(state="normal")
                 if mode in {"value", "keyword"}:
+                    self.candidate_title.configure(
+                        text=(
+                            "Exact passive matches · Basic first"
+                            if mode == "value"
+                            else "Catalogue matches"
+                        )
+                    )
                     if mode == "value":
                         try:
                             matches = exact_passive_candidates(query, result)
