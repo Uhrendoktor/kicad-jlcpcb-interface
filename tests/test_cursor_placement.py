@@ -121,41 +121,27 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        geometry_command = [
-            "xdotool", "getwindowgeometry", "--shell", "0x200"
-        ]
-        move_command = [
-            "xdotool", "mousemove", "--sync", "--window", "0x200", "200", "20"
-        ]
-        pointer_command = ["xdotool", "getmouselocation", "--shell"]
-        click_command = ["xdotool", "click", "1"]
-        clear_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
+        chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
-        chooser_title_command = ["xdotool", "getwindowname", "0x200"]
         self.assertLess(
-            runner.commands.index(chooser_title_command),
-            runner.commands.index(geometry_command),
+            runner.commands.index(chooser_focus),
+            runner.commands.index(type_command),
         )
         self.assertLess(
-            runner.commands.index(geometry_command),
-            runner.commands.index(move_command),
+            runner.commands.index(type_command),
+            runner.commands.index(return_command),
         )
-        self.assertLess(
-            runner.commands.index(move_command),
-            runner.commands.index(pointer_command),
-        )
-        self.assertLess(
-            runner.commands.index(pointer_command),
-            runner.commands.index(click_command),
-        )
-        self.assertLess(runner.commands.index(click_command), runner.commands.index(clear_command))
-        self.assertLess(runner.commands.index(clear_command), runner.commands.index(type_command))
-        self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
         self.assertIn(0.15, pauses)
-        self.assertIn(0.05, pauses)
+        self.assertNotIn(
+            ["xdotool", "getwindowgeometry", "--shell", "0x200"],
+            runner.commands,
+        )
+        self.assertFalse(
+            any(command[1] in {"mousemove", "click"} for command in runner.commands)
+        )
 
     def test_falls_back_to_add_hotkey_when_ipc_action_is_unavailable(self):
         runner = FakeRunner(["0x200", "0x100"])
@@ -177,18 +163,28 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-
-    def test_rejects_focus_return_to_a_different_eeschema_child_window(self):
-        runner = FakeRunner(["0x200", *["0x300"] * 31])
-        with self.assertRaisesRegex(RuntimeError, "did not return focus to Eeschema"):
-            start_native_symbol_placement(
-                "0x100",
+        self.assertIn(
+            ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
+        )
+        self.assertIn(
+            [
+                "xdotool", "type", "--clearmodifiers", "--delay", "12",
                 "R_C60489",
-                xdotool="xdotool",
-                command_runner=runner,
-                pause=lambda _seconds: None,
-            )
+            ],
+            runner.commands,
+        )
+
+    def test_accepts_focus_return_to_another_eeschema_child_window(self):
+        runner = FakeRunner(["0x200", "0x300"])
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
         self.assertIn(["xdotool", "getwindowpid", "0x300"], runner.commands)
+        self.assertIn(["xdotool", "getwindowname", "0x300"], runner.commands)
 
     def test_reports_missing_native_chooser(self):
         runner = FakeRunner(["0x100"] * 56)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 import time
@@ -130,141 +129,26 @@ def start_native_symbol_placement(
             "then retry."
         )
 
-    # KiCad's chooser calls ForceFocus(Filter) during its first paint. Wait
-    # until the catalogue title confirms that setup/painting has completed,
-    # but do not refocus the top-level frame: that steals child focus on wxGTK.
-    chooser_title = ""
-    chooser_ready = False
-    for _ in range(150):
-        chooser_title = send("getwindowname", chooser_id)
-        if "items loaded" in chooser_title.casefold():
-            chooser_ready = True
-            break
-        pause(0.1)
-    if not chooser_ready:
-        raise RuntimeError(
-            "KiCad's native symbol chooser did not finish loading its catalog "
-            f"within 15 seconds: {chooser_title!r}."
-        )
-    trigger = "ipc" if action_started else "hotkey"
-    print(f"native-symbol-placement-trigger={trigger}", flush=True)
-
-    if os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip():
-        try:
-            window_ids = [
-                item.strip()
-                for item in send("search", "--onlyvisible", "--pid", editor_pid).splitlines()
-                if item.strip()
-            ]
-            window_debug = []
-            for window_id in window_ids:
-                try:
-                    window_debug.append(
-                        {
-                            "id": window_id,
-                            "name": send("getwindowname", window_id),
-                            "geometry": send("getwindowgeometry", "--shell", window_id),
-                        }
-                    )
-                except subprocess.SubprocessError:
-                    continue
-            print(f"chooser-x11-windows={window_debug!r}", flush=True)
-        except Exception as exc:
-            print(
-                f"chooser-x11-windows=failed error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
-
-    # The chooser is a separate X11 top-level window owned by Eeschema.
-    # Its Filter control is at the upper-left of that window; move relative to
-    # the chooser XID and use a real XTest click so the wxSearchCtrl receives
-    # focus (click --window would only send XSendEvent to the parent frame).
-    geometry = send("getwindowgeometry", "--shell", chooser_id)
-    dimensions = {
-        key: value
-        for item in geometry.split()
-        if "=" in item
-        for key, value in [item.split("=", 1)]
-    }
-    try:
-        chooser_width = int(dimensions["WIDTH"])
-        chooser_height = int(dimensions["HEIGHT"])
-    except (KeyError, ValueError) as exc:
-        raise RuntimeError(
-            f"Could not read KiCad's native chooser geometry: {geometry!r}."
-        ) from exc
-    filter_x = min(200, chooser_width - 20)
-    filter_y = 20
-    if chooser_width < 240 or chooser_height <= filter_y:
-        raise RuntimeError(
-            f"KiCad's native chooser is too small for its Filter field: "
-            f"{chooser_width}x{chooser_height}."
-        )
-    send(
-        "mousemove", "--sync", "--window", chooser_id,
-        str(filter_x), str(filter_y),
-    )
-    pointer = send("getmouselocation", "--shell")
-    pointer_values = {
-        key: value
-        for item in pointer.split()
-        if "=" in item
-        for key, value in [item.split("=", 1)]
-    }
-    # Some wxGTK/Xvfb chooser panels report WINDOW=0 even when the pointer
-    # is visibly inside their client area. The verified geometry and absolute
-    # pointer coordinates are reliable; do not reject this embedded panel on
-    # the XQueryPointer child-window field alone.
-    if int(pointer_values.get("X", "-1")) < 0 or int(pointer_values.get("Y", "-1")) < 0:
-        raise RuntimeError(
-            "Could not verify pointer coordinates for the native Filter field: "
-            f"{pointer!r}; chooser={chooser_id!r}; geometry={geometry!r}."
-        )
-    send("click", "1")
-    pause(0.05)
-
-    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
-    if debug_capture:
-        try:
-            from PIL import ImageGrab
-
-            clicked_capture = debug_capture.replace(".png", "-clicked.png")
-            ImageGrab.grab().save(clicked_capture)
-            print(
-                f"chooser-filter-click=pointer={pointer!r} "
-                f"focus={send('getwindowfocus')!r} screenshot={clicked_capture!r}",
-                flush=True,
-            )
-        except Exception as exc:
-            print(
-                f"chooser-filter-click=failed error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
-
-    send("key", "--clearmodifiers", "ctrl+a")
+    # Match the verified KiCad Blocks interaction: focus the chooser window,
+    # type the exact symbol name into KiCad's default-focused Filter control,
+    # then accept it. Avoid window geometry/click synthesis; KiCad's wx focus
+    # target and the native chooser handle filtering themselves.
+    chooser_title = send("getwindowname", chooser_id)
+    chooser_pid = focused_pid or editor_pid
+    send("windowfocus", "--sync", chooser_id)
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
-    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
-    if debug_capture:
-        try:
-            from PIL import ImageGrab
-
-            ImageGrab.grab().save(debug_capture)
-            print(
-                f"chooser-search-debug=captured path={debug_capture!r} "
-                f"focus={send('getwindowfocus')!r}",
-                flush=True,
-            )
-        except Exception as exc:
-            print(
-                f"chooser-search-debug=failed error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
     send("key", "--clearmodifiers", "Return")
+
     for _ in range(30):
         focused_id = send("getwindowfocus")
         if focused_id == str(editor_window_id):
             return
+        focused_pid = send("getwindowpid", focused_id) if focused_id else ""
+        if chooser_pid and focused_pid == chooser_pid:
+            focused_title = send("getwindowname", focused_id).casefold()
+            if "choose symbol" not in focused_title and "select symbol" not in focused_title:
+                return
         pause(0.1)
 
     focused_id = send("getwindowfocus")
@@ -273,7 +157,7 @@ def start_native_symbol_placement(
     raise RuntimeError(
         "KiCad accepted the symbol chooser selection but did not return focus "
         f"to Eeschema. Editor={editor_window_id!r}/{editor_pid!r}; "
-        f"chooser={chooser_id!r} ({send('getwindowname', chooser_id)!r}); "
+        f"chooser={chooser_id!r} ({chooser_title!r}); "
         f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
         "Check the native chooser and retry placement."
     )
