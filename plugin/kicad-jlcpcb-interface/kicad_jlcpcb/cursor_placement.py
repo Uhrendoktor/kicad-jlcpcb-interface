@@ -149,10 +149,11 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
-    # Focus the native chooser before typing. Its initial child focus is not
-    # always the X11 input target for xdotool text events, so the query can be
-    # dropped even though the filter appears focused.
-    send("windowfocus", "--sync", chooser_id)
+    # KiCad sets the search control as the dialog's initial focus target,
+    # but the "items loaded" title update can precede the dialog's first
+    # activation/paint. Let that focus handoff complete before sending text;
+    # forcing focus to the top-level chooser resets the search control focus.
+    pause(0.15)
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()

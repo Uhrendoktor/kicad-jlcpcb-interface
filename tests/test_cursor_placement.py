@@ -109,7 +109,10 @@ class CursorPlacementTests(unittest.TestCase):
             kicad=kicad,
             xdotool="xdotool",
             command_runner=runner,
-            pause=pauses.append,
+            pause=lambda seconds: (
+                pauses.append(seconds),
+                runner.commands.append(["pause", seconds]),
+            ),
         )
 
         self.assertEqual(
@@ -126,19 +129,21 @@ class CursorPlacementTests(unittest.TestCase):
             "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
-        chooser_focus_command = ["xdotool", "windowfocus", "--sync", "0x200"]
-        self.assertIn(chooser_focus_command, runner.commands)
-        self.assertLess(
-            runner.commands.index(title_command),
-            runner.commands.index(chooser_focus_command),
+        self.assertNotIn(
+            ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
+        title_checks = [
+            index for index, command in enumerate(runner.commands)
+            if command == title_command
+        ]
+        type_index = runner.commands.index(type_command)
+        ready_pause = ["pause", 0.15]
+        pause_index = runner.commands.index(ready_pause)
+        self.assertEqual(len(title_checks), 2)
+        self.assertLess(title_checks[-1], pause_index)
+        self.assertLess(pause_index, type_index)
         self.assertLess(
-            runner.commands.index(chooser_focus_command),
-            runner.commands.index(type_command),
-        )
-        self.assertLess(
-            runner.commands.index(type_command),
-            runner.commands.index(return_command),
+            type_index, runner.commands.index(return_command)
         )
         self.assertIn(0.15, pauses)
         self.assertNotIn(
@@ -169,7 +174,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        self.assertIn(
+        self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
         self.assertIn(
