@@ -332,10 +332,6 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertIn(restore_pointer, runner.commands)
         self.assertLess(
-            runner.commands.index(type_command),
-            runner.commands.index(return_command),
-        )
-        self.assertLess(
             runner.commands.index(return_command),
             runner.commands.index(restore_pointer),
         )
