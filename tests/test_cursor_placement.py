@@ -106,15 +106,19 @@ class CursorPlacementTests(unittest.TestCase):
 
     def test_starts_native_chooser_and_returns_with_symbol_on_cursor(self):
         runner = FakeRunner(["0x200", "0x100"])
+        pauses = []
         start_native_symbol_placement(
             "0x100",
             "R_C60489",
             xdotool="xdotool",
             command_runner=runner,
-            pause=lambda _seconds: None,
+            pause=pauses.append,
         )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        )
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
         )
         self.assertIn(
             [
@@ -125,6 +129,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
         )
+        self.assertIn(0.6, pauses)
 
     def test_reports_missing_native_chooser(self):
         runner = FakeRunner(["0x100"] * 55)
