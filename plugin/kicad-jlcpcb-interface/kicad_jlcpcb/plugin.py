@@ -9,8 +9,9 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus, urlparse
-from urllib.request import Request, urlopen
 
+from .catalogue_widgets import build_product_preview, display_product_image
+from .media import download_product_image
 from .model import (
     DEFAULT_PART_FIELD,
     SchematicComponent,
@@ -22,7 +23,6 @@ from .provider import JlcPartDetails, JlcSearchProvider
 from .theme import apply_tk_theme
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
-MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 def focus_schematic_items(
@@ -98,29 +98,9 @@ def _calculate_project_summary(components, provider) -> dict[str, int | float]:
     }
 
 
-def _download_product_image(url: str) -> bytes | None:
-    """Fetch one bounded HTTPS product image; never block the Tk event loop."""
-    parsed = urlparse(str(url or ""))
-    if parsed.scheme != "https" or not parsed.hostname:
-        return None
-    request = Request(
-        url,
-        headers={
-            "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8",
-            "User-Agent": "KiCad-JLCPCB-Interface/0.1",
-        },
-    )
-    try:
-        with urlopen(request, timeout=7.0) as response:
-            content_type = str(response.headers.get("Content-Type", "")).casefold()
-            if not content_type.startswith("image/"):
-                return None
-            data = response.read(MAX_IMAGE_BYTES + 1)
-            if len(data) > MAX_IMAGE_BYTES:
-                return None
-            return data
-    except Exception:
-        return None
+def _download_product_image(url: str | tuple[str, ...]) -> bytes | None:
+    """Backward-compatible wrapper around the shared multi-URL image loader."""
+    return download_product_image(url)
 
 
 class ComponentBrowser:
@@ -386,49 +366,47 @@ class ComponentBrowser:
         detail_canvas.bind("<Button-4>", scroll_detail)
         detail_canvas.bind("<Button-5>", scroll_detail)
 
-        catalogue = ttk.LabelFrame(content, text="JLCPCB catalogue", padding=10)
-        catalogue.grid(row=0, column=1, sticky="nsew")
-        catalogue.columnconfigure(1, weight=1)
-
-        visual = ttk.LabelFrame(content, text="Product photo", padding=8)
-        visual.grid(row=0, column=0, sticky="nsw", padx=(0, 10))
-        self.image_label = ttk.Label(
-            visual,
-            text="No catalogue image",
-            anchor="center",
-            justify="center",
-            width=22,
-            padding=8,
+        content.columnconfigure(0, weight=1)
+        self.product_preview = build_product_preview(
+            content,
+            self.tk,
+            ttk,
+            self.palette,
+            self.detail_vars,
+            self.catalogue_status_var,
+            product_command=self.open_product_page,
+            datasheet_command=self.open_datasheet,
+            variable_keys={"lcsc": "part", "library": "basic"},
         )
-        self.image_label.pack(fill="both", expand=True)
+        self.product_preview.frame.grid(
+            row=0, column=0, columnspan=2, sticky="ew"
+        )
+        self.image_label = self.product_preview.image_label
+        self._image_ref = None
 
-        catalogue_fields = (
-            ("Description", "description"),
-            ("Manufacturer", "manufacturer"),
-            ("MPN", "mpn"),
-            ("Package", "package"),
-            ("Stock", "stock"),
-            ("Lowest listed unit price", "price"),
-            ("Price breaks (USD)", "price_breaks"),
-            ("Category", "category"),
-            ("Library class", "basic"),
+        catalogue_extra = ttk.Frame(content)
+        catalogue_extra.grid(
+            row=1, column=0, columnspan=2, sticky="ew", pady=(0, 10)
+        )
+        catalogue_extra.columnconfigure(1, weight=1)
+        for row, (label, key) in enumerate((
+            ("Price breaks", "price_breaks"),
             ("Attributes", "attributes"),
-        )
-        for row, (label, key) in enumerate(catalogue_fields):
-            ttk.Label(catalogue, text=label).grid(
-                row=row, column=0, sticky="nw", padx=(0, 12), pady=3
+        )):
+            ttk.Label(catalogue_extra, text=label, style="Section.TLabel").grid(
+                row=row, column=0, sticky="nw", padx=(0, 14), pady=3
             )
             ttk.Label(
-                catalogue,
+                catalogue_extra,
                 textvariable=self.detail_vars[key],
-                wraplength=430,
+                wraplength=860,
                 justify="left",
             ).grid(row=row, column=1, sticky="ew", pady=3)
 
         alternatives = ttk.LabelFrame(
             content, text="Other purchasable JLCPCB listings for this exact MPN", padding=8
         )
-        alternatives.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        alternatives.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 0))
         alternatives.columnconfigure(0, weight=1)
         self.alternatives_status_var = self.tk.StringVar(
             value="Add an MPN custom field to compare listings."
@@ -475,7 +453,7 @@ class ComponentBrowser:
         ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
 
         schematic = ttk.LabelFrame(content, text="Schematic properties", padding=10)
-        schematic.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        schematic.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         schematic.columnconfigure(1, weight=1)
         schematic_fields = (
             ("Reference", "reference"),
@@ -497,23 +475,8 @@ class ComponentBrowser:
                 justify="left",
             ).grid(row=row, column=1, sticky="ew", pady=3)
 
-        ttk.Label(
-            content,
-            textvariable=self.detail_vars["source"],
-            style="Muted.TLabel",
-            wraplength=850,
-            justify="left",
-        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
-        ttk.Label(
-            content,
-            textvariable=self.catalogue_status_var,
-            style="Muted.TLabel",
-            wraplength=850,
-            justify="left",
-        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
-
         actions = ttk.Frame(content)
-        actions.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        actions.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         ttk.Button(
             actions, text="Select in schematic", command=self.select_selected,
             style="Primary.TButton"
@@ -525,13 +488,11 @@ class ComponentBrowser:
         ).pack(side="left")
 
         links = ttk.Frame(content)
-        links.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        links.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         links.columnconfigure((0, 1), weight=1)
         link_actions = (
             ("Copy part ID", self.copy_part_id),
             ("Search LCSC", self.search_lcsc),
-            ("Open product page", self.open_product_page),
-            ("Open datasheet", self.open_datasheet),
         )
         for index, (label, command) in enumerate(link_actions):
             ttk.Button(links, text=label, command=command).grid(
@@ -682,8 +643,8 @@ class ComponentBrowser:
         """Fetch supplier details without retaining the Tk browser in the worker."""
         details = provider.lookup(component.part_code, force_refresh=True)
         image_data = (
-            _download_product_image(details.image_url)
-            if details is not None and details.image_url
+            _download_product_image(details.image_urls or (details.image_url,))
+            if details is not None and (details.image_urls or details.image_url)
             else None
         )
         mpn = component.manufacturer_part_number or (
@@ -777,6 +738,11 @@ class ComponentBrowser:
             return f"{parsed.hostname} / {filename}" if filename else parsed.hostname
         return str(url or "—")
 
+    @staticmethod
+    def _is_https_url(url: str) -> bool:
+        parsed = urlparse(str(url or ""))
+        return parsed.scheme == "https" and bool(parsed.hostname)
+
     def _clear_catalogue_detail(self) -> None:
         self._catalogue_details = None
         for key in (
@@ -862,33 +828,9 @@ class ComponentBrowser:
         self._show_alternatives(alternatives, details.lcsc, alternative_error)
 
     def _show_product_image(self, image_data: bytes | None) -> None:
-        if not image_data:
-            self.image_label.configure(
-                image="",
-                text="No catalogue image",
-                padding=8,
-            )
-            self._image_ref = None
-            return
-        try:
-            from io import BytesIO
-
-            from PIL import Image, ImageTk
-
-            with Image.open(BytesIO(image_data)) as source:
-                image = source.convert("RGB")
-                image.thumbnail((180, 150), Image.Resampling.LANCZOS)
-            photo = ImageTk.PhotoImage(image, master=self.root)
-        except Exception:
-            self.image_label.configure(
-                image="",
-                text="Catalogue image could not be decoded",
-                padding=8,
-            )
-            self._image_ref = None
-            return
-        self._image_ref = photo
-        self.image_label.configure(image=photo, text="", padding=0)
+        self._image_ref = display_product_image(
+            self.image_label, image_data, self.root, size=(180, 140)
+        )
 
     def _clear_detail(self) -> None:
         for variable in self.detail_vars.values():
@@ -900,6 +842,9 @@ class ComponentBrowser:
         if hasattr(self, "alternatives_tree"):
             self.alternatives_tree.delete(*self.alternatives_tree.get_children())
             self.alternatives_status_var.set("No linked component selected.")
+        if hasattr(self, "product_button"):
+            self.product_button.configure(state="disabled")
+            self.datasheet_button.configure(state="disabled")
         self.image_label.configure(
             image="",
             text="No linked schematic components match the search",

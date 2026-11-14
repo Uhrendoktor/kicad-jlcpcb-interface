@@ -13,6 +13,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = ROOT / "plugin" / "kicad-jlcpcb-interface"
@@ -33,6 +34,7 @@ from kicad_jlcpcb.library import (  # noqa: E402
     parse_sexpr,
     reload_project_symbol_library,
 )
+from kicad_jlcpcb.media import download_product_image  # noqa: E402
 from kicad_jlcpcb.model import (  # noqa: E402
     find_linked_components,
     find_selected_component,
@@ -1189,6 +1191,7 @@ def _drive_populator_form(
     expected_value: str,
     expected_footprint: str,
     validate_result,
+    require_image: bool = False,
 ) -> None:
     """Capture the real LCSC proposal form, confirm it, and verify the IPC result."""
     root = populator.root
@@ -1231,6 +1234,20 @@ def _drive_populator_form(
                 )
             image_name = str(populator.image_label.cget("image") or "")
             image_placeholder = str(populator.image_label.cget("text") or "")
+            if require_image and not image_name:
+                details = populator.selected_details
+                image_urls = tuple(
+                    getattr(details, "image_urls", ())
+                    or ((getattr(details, "image_url", ""),) if details else ())
+                )
+                paths = tuple(urlparse(url).path for url in image_urls if url)
+                diagnostics: list[str] = []
+                download_product_image(image_urls, diagnostics=diagnostics)
+                raise RuntimeError(
+                    "The fixture part has supplier image URLs but no rendered photo: "
+                    f"{paths!r}; placeholder={image_placeholder!r}; "
+                    f"download={diagnostics!r}"
+                )
             if not image_name and image_placeholder not in {
                 "No catalogue image",
                 "Image unavailable",
@@ -1253,8 +1270,16 @@ def _drive_populator_form(
                     f"lcsc={draft.lcsc!r}, kind={draft.kind!r}, value={draft.value!r}, "
                     f"footprint={draft.footprint!r}, source={draft.source_label!r}"
                 )
-            if not populator.fields_tree.get_children():
+            root.update_idletasks()
+            if not populator.proposal_rows.winfo_children():
                 raise RuntimeError("The LCSC review form contains no proposed fields.")
+            if not populator.apply_button.winfo_viewable():
+                raise RuntimeError("The fixed component action is not visible.")
+            scroll_region = populator.content_canvas.bbox("all")
+            if not scroll_region or scroll_region[3] <= populator.content_canvas.winfo_height():
+                raise RuntimeError(
+                    "The component workspace did not create a scrollable content area."
+                )
 
             _capture_window(root, output_dir / proposal_asset)
             _capture_window(root, output_dir / light_asset)
@@ -1465,7 +1490,7 @@ def _capture_passive_component_workflows(
         theme="light",
     )
 
-    populate.root.geometry("1120x860+780+30")
+    populate.root.geometry("1024x768+780+30")
     populate.lcsc_var.set("C60489")
     populate.lookup()
 
@@ -1528,7 +1553,7 @@ def _capture_passive_component_workflows(
         kicad=kicad,
         theme="light",
     )
-    create.root.geometry("1120x860+780+30")
+    create.root.geometry("1024x768+780+30")
     create.placement_mode_var.set("coordinates")
     create.lcsc_var.set("C105637")
     create.x_var.set("205.0")
@@ -1580,6 +1605,7 @@ def _capture_passive_component_workflows(
         expected_value="1k",
         expected_footprint="Resistor_SMD:R_0402_1005Metric",
         validate_result=validate_create_result,
+        require_image=True,
     )
     print(
         "live-add-mode-ui=passed reference=R4 "
