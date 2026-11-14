@@ -219,7 +219,6 @@ def start_native_symbol_placement(
     send("mousemove", "--window", chooser_id, "90", "15")
     send("click", "1")
     pause(0.1)
-    send("key", "--clearmodifiers", "ctrl+a")
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
@@ -265,8 +264,8 @@ def start_native_symbol_placement(
         print(f"chooser-x11-visible-windows={visible_windows!r}", flush=True)
     # Use XTest against the globally focused native chooser. xdotool's
     # --window mode uses XSendEvent, which wxWidgets controls may ignore.
-    send("type", "--clearmodifiers", "--delay", "12", symbol_name)
-    pause(0.15)
+    send("type", "--clearmodifiers", "--delay", "50", symbol_name)
+    pause(0.5)
     if debug_capture:
         try:
             from PIL import ImageGrab
@@ -274,8 +273,8 @@ def start_native_symbol_placement(
             typed_capture = debug_capture.replace(".png", "-typed.png")
             ImageGrab.grab().save(typed_capture)
             print(
-                f"chooser-search-debug=typed focus={send('getwindowfocus')!r} "
-                f"screenshot={typed_capture!r}",
+                f"chooser-search-debug=typed symbol={symbol_name!r} "
+                f"focus={send('getwindowfocus')!r} screenshot={typed_capture!r}",
                 flush=True,
             )
         except Exception as exc:
