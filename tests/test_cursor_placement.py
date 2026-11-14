@@ -86,6 +86,7 @@ class FakeAccessible:
         self.hit_test_calls = []
         self.focused = False
         self.text = ""
+        self.insert_calls = []
         self.extents = (525, 424, 398, 34)
 
     @property
@@ -125,8 +126,9 @@ class FakeAccessible:
         self.text = self.text[:start] + self.text[end:]
         return True
 
-    def insertText(self, position, value, _length):
-        self.text = self.text[:position] + value + self.text[position:]
+    def insertText(self, position, value, length):
+        self.insert_calls.append((position, value, length))
+        self.text = self.text[:position] + value[:length] + self.text[position:]
         return True
 
     def setTextContents(self, value):
@@ -175,7 +177,7 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
-    def test_atspi_synthesizes_keyboard_string_into_nested_search_entry(self):
+    def test_uses_editable_text_insert_on_nested_search_entry(self):
         search_entry = FakeAccessible("")
         search_entry.extents = (545, 424, 378, 34)
         search_wrapper = FakeAccessible("Search", children=[search_entry])
@@ -213,11 +215,9 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(chooser.hit_test_calls, [(601, 449, 0)])
         self.assertFalse(search_wrapper.focused)
         self.assertTrue(search_entry.focused)
+        self.assertEqual(search_entry.insert_calls, [(0, "c60489", 6)])
         self.assertEqual(search_entry.text, "c60489")
-        self.assertEqual(
-            generated_events,
-            [(ord(character), "", 3) for character in "c60489"],
-        )
+        self.assertEqual(generated_events, [])
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
