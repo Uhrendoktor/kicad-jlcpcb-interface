@@ -130,20 +130,40 @@ def start_native_symbol_placement(
         pause(0.1)
 
     if not chooser_id:
+        # Some KiCad builds or customized hotkey profiles do not bind A to
+        # Add Symbol. Fall back to the visible Place menu instead of requiring
+        # the user to edit preferences. This still invokes KiCad's native
+        # chooser; it does not place a symbol at an automation-supplied point.
         focused_pid = send("getwindowpid", focused_id) if focused_id else ""
         focused_title = send("getwindowname", focused_id) if focused_id else ""
         if focused_pid == editor_pid:
             try:
                 send("key", "--clearmodifiers", "Escape")
+                send("key", "--clearmodifiers", "alt+p")
+                pause(0.15)
+                send("key", "--clearmodifiers", "a")
+                send("key", "--clearmodifiers", "Return")
             except subprocess.SubprocessError:
                 pass
-        raise RuntimeError(
+            for _ in range(50):
+                focused_id = send("getwindowfocus")
+                if focused_id and focused_id != str(editor_window_id):
+                    focused_pid = send("getwindowpid", focused_id)
+                    focused_title = send("getwindowname", focused_id).casefold()
+                    same_process = bool(editor_pid and focused_pid == editor_pid)
+                    is_chooser = "choose symbol" in focused_title or "select symbol" in focused_title
+                    if same_process or is_chooser:
+                        chooser_id = focused_id
+                        break
+                pause(0.1)
+        if not chooser_id:
+            raise RuntimeError(
             "KiCad's native symbol chooser did not open. "
             f"Editor={editor_window_id!r}/{editor_pid!r}; "
             f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
             "Check Eeschema Preferences → Hotkeys and bind Add Symbol to A, "
-            "then retry."
-        )
+                "then retry."
+            )
 
     # Wait for KiCad to finish populating the library tree before sending
     # search keystrokes; early XTest input can be dropped while wx builds the
