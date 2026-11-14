@@ -154,10 +154,21 @@ def start_native_symbol_placement(
     pause(0.1)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
+        pointer = send("getmouselocation", "--shell")
+        tree = subprocess.run(
+            ["xwininfo", "-tree", "-id", chooser_id],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        windows = send("search", "--onlyvisible", "--pid", editor_pid)
         print(
             "chooser-input-target="
             f"geometry={geometry!r} click=({filter_x},{filter_y}) "
-            f"mouse={send('getmouselocation', '--shell')!r}",
+            f"mouse={pointer!r} visible_pid_windows={windows!r} "
+            f"xwininfo_returncode={tree.returncode} "
+            f"xwininfo_tree={tree.stdout!r} xwininfo_error={tree.stderr!r}",
             flush=True,
         )
     send("type", "--clearmodifiers", "--delay", "15", symbol_name)
