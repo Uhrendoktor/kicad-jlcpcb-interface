@@ -211,14 +211,10 @@ def start_native_symbol_placement(
     # filter entry still has no keyboard focus. Click inside that native search
     # field explicitly. This is UI navigation only; symbol placement remains
     # entirely under KiCad's cursor tool.
-    chooser_geometry = shell_geometry(
-        send("getwindowgeometry", "--shell", chooser_id)
-    )
-    if not {"X", "Y", "WIDTH", "HEIGHT"}.issubset(chooser_geometry):
-        raise RuntimeError("Could not locate the native symbol chooser filter field.")
-    filter_x = chooser_geometry["X"] + int(chooser_geometry["WIDTH"] * 0.10)
-    filter_y = chooser_geometry["Y"] + int(chooser_geometry["HEIGHT"] * 0.015)
-    send("mousemove", "--sync", str(filter_x), str(filter_y))
+    # Use coordinates relative to the chooser client window. X11's window
+    # manager frame offsets differ between xdotool and xwininfo geometry;
+    # relative coordinates keep the click in the actual filter row.
+    send("mousemove", "--window", chooser_id, "90", "15")
     send("click", "1")
     pause(0.1)
     send("key", "--clearmodifiers", "ctrl+a")
