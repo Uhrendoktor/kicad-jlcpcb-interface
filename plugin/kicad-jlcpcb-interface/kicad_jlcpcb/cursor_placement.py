@@ -146,47 +146,11 @@ def start_native_symbol_placement(
             "and check that Add Symbol is available in Preferences → Hotkeys."
         )
 
-    # getwindowfocus can return a wx child control, whose geometry is not the
-    # whole chooser. Resolve the visible top-level frame by title and process.
-    chooser_windows = send(
-        "search", "--onlyvisible", "--name", "Choose Symbol", check=False
-    ).splitlines()
-    top_level_chooser = ""
-    for candidate in reversed(chooser_windows):
-        candidate = candidate.strip()
-        if not candidate:
-            continue
-        candidate_pid = send("getwindowpid", candidate, check=False)
-        candidate_title = send("getwindowname", candidate, check=False).casefold()
-        same_process = not chooser_pid or candidate_pid == chooser_pid
-        if same_process and "choose symbol" in candidate_title:
-            top_level_chooser = candidate
-            break
-    if not top_level_chooser:
-        raise RuntimeError(
-            "KiCad opened its symbol chooser, but its top-level window could not "
-            "be identified for automatic selection. Select the generated symbol manually."
-        )
-    chooser_id = top_level_chooser
-
-    # KiCad focuses the search field when the chooser opens. Preserve that
-    # widget focus, but send the synthetic key events to the chooser's XID so
-    # they cannot be consumed by the plugin's Tk window or the Eeschema canvas.
-    send("windowfocus", "--sync", chooser_id)
-    pause(0.2)
-    # Replace KiCad's remembered search rather than appending to stale filter
-    # text from a previous chooser session.
-    send("key", "--window", chooser_id, "--clearmodifiers", "ctrl+a")
-    send("key", "--window", chooser_id, "--clearmodifiers", "BackSpace")
-    send(
-        "type",
-        "--window",
-        chooser_id,
-        "--clearmodifiers",
-        "--delay",
-        "12",
-        symbol_name,
-    )
+    # KiCad's LIB_TREE constructor clears its query and focuses the filter
+    # control before the chooser is shown. Preserve that native focus: do not
+    # windowfocus the dialog or target synthetic keys at the top-level XID,
+    # because either can bypass the wxSearchCtrl child control.
+    send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     # KiCad debounces symbol-search updates for 200 ms.
     pause(0.4)
     # Select the first visible symbol result, then accept it.
