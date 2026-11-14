@@ -110,12 +110,16 @@ def start_native_symbol_placement(
             "then retry."
         )
 
-    # Follow the tested KiCad Blocks native placement flow: focus the modal
-    # chooser as soon as it appears, type the symbol into its first-paint Filter
-    # target, accept it, then verify focus returned to the Eeschema editor.
-    # Waiting for the catalogue title before typing can race later tree setup
-    # and lose the search control's focus on wxGTK/Xvfb.
+    # The tree follows the native Filter search control and its sort button
+    # in KiCad's focus order. Focus a visible tree row, then traverse twice
+    # backward (tree -> sort button -> Filter) before sending the query. One
+    # Shift+Tab stops at the sort button and silently drops typed characters.
     send("windowfocus", "--sync", chooser_id)
+    send("mousemove", "--sync", "--window", chooser_id, "150", "145")
+    send("click", "1")
+    send("key", "--clearmodifiers", "shift+Tab")
+    send("key", "--clearmodifiers", "shift+Tab")
+    pause(0.1)
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
