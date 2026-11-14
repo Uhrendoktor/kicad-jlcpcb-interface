@@ -225,13 +225,9 @@ class CursorPlacementTests(unittest.TestCase):
             [(ord(character), "", 3) for character in "c60489"],
         )
 
-    @patch(
-        "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
-        return_value=True,
-    )
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
-        self, _which, search_helper
+        self, _which
     ):
         runner = FakeRunner(["0x200", "0x100"])
         kicad = FakeKiCad()
@@ -248,32 +244,28 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(
             kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
         )
-        chooser_focus = ["xdotool", "windowactivate", "--sync", "0x200"]
-        chooser_focus_fallback = ["xdotool", "windowfocus", "--sync", "0x200"]
-        filter_move = ["xdotool", "mousemove", "--sync", "601", "449"]
-        filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
-        select_all_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "35", "c60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
-        search_helper.assert_called_once_with(601, 449, text="c60489")
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
-        self.assertIn(chooser_focus, runner.commands)
-        self.assertIn(["xdotool", "getactivewindow"], runner.commands)
-        self.assertIn(filter_move, runner.commands)
-        self.assertIn(filter_click, runner.commands)
-        self.assertNotIn(select_all_command, runner.commands)
-        self.assertNotIn(type_command, runner.commands)
-        self.assertNotIn(["xdotool", "windowfocus", "--sync", "0x200"], runner.commands)
         self.assertNotIn(
-            ["xdotool", "key", "--clearmodifiers", "c"], runner.commands
+            ["xdotool", "windowactivate", "--sync", "0x200"], runner.commands
         )
+        self.assertNotIn(
+            ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
+        )
+        self.assertNotIn(
+            ["xdotool", "click", "--clearmodifiers", "1"], runner.commands
+        )
+        self.assertIn(["xdotool", "getactivewindow"], runner.commands)
+        self.assertIn(type_command, runner.commands)
         self.assertIn(return_command, runner.commands)
         self.assertIn(restore_pointer, runner.commands)
-        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_move))
-        self.assertLess(runner.commands.index(filter_move), runner.commands.index(filter_click))
-        self.assertLess(runner.commands.index(filter_click), runner.commands.index(return_command))
+        self.assertLess(
+            runner.commands.index(type_command),
+            runner.commands.index(return_command),
+        )
         self.assertLess(
             runner.commands.index(return_command),
             runner.commands.index(restore_pointer),
@@ -287,14 +279,8 @@ class CursorPlacementTests(unittest.TestCase):
             )
         )
 
-    @patch(
-        "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
-        return_value=False,
-    )
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
-    def test_uses_add_hotkey_when_ipc_action_is_unavailable(
-        self, _which, search_helper
-    ):
+    def test_uses_add_hotkey_when_ipc_action_is_unavailable(self, _which):
         runner = FakeRunner(["0x200", "0x100"])
         kicad = FakeKiCad(raises=True)
         start_native_symbol_placement(
@@ -309,7 +295,6 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(
             kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
         )
-        search_helper.assert_called_once_with(601, 449, text="c60489")
         self.assertIn(
             ["xdotool", "windowactivate", "--sync", "0x100"], runner.commands
         )
