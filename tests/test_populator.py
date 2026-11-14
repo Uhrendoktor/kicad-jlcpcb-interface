@@ -198,6 +198,57 @@ class CatalogueImageDownloadTests(unittest.TestCase):
             )
         self.assertEqual(open_url.call_count, 2)
 
+    def test_accepts_oss_binary_content_type_for_image_extension(self):
+        class Response:
+            headers = {"Content-Type": "application/octet-stream"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def geturl(self):
+                return "https://images.example.com/C105637-front.jpg"
+
+            def read(self, _limit):
+                return b"bounded-image-payload"
+
+        with patch(
+            "kicad_jlcpcb.populator.urlopen",
+            return_value=Response(),
+        ):
+            self.assertEqual(
+                _download_catalogue_image(
+                    "https://images.example.com/C105637-front.jpg"
+                ),
+                b"bounded-image-payload",
+            )
+
+    def test_rejects_binary_content_type_for_non_image_extension(self):
+        class Response:
+            headers = {"Content-Type": "application/octet-stream"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def geturl(self):
+                return "https://images.example.com/part.pdf"
+
+            def read(self, _limit):
+                return b"not-an-image"
+
+        with patch(
+            "kicad_jlcpcb.populator.urlopen",
+            return_value=Response(),
+        ):
+            self.assertIsNone(
+                _download_catalogue_image("https://images.example.com/part.pdf")
+            )
+
     def test_rejects_oversized_image_responses(self):
         class Response:
             headers = {"Content-Type": "image/png"}

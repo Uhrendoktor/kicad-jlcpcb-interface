@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from urllib.error import HTTPError
+from pathlib import PurePosixPath
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
@@ -65,7 +66,12 @@ def download_product_image(
                 if final_url.scheme != "https" or not final_url.hostname:
                     note(f"{parsed.hostname}{parsed.path}: redirect was not HTTPS.")
                     continue
-                if not content_type.startswith("image/"):
+                binary_image = (
+                    content_type in {"application/octet-stream", "binary/octet-stream"}
+                    and PurePosixPath(parsed.path).suffix.casefold()
+                    in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"}
+                )
+                if not content_type.startswith("image/") and not binary_image:
                     note(
                         f"{parsed.hostname}{parsed.path}: unexpected content type "
                         f"{content_type or '(missing)'}."
