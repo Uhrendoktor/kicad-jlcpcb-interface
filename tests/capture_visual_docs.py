@@ -1647,10 +1647,23 @@ def _capture_passive_component_workflows(
                 "The Add mode UI did not generate the project symbol and hand it "
                 "to Eeschema's native cursor-placement tool."
             )
-        library_text = generated.library_path.read_text(encoding="utf-8")
-        if f'(symbol "{generated.symbol_name}"' not in library_text:
+        library_root = parse_sexpr(
+            generated.library_path.read_text(encoding="utf-8")
+        )
+        library_symbol_names = {
+            str(getattr(symbol[1], "value", ""))
+            for symbol in library_root
+            if (
+                isinstance(symbol, list)
+                and len(symbol) > 1
+                and getattr(symbol[0], "value", "") == "symbol"
+            )
+        }
+        if generated.symbol_name not in library_symbol_names:
             raise RuntimeError(
-                "The generated project library does not contain the selected symbol."
+                "The generated project library does not contain the selected symbol: "
+                f"expected={generated.symbol_name!r}; "
+                f"found={sorted(library_symbol_names)!r}."
             )
 
     _drive_populator_form(
