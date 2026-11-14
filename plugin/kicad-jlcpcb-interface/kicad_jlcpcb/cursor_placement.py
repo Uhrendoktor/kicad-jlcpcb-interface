@@ -237,15 +237,20 @@ def focus_symbol_chooser_search_at_point(
                         f"keyboard-string={generated} text={text_result!r}",
                     )
                 )
-                if generated and text_result == text:
+                if generated:
                     print(
-                        "chooser-atspi=keyboard-string "
+                        "chooser-atspi=keyboard-string-sent "
                         f"focused={focused} depth={depth} role={role!r} "
                         f"name={name!r} bounds={bounds!r} "
                         f"key_type={key_string!r} "
+                        f"cached_text={text_result!r} "
                         f"candidates={candidate_details[:20]!r}",
                         flush=True,
                     )
+                    # The accessible Text interface can lag behind wxGTK's
+                    # rendered control. A successful KEY_STRING event is the
+                    # delivery signal; the visual fixture captures the Search
+                    # field immediately afterward.
                     return True
             except Exception as exc:
                 candidate_details.append(
@@ -470,7 +475,7 @@ def start_native_symbol_placement(
     xclip = shutil.which("xclip")
     primary_pasted = False
     if filter_set_accessibly:
-        print("chooser-input=atspi-editable-text", flush=True)
+        print("chooser-input=atspi-keyboard-string", flush=True)
     elif xclip:
         try:
             command_runner(

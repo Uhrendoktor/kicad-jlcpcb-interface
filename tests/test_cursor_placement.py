@@ -195,8 +195,8 @@ class CursorPlacementTests(unittest.TestCase):
             @staticmethod
             def generateKeyboardEvent(keycode, keystring, kind):
                 generated_events.append((keycode, keystring, kind))
-                # Simulate the synthesized string reaching the focused field.
-                search_entry.text = keystring
+                # The accessibility Text cache may remain stale even though
+                # the keyboard event was delivered to the focused widget.
                 return True
 
         atspi = SimpleNamespace(
@@ -213,7 +213,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(chooser.hit_test_calls, [(601, 439, 0)])
         self.assertFalse(search_wrapper.focused)
         self.assertTrue(search_entry.focused)
-        self.assertEqual(search_entry.text, "c60489")
+        self.assertEqual(search_entry.text, "")
         self.assertEqual(generated_events, [(None, "c60489", 4)])
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
