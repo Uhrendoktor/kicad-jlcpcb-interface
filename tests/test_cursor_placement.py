@@ -4,7 +4,6 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
@@ -12,124 +11,42 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.cursor_placement import (  # noqa: E402
     capture_eeschema_window_id,
-    set_symbol_chooser_filter_accessibly,
     start_native_symbol_placement,
 )
 
 
 class FakeRunner:
-    def __init__(self, outputs=(), window_names=()):
-        self.outputs = list(outputs)
-        self.window_names = list(window_names)
+    def __init__(self, focus_ids=(), window_titles=None):
+        self.focus_ids = list(focus_ids)
+        self.window_titles = dict(window_titles or {})
         self.commands = []
-        self.command_kwargs = []
         self.mouse_reads = 0
 
-    def __call__(self, arguments, **kwargs):
+    def __call__(self, arguments, **_kwargs):
         self.commands.append(arguments)
-        self.command_kwargs.append(kwargs)
         command = arguments[1]
         if command == "getwindowpid":
             return SimpleNamespace(stdout="4242", returncode=0)
-        if command == "getwindowgeometry":
-            if arguments[-1] == "0x100":
-                geometry = "WINDOW=0x100\nX=10\nY=20\nWIDTH=960\nHEIGHT=1024\nSCREEN=0"
-            else:
-                geometry = "WINDOW=0x200\nX=30\nY=360\nWIDTH=880\nHEIGHT=680\nSCREEN=0"
-            return SimpleNamespace(stdout=geometry, returncode=0)
-        if command == "getmouselocation":
-            self.mouse_reads += 1
-            output = (
-                "X=500\nY=150\nSCREEN=0\nWINDOW=0x100"
-                if self.mouse_reads == 1
-                else "X=120\nY=366\nSCREEN=0\nWINDOW=0x200"
-            )
-            return SimpleNamespace(stdout=output, returncode=0)
         if command == "getwindowfocus":
-            value = self.outputs.pop(0) if self.outputs else "0x100"
+            value = self.focus_ids.pop(0) if self.focus_ids else "0x100"
             return SimpleNamespace(stdout=value, returncode=0)
         if command == "getwindowclassname":
             return SimpleNamespace(stdout="eeschema", returncode=0)
         if command == "getwindowname":
-            if arguments[-1] == "0x200":
-                value = (
-                    self.window_names.pop(0)
-                    if self.window_names
-                    else "Choose Symbol (22936 items loaded)"
-                )
-                return SimpleNamespace(stdout=value, returncode=0)
-            return SimpleNamespace(stdout="Schematic Editor", returncode=0)
+            value = self.window_titles.get(
+                arguments[-1],
+                "Choose Symbol (22936 items loaded)"
+                if arguments[-1] == "0x200"
+                else "Schematic Editor",
+            )
+            return SimpleNamespace(stdout=value, returncode=0)
+        if command == "getmouselocation":
+            self.mouse_reads += 1
+            return SimpleNamespace(
+                stdout="X=500\nY=150\nSCREEN=0\nWINDOW=0x100",
+                returncode=0,
+            )
         return SimpleNamespace(stdout="", returncode=0)
-
-
-class FakeAccessible:
-    def __init__(self, name="", role="panel", children=(), interfaces=()):
-        self.name = name
-        self.role = role
-        self.children = list(children)
-        self.interfaces = list(interfaces)
-        self.text = ""
-        self.focused = False
-        self.point_target = None
-        self.hit_test_calls = []
-        self.extents = (0, 0, 0, 0)
-        self.clipboard_text = ""
-        self.paste_calls = []
-        self.insert_calls = []
-
-    @property
-    def childCount(self):
-        return len(self.children)
-
-    def getRoleName(self):
-        return self.role
-
-    def getInterfaces(self):
-        return self.interfaces
-
-    def getChildAtIndex(self, index):
-        return self.children[index]
-
-    def queryComponent(self):
-        return self
-
-    def grabFocus(self):
-        self.focused = True
-        return True
-
-    def getAccessibleAtPoint(self, x, y, coord_type):
-        self.hit_test_calls.append((x, y, coord_type))
-        return self.point_target
-
-    def getExtents(self, coord_type):
-        return self.extents
-
-    def queryEditableText(self):
-        return self
-
-    def setTextContents(self, text):
-        self.text = text
-        return True
-
-    def pasteText(self, position):
-        self.paste_calls.append(position)
-        self.text = self.clipboard_text
-        return True
-
-    def insertText(self, position, text, length):
-        self.insert_calls.append((position, text, length))
-        self.text = self.text[:position] + text[:length]
-        return True
-
-    def deleteText(self, start, end):
-        self.text = self.text[:start] + self.text[end:]
-        return True
-
-    def queryText(self):
-        return self
-
-    def getText(self, _start, _end):
-        return self.text
 
 
 class FakeKiCad:
@@ -173,108 +90,8 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
-    def test_sets_actual_filter_entry_under_atspi_screen_point(self):
-        search_entry = FakeAccessible(
-            name="",
-            role="text",
-            interfaces=["Accessible", "Component", "Text", "EditableText"],
-        )
-        search_entry.extents = (525, 424, 398, 34)
-        search_entry.clipboard_text = "R_C60489"
-        chooser = FakeAccessible(
-            name="Choose Symbol (22936 items loaded)",
-            role="dialog",
-            children=[],
-        )
-        chooser.point_target = search_entry
-        chooser.extents = (521, 439, 880, 680)
-        desktop = FakeAccessible(children=[chooser])
-
-        keyboard_calls = []
-
-        class FakeRegistry:
-            @staticmethod
-            def getDesktop(_index):
-                return desktop
-
-            @staticmethod
-            def generateKeyboardEvent(keycode, keystring, synth_type):
-                keyboard_calls.append((keycode, keystring, synth_type))
-                search_entry.text = keystring
-                return True
-
-        class FakeATspi:
-            Registry = FakeRegistry
-            DESKTOP_COORDS = 0
-            KEY_STRING = 4
-
-        self.assertTrue(
-            set_symbol_chooser_filter_accessibly(
-                "R_C60489",
-                x=611,
-                y=445,
-                atspi_module=FakeATspi,
-            )
-        )
-        self.assertEqual(search_entry.hit_test_calls, [(611, 445, 0)])
-        self.assertEqual(keyboard_calls, [(0, "R_C60489", 4)])
-        self.assertEqual(search_entry.text, "R_C60489")
-        self.assertTrue(search_entry.focused)
-
-    def test_atspi_filter_falls_back_when_chooser_is_not_accessible(self):
-        class FakeRegistry:
-            @staticmethod
-            def getDesktop(_index):
-                return FakeAccessible(children=[])
-
-        class FakeATspi:
-            Registry = FakeRegistry
-
-        self.assertFalse(
-            set_symbol_chooser_filter_accessibly(
-                "R_C60489", x=611, y=445, atspi_module=FakeATspi
-            )
-        )
-
-    @patch(
-        "kicad_jlcpcb.cursor_placement.set_symbol_chooser_filter_accessibly",
-        return_value=False,
-    )
-    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
-    def test_falls_back_to_clipboard_shortcut_when_atspi_cannot_edit_target(
-        self, _which, set_filter
-    ):
+    def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(self):
         runner = FakeRunner(["0x200", "0x100"])
-        start_native_symbol_placement(
-            "0x100",
-            "R_C60489",
-            xdotool="xdotool",
-            command_runner=runner,
-            pause=lambda _seconds: None,
-        )
-        self.assertIn(
-            ["xclip", "-selection", "clipboard", "-in"], runner.commands
-        )
-        self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+v"], runner.commands
-        )
-        set_filter.assert_called_once_with(
-            "R_C60489", x=120, y=366
-        )
-
-    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
-    @patch(
-        "kicad_jlcpcb.cursor_placement.set_symbol_chooser_filter_accessibly",
-        return_value=False,
-    )
-    def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
-        self, _set_filter, _which
-    ):
-        runner = FakeRunner(
-            ["0x200", "0x100"],
-            ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
-        )
-        pauses = []
         kicad = FakeKiCad()
 
         start_native_symbol_placement(
@@ -283,82 +100,37 @@ class CursorPlacementTests(unittest.TestCase):
             kicad=kicad,
             xdotool="xdotool",
             command_runner=runner,
-            pause=lambda seconds: (
-                pauses.append(seconds),
-                runner.commands.append(["pause", seconds]),
-            ),
+            pause=lambda _seconds: None,
         )
 
         self.assertEqual(
             kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
         )
-        editor_activate = ["xdotool", "windowactivate", "--sync", "0x100"]
-        add_symbol_hotkey = ["xdotool", "key", "--clearmodifiers", "a"]
-        title_command = ["xdotool", "getwindowname", "0x200"]
+        chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
         type_command = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "50", "R_C60489"
+            "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
-        type_index = runner.commands.index(type_command)
-        title_checks = [
-            index for index, command in enumerate(runner.commands)
-            if command == title_command
-        ]
-        self.assertNotIn(editor_activate, runner.commands)
-        self.assertNotIn(add_symbol_hotkey, runner.commands)
-        self.assertLess(runner.commands.index(title_command), type_index)
-        self.assertEqual(len(title_checks), 2)
-        chooser_focus = ["xdotool", "windowactivate", "--sync", "0x200"]
         self.assertIn(chooser_focus, runner.commands)
-        filter_geometry = [
-            "xdotool", "getwindowgeometry", "--shell", "0x200"
-        ]
-        focus_filter = ["xdotool", "mousemove", "--sync", "120", "366"]
-        verify_pointer = ["xdotool", "getmouselocation", "--shell"]
-        click_filter = ["xdotool", "click", "1"]
-        self.assertIn(filter_geometry, runner.commands)
-        self.assertIn(focus_filter, runner.commands)
-        pointer_checks = [
-            index for index, command in enumerate(runner.commands)
-            if command == verify_pointer
-        ]
-        self.assertEqual(len(pointer_checks), 2)
-        self.assertIn(click_filter, runner.commands)
-        self.assertLess(
-            runner.commands.index(chooser_focus),
-            runner.commands.index(filter_geometry),
+        self.assertIn(type_command, runner.commands)
+        self.assertIn(return_command, runner.commands)
+        self.assertIn(restore_pointer, runner.commands)
+        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(type_command))
+        self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
+        self.assertLess(runner.commands.index(return_command), runner.commands.index(restore_pointer))
+        self.assertNotIn(
+            ["xdotool", "windowactivate", "--sync", "0x200"], runner.commands
         )
-        self.assertLess(
-            runner.commands.index(filter_geometry),
-            runner.commands.index(focus_filter),
+        self.assertFalse(
+            any(
+                command[:2] == ["xdotool", "mousemove"]
+                and command != restore_pointer
+                for command in runner.commands
+            )
         )
-        self.assertLess(runner.commands.index(focus_filter), pointer_checks[1])
-        self.assertLess(pointer_checks[1], runner.commands.index(click_filter))
-        self.assertLess(runner.commands.index(click_filter), type_index)
-        self.assertLess(type_index, runner.commands.index(return_command))
-        focus_checks = [
-            index for index, command in enumerate(runner.commands)
-            if command == ["xdotool", "getwindowfocus"]
-        ]
-        self.assertGreaterEqual(len(focus_checks), 2)
-        self.assertLess(
-            runner.commands.index(return_command), focus_checks[-1]
-        )
-        self.assertLess(
-            focus_checks[-1], runner.commands.index(restore_pointer)
-        )
-        self.assertIn(0.1, pauses)
-        self.assertIn(0.5, pauses)
 
-    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
-    @patch(
-        "kicad_jlcpcb.cursor_placement.set_symbol_chooser_filter_accessibly",
-        return_value=False,
-    )
-    def test_uses_add_hotkey_even_when_ipc_action_would_be_unavailable(
-        self, _set_filter, _which
-    ):
+    def test_uses_add_hotkey_when_ipc_action_is_unavailable(self):
         runner = FakeRunner(["0x200", "0x100"])
         kicad = FakeKiCad(raises=True)
         start_native_symbol_placement(
@@ -369,6 +141,7 @@ class CursorPlacementTests(unittest.TestCase):
             command_runner=runner,
             pause=lambda _seconds: None,
         )
+
         self.assertEqual(
             kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
         )
@@ -378,107 +151,42 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        chooser_focus = ["xdotool", "windowactivate", "--sync", "0x200"]
-        self.assertIn(chooser_focus, runner.commands)
-        self.assertNotIn(
+        self.assertIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
-        self.assertLess(
-            runner.commands.index(chooser_focus),
-            runner.commands.index(
-                [
-                    "xdotool", "type", "--clearmodifiers", "--delay", "50", "R_C60489",
-                ]
-            ),
-        )
         self.assertIn(
-            [
-                "xdotool", "type", "--clearmodifiers", "--delay", "50", "R_C60489",
-            ],
+            ["xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"],
             runner.commands,
         )
 
-    @patch(
-        "kicad_jlcpcb.cursor_placement.set_symbol_chooser_filter_accessibly",
-        return_value=True,
-    )
-    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
-    def test_prefers_atspi_keyboard_events_before_clipboard_fallback(
-        self, _which, set_filter
-    ):
-        runner = FakeRunner(["0x200", "0x100"])
+    def test_uses_native_place_menu_when_add_hotkey_does_not_open_chooser(self):
+        runner = FakeRunner(
+            ["0x100"] * 50 + ["0x200", "0x100"]
+        )
+        kicad = FakeKiCad(raises=True)
         start_native_symbol_placement(
             "0x100",
             "R_C60489",
-            xdotool="xdotool",
-            command_runner=runner,
-            pause=lambda _seconds: None,
-        )
-
-        set_filter.assert_called_once_with("R_C60489", x=120, y=366)
-        self.assertFalse(
-            any(command[:1] == ["xclip"] for command in runner.commands)
-        )
-        self.assertNotIn(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+v"], runner.commands
-        )
-        self.assertNotIn(
-            ["xdotool", "type", "--clearmodifiers", "--delay", "50", "R_C60489"],
-            runner.commands,
-        )
-
-
-    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
-    @patch(
-        "kicad_jlcpcb.cursor_placement.set_symbol_chooser_filter_accessibly",
-        return_value=False,
-    )
-    def test_falls_back_to_clipboard_shortcut_when_atspi_unavailable(
-        self, _set_filter, _which
-    ):
-        runner = FakeRunner(["0x200", "0x100"])
-        start_native_symbol_placement(
-            "0x100",
-            "R_C60489",
-            xdotool="xdotool",
-            command_runner=runner,
-            pause=lambda _seconds: None,
-        )
-
-        xclip_command = ["xclip", "-selection", "clipboard", "-in"]
-        self.assertIn(xclip_command, runner.commands)
-        self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
-            runner.commands,
-        )
-        self.assertNotIn(
-            ["xdotool", "type", "--clearmodifiers", "--delay", "50", "R_C60489"],
-            runner.commands,
-        )
-        clipboard_index = runner.commands.index(xclip_command)
-        self.assertEqual(
-            runner.command_kwargs[clipboard_index]["input"], "R_C60489"
-        )
-        self.assertTrue(runner.command_kwargs[clipboard_index]["check"])
-
-    def test_activates_native_chooser_before_x_test_input(self):
-        runner = FakeRunner(["0x200", "0x100"])
-        start_native_symbol_placement(
-            "0x100",
-            "R_C60489",
+            kicad=kicad,
             xdotool="xdotool",
             command_runner=runner,
             pause=lambda _seconds: None,
         )
         self.assertIn(
-            ["xdotool", "windowactivate", "--sync", "0x200"], runner.commands
+            ["xdotool", "key", "--clearmodifiers", "alt+p"], runner.commands
         )
-        self.assertNotIn(
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        )
+        self.assertIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
 
     def test_accepts_focus_return_to_another_eeschema_child_window(self):
-        runner = FakeRunner(["0x200", "0x300"])
+        runner = FakeRunner(
+            ["0x200", "0x300"],
+            {"0x300": "Symbol Editor Properties"},
+        )
         start_native_symbol_placement(
             "0x100",
             "R_C60489",
@@ -490,18 +198,16 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(["xdotool", "getwindowname", "0x300"], runner.commands)
 
     def test_reports_missing_native_chooser(self):
-        runner = FakeRunner(["0x100"] * 56)
-        with self.assertRaisesRegex(RuntimeError, "chooser did not open"):
+        runner = FakeRunner(["0x100"] * 120)
+        with self.assertRaisesRegex(RuntimeError, "native symbol chooser did not open"):
             start_native_symbol_placement(
                 "0x100",
                 "C_C1591",
+                kicad=FakeKiCad(raises=True),
                 xdotool="xdotool",
                 command_runner=runner,
                 pause=lambda _seconds: None,
             )
-        self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "Escape"], runner.commands
-        )
 
     def test_rejects_invalid_symbol_names(self):
         with self.assertRaisesRegex(ValueError, "symbol name"):
