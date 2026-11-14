@@ -219,7 +219,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(search_entry.text, "c60489")
         self.assertEqual(generated_events, [])
 
-    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
         self, _which
     ):
@@ -242,39 +242,30 @@ class CursorPlacementTests(unittest.TestCase):
         chooser_focus_fallback = ["xdotool", "windowfocus", "--sync", "0x200"]
         filter_move = ["xdotool", "mousemove", "--sync", "601", "449"]
         filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
-        clipboard_command = [
-            "xclip", "-selection", "clipboard", "-in", "-loops", "10"
-        ]
-        paste_command = ["xdotool", "key", "--clearmodifiers", "ctrl+v"]
         select_all_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
+        type_command = [
+            "xdotool", "type", "--clearmodifiers", "--delay", "35", "c60489"
+        ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         self.assertIn(chooser_focus, runner.commands)
         self.assertIn(["xdotool", "getactivewindow"], runner.commands)
         self.assertIn(filter_move, runner.commands)
         self.assertIn(filter_click, runner.commands)
-        self.assertIn(clipboard_command, runner.commands)
-        self.assertIn(paste_command, runner.commands)
         self.assertIn(select_all_command, runner.commands)
+        self.assertIn(type_command, runner.commands)
+        self.assertNotIn(["xdotool", "windowfocus", "--sync", "0x200"], runner.commands)
         self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "c"], runner.commands
         )
         self.assertIn(return_command, runner.commands)
         self.assertIn(restore_pointer, runner.commands)
-        clipboard_index = runner.commands.index(clipboard_command)
-        self.assertEqual(runner.command_kwargs[clipboard_index]["input"], "c60489")
+        type_index = runner.commands.index(type_command)
         self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_move))
         self.assertLess(runner.commands.index(filter_move), runner.commands.index(filter_click))
-        self.assertLess(runner.commands.index(filter_click), clipboard_index)
-        self.assertLess(clipboard_index, runner.commands.index(paste_command))
-        self.assertLess(
-            runner.commands.index(select_all_command),
-            runner.commands.index(paste_command),
-        )
-        self.assertLess(
-            runner.commands.index(paste_command),
-            runner.commands.index(return_command),
-        )
+        self.assertLess(runner.commands.index(filter_click), runner.commands.index(select_all_command))
+        self.assertLess(runner.commands.index(select_all_command), type_index)
+        self.assertLess(type_index, runner.commands.index(return_command))
         self.assertLess(
             runner.commands.index(return_command),
             runner.commands.index(restore_pointer),
