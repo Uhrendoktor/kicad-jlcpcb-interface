@@ -77,11 +77,29 @@ def start_native_symbol_placement(
     editor_pid = send("getwindowpid", str(editor_window_id))
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
-    send("windowfocus", "--sync", str(editor_window_id))
+    # Activate Eeschema through EWMH when a window manager is present. A bare
+    # SetInputFocus request (windowfocus) is not sufficient under Openbox when
+    # another top-level window such as the withdrawn Tk review dialog was
+    # recently active. Retain the no-WM fallback for standalone X11 sessions.
+    try:
+        send("windowactivate", "--sync", str(editor_window_id))
+    except subprocess.CalledProcessError:
+        send("windowraise", str(editor_window_id))
+        send("windowfocus", "--sync", str(editor_window_id))
     pause(0.1)
+    active_id = send("getwindowfocus")
+    active_pid = send("getwindowpid", active_id) if active_id else ""
+    if active_pid != editor_pid:
+        active_title = send("getwindowname", active_id) if active_id else ""
+        raise RuntimeError(
+            "Could not activate the Eeschema window for cursor placement. "
+            f"Editor={editor_window_id!r}/{editor_pid!r}; "
+            f"focused={active_id!r}/{active_pid!r} ({active_title!r})."
+        )
     send("key", "--clearmodifiers", "a")
 
     chooser_id = ""
+    focused_id = active_id
     for _ in range(50):
         focused_id = send("getwindowfocus")
         if focused_id and focused_id != str(editor_window_id):
@@ -91,14 +109,19 @@ def start_native_symbol_placement(
         pause(0.1)
 
     if not chooser_id:
-        if send("getwindowfocus") == str(editor_window_id):
+        focused_pid = send("getwindowpid", focused_id) if focused_id else ""
+        focused_title = send("getwindowname", focused_id) if focused_id else ""
+        if focused_pid == editor_pid:
             try:
                 send("key", "--clearmodifiers", "Escape")
             except subprocess.SubprocessError:
                 pass
         raise RuntimeError(
-            "KiCad's native symbol chooser did not open. Check Eeschema "
-            "Preferences → Hotkeys and bind Add Symbol to A, then retry."
+            "KiCad's native symbol chooser did not open. "
+            f"Editor={editor_window_id!r}/{editor_pid!r}; "
+            f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
+            "Check Eeschema Preferences → Hotkeys and bind Add Symbol to A, "
+            "then retry."
         )
 
     # Activate the modal chooser through the window manager as soon as it

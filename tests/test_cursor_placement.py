@@ -80,7 +80,7 @@ class CursorPlacementTests(unittest.TestCase):
 
     def test_starts_native_chooser_and_returns_with_symbol_on_cursor(self):
         runner = FakeRunner(
-            ["0x200", "0x100"],
+            ["0x100", "0x200", "0x100"],
             ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
         )
         pauses = []
@@ -95,8 +95,12 @@ class CursorPlacementTests(unittest.TestCase):
             command_runner=runner,
             pause=pause,
         )
-        self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        editor_activate = ["xdotool", "windowactivate", "--sync", "0x100"]
+        add_hotkey = ["xdotool", "key", "--clearmodifiers", "a"]
+        self.assertIn(editor_activate, runner.commands)
+        self.assertLess(
+            runner.commands.index(editor_activate),
+            runner.commands.index(add_hotkey),
         )
         chooser_title_command = ["xdotool", "getwindowname", "0x200"]
         activate_command = ["xdotool", "windowactivate", "--sync", "0x200"]
@@ -123,7 +127,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     def test_rejects_focus_return_to_a_different_eeschema_child_window(self):
-        runner = FakeRunner(["0x200", "0x300"])
+        runner = FakeRunner(["0x100", "0x200", "0x300"])
         with self.assertRaisesRegex(RuntimeError, "did not return focus to Eeschema"):
             start_native_symbol_placement(
                 "0x100",
@@ -135,7 +139,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(["xdotool", "getwindowpid", "0x300"], runner.commands)
 
     def test_reports_missing_native_chooser(self):
-        runner = FakeRunner(["0x100"] * 55)
+        runner = FakeRunner(["0x100"] * 56)
         with self.assertRaisesRegex(RuntimeError, "chooser did not open"):
             start_native_symbol_placement(
                 "0x100",
