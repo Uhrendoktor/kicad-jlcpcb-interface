@@ -15,6 +15,7 @@ from kicad_jlcpcb.populator import (  # noqa: E402
     MAX_CATALOGUE_IMAGE_BYTES,
     _download_catalogue_image,
     resolve_component_action_target,
+    _is_automatically_mapped_passive,
     resolve_passive_action_target,
     resolve_passive_library_id,
     resolve_selected_symbol,
@@ -67,6 +68,29 @@ class FakeKiCad:
     def get_library_symbol(self, library_id: str, document=None):
         self.requests.append((library_id, document))
         return self.symbols[library_id]
+
+
+class AutomaticPassiveMappingTests(unittest.TestCase):
+    def test_recognizes_only_stock_resistor_and_capacitor_mappings(self):
+        self.assertTrue(
+            _is_automatically_mapped_passive(
+                SimpleNamespace(kind="resistor", symbol_hint="Device:R")
+            )
+        )
+        self.assertTrue(
+            _is_automatically_mapped_passive(
+                SimpleNamespace(kind="capacitor", symbol_hint="Device:C")
+            )
+        )
+
+    def test_does_not_auto_hide_manual_symbol_selection_for_other_parts(self):
+        for draft in (
+            SimpleNamespace(kind="inductor", symbol_hint="Device:L"),
+            SimpleNamespace(kind="resistor", symbol_hint="Custom:R"),
+            SimpleNamespace(kind="unknown", symbol_hint=""),
+        ):
+            with self.subTest(draft=draft):
+                self.assertFalse(_is_automatically_mapped_passive(draft))
 
 
 class CatalogueImageDownloadTests(unittest.TestCase):
