@@ -102,7 +102,7 @@ The screenshots show the two contexts of that one action—not separate commands
     </td>
     <td valign="top" width="50%">
       <strong>No symbol selected · add a project-local copy</strong>
-      <p>Search by LCSC code or free text, review the proposed KiCad symbol, Value and optional Footprint, then place the new symbol.</p>
+      <p>Search by a value such as <code>10k</code>, or use an LCSC code or free-text query. Pick a Basic-first passive candidate; the symbol, reference prefix and catalogue fields are filled in automatically. Then generate the project-local symbol and place it with KiCad's cursor tool.</p>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
         <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Add context of the unified action, with no symbol selected and project-local symbol options visible." width="320">
@@ -122,7 +122,7 @@ For detailed field behavior and troubleshooting, see the **[User guide](docs/use
 
 - **Conservative symbol handling.** Update mode works on one editable selected symbol of any component family and never replaces its graphics, library identity or pin mapping. Add mode suggests common generic symbols (resistor, capacitor, inductor, diode, LED, fuse and crystal) and can clone a manually selected standalone KiCad symbol. A suggestion is not a verified manufacturer pinout.
 - **Reviewable footprints.** Reviewed mappings cover common SMD resistor/capacitor/inductor sizes, selected LED sizes and diode packages. Other packages remain blank until entered by the user. Footprints are optional for symbol generation, but required before normal PCB layout.
-- **Search behavior.** Add mode supports LCSC-code lookup, keyword search by MPN/device name, and exact nominal-value matching for supported resistor/capacitor values. Other keyword matches are candidates to review, not guaranteed electrical equivalents.
+- **Search behavior.** Add mode supports LCSC-code lookup, keyword search by MPN/device name, and a shortlist of up to five exact resistor/capacitor value matches with Basic listings first. Other keyword matches are candidates to review, not guaranteed electrical equivalents.
 - **Placement.** Add mode always hands the generated symbol to KiCad's native Add Symbol cursor tool. KiCad's IPC Place Symbol action is preferred; the X11/xdotool Add Symbol hotkey is the compatibility fallback. Coordinate placement is not supported.
 - **No pin-map or PCB asset generation.** The add-on does not infer IC pin assignments/electrical types, create copper footprints or generate 3D models. It copies the symbol pin definitions the user selected; verify symbol and footprint compatibility against the datasheet before board use or ordering.
 - **Supplier data.** Catalogue detail and search use JLCPCB website endpoints that are not a supported public components API and may change. Source/freshness labels distinguish direct JLCPCB results, community fallbacks and cached snapshots.
