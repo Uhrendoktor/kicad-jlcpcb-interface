@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import queue
 import shutil
+import tkinter as tk
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
