@@ -29,6 +29,7 @@ from kicad_jlcpcb.draft import (  # noqa: E402
     symbol_library_id,
     update_schematic_symbol,
 )
+from kicad_jlcpcb.media import download_product_image  # noqa: E402
 from kicad_jlcpcb.library import (  # noqa: E402
     generate_project_library_symbol,
     parse_sexpr,
@@ -1240,9 +1241,12 @@ def _drive_populator_form(
                     or ((getattr(details, "image_url", ""),) if details else ())
                 )
                 paths = tuple(urlparse(url).path for url in image_urls if url)
+                diagnostics: list[str] = []
+                download_product_image(image_urls, diagnostics=diagnostics)
                 raise RuntimeError(
                     "The fixture part has supplier image URLs but no rendered photo: "
-                    f"{paths!r}; placeholder={image_placeholder!r}"
+                    f"{paths!r}; placeholder={image_placeholder!r}; "
+                    f"download={diagnostics!r}"
                 )
             if not image_name and image_placeholder not in {
                 "No catalogue image",

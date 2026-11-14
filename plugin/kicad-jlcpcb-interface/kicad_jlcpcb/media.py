@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from urllib.error import HTTPError
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
@@ -15,6 +16,7 @@ def download_product_image(
     opener=None,
     timeout: float = 7.0,
     max_bytes: int = MAX_PRODUCT_IMAGE_BYTES,
+    diagnostics: list[str] | None = None,
 ) -> bytes | None:
     """Try each supplier image URL until a safe, bounded image response is found.
 
@@ -28,10 +30,15 @@ def download_product_image(
     open_url = opener or urlopen
     seen: set[str] = set()
 
+    def note(message: str) -> None:
+        if diagnostics is not None:
+            diagnostics.append(message)
+
     for candidate in candidates:
         url = str(candidate or "").strip()
         parsed = urlparse(url)
         if url in seen or parsed.scheme != "https" or not parsed.hostname:
+            note("Skipped non-HTTPS or invalid image URL.")
             continue
         seen.add(url)
 
@@ -56,19 +63,31 @@ def download_product_image(
                     response.headers.get("Content-Type", "")
                 ).casefold().split(";", 1)[0].strip()
                 if final_url.scheme != "https" or not final_url.hostname:
+                    note(f"{parsed.hostname}{parsed.path}: redirect was not HTTPS.")
                     continue
                 if not content_type.startswith("image/"):
+                    note(
+                        f"{parsed.hostname}{parsed.path}: unexpected content type "
+                        f"{content_type or '(missing)'}."
+                    )
                     continue
                 content_length = response.headers.get("Content-Length")
                 if content_length:
                     try:
                         if int(content_length) > max_bytes:
+                            note(f"{parsed.hostname}{parsed.path}: image exceeds size limit.")
                             continue
                     except (TypeError, ValueError):
                         pass
                 data = response.read(max_bytes + 1)
                 if data and len(data) <= max_bytes:
                     return data
-        except Exception:
-            continue
+                note(f"{parsed.hostname}{parsed.path}: empty or oversized image response.")
+        except HTTPError as exc:
+            note(f"{parsed.hostname}{parsed.path}: HTTP {exc.code}.")
+        except Exception as exc:
+            note(
+                f"{parsed.hostname}{parsed.path}: "
+                f"{type(exc).__name__}: {str(exc)[:120]}."
+            )
     return None
