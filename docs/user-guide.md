@@ -163,7 +163,7 @@ Both contexts use the same window size and information hierarchy: catalogue sear
 1. Launch **JLCPCB Add or Update Component** from the active Schematic Editor.
 2. Look up the catalogue part. Update mode accepts an LCSC part number. Add mode accepts an LCSC code, manufacturer part number, device name or free-text keyword.
 3. Review the proposed fields, inference confidence, catalogue source/freshness and warnings before applying anything.
-4. Edit the suggested **Value** and **Footprint** as needed. In add mode, also review or edit **KiCad Library:Symbol** and **Reference prefix**. A suggested value is a proposal, not a verified electrical equivalence.
+4. Edit the suggested **Value** and **Footprint** as needed. For passives, the stock **KiCad Library:Symbol** and **Reference prefix** are selected automatically; review the automatic mapping note. For other parts, manually review or edit the suggested symbol when required. A suggested value is a proposal, not a verified electrical equivalence.
 5. Confirm the update or generation action. Nothing is written or placed before confirmation.
 
 The review controls are deliberately editable. An uncertain symbol or footprint is not silently treated as correct, and an optional footprint can be filled in later. Catalogue images load in the background; a missing or unavailable image uses an explicit placeholder and does not block the review workflow.
@@ -194,7 +194,7 @@ Existing fields with matching names are updated; unrelated custom fields are pre
 
 ### Add a new project-local symbol
 
-Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a reusable project-local symbol copied from a standalone KiCad stock-library symbol, then places an instance.
+Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a project-local symbol copied from a standalone KiCad stock-library symbol, then hands it to KiCad's native cursor tool for mouse placement.
 
 1. Save the KiCad project and clear the Eeschema selection.
 2. Search by LCSC code, manufacturer part number, device name or another keyword. For a simple passive, just enter its value—for example `10k`, `4k7`, `470R`, `100nF` or `4.7uF`.
