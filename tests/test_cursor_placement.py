@@ -27,6 +27,7 @@ class FakeRunner:
         self.command_kwargs = []
         self.mouse_reads = 0
         self.active_window = "0x100"
+        self.raw_focus_window = "0x200"
 
     def __call__(self, arguments, **kwargs):
         self.commands.append(arguments)
@@ -59,8 +60,14 @@ class FakeRunner:
                 returncode=0,
             )
         if command == "getwindowfocus":
-            value = self.focus_ids.pop(0) if self.focus_ids else "0x100"
+            if "-f" in arguments:
+                value = self.raw_focus_window
+            else:
+                value = self.focus_ids.pop(0) if self.focus_ids else "0x100"
             return SimpleNamespace(stdout=value, returncode=0)
+        if command == "windowfocus":
+            self.raw_focus_window = arguments[-1]
+            return SimpleNamespace(stdout="", returncode=0)
         if command == "getwindowclassname":
             return SimpleNamespace(stdout="eeschema", returncode=0)
         if command == "getwindowname":
@@ -366,6 +373,9 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(pointer_check, runner.commands)
         self.assertIn(filter_click, runner.commands)
         self.assertIn(client_click, runner.commands)
+        self.assertIn(
+            ["xdotool", "getwindowfocus", "-f"], runner.commands
+        )
         self.assertEqual(
             sum(command == pointer_check for command in runner.commands), 2
         )
@@ -415,6 +425,34 @@ class CursorPlacementTests(unittest.TestCase):
         "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
         return_value=False,
     )
+    @patch(
+        "kicad_jlcpcb.cursor_placement.paste_search_text_via_context_menu",
+        return_value=False,
+    )
+    @patch(
+        "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
+        return_value=True,
+    )
+    def test_refocuses_raw_x11_child_when_chooser_frame_is_only_ancestor(
+        self, _focus_search, _paste
+    ):
+        runner = FakeRunner(["0x200", "0x200", "0x100"])
+        runner.raw_focus_window = "0x201"
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            kicad=FakeKiCad(),
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+        self.assertIn(
+            ["xdotool", "getwindowfocus", "-f"], runner.commands
+        )
+        self.assertIn(
+            ["xdotool", "windowfocus", "--sync", "0x201"], runner.commands
+        )
+
     def test_uses_add_hotkey_when_ipc_action_is_unavailable(
         self, _focus_search, _which
     ):

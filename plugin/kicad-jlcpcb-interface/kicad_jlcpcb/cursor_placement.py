@@ -723,6 +723,32 @@ def start_native_symbol_placement(
         pause=pause,
     )
     if not pasted:
+        # getwindowfocus normally climbs to a WM_CLASS-bearing top-level
+        # frame. Query the raw X11 focus as well: wxGTK may keep keyboard focus
+        # on a child window while the chooser frame remains the active window.
+        raw_focus = send("getwindowfocus", "-f")
+        print(
+            "chooser-x11-raw-focus="
+            f"raw={raw_focus!r} chooser={chooser_id!r}",
+            flush=True,
+        )
+        if raw_focus and raw_focus != chooser_id:
+            try:
+                send("windowfocus", "--sync", raw_focus)
+                pause(0.05)
+                focused_raw = send("getwindowfocus", "-f")
+                print(
+                    "chooser-x11-child-focus="
+                    f"requested={raw_focus!r} actual={focused_raw!r}",
+                    flush=True,
+                )
+            except subprocess.SubprocessError as exc:
+                print(
+                    "chooser-x11-child-focus=failed "
+                    f"target={raw_focus!r} error={type(exc).__name__}:{exc}",
+                    flush=True,
+                )
+
         # Keyboard fallback for desktops whose Search control does not expose
         # a native Paste action through accessibility.
         send("key", "--clearmodifiers", "ctrl+a")
