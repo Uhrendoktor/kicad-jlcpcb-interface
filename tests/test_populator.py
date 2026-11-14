@@ -13,8 +13,8 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.draft import symbol_library_id  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
-    ComponentPopulator,
     MAX_CATALOGUE_IMAGE_BYTES,
+    ComponentPopulator,
     _download_catalogue_image,
     resolve_component_action_target,
     resolve_passive_action_target,
