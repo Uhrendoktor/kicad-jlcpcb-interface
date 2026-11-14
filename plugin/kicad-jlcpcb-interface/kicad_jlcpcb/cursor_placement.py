@@ -44,6 +44,52 @@ def capture_eeschema_window_id(
 
 
 
+_WX_ACTION_APP = None
+
+
+def type_focused_widget_with_wx(
+    text: str,
+    *,
+    wx_module=None,
+) -> bool:
+    """Type ASCII text through wxWidgets' native UI action simulator."""
+    global _WX_ACTION_APP
+    if not text or not text.isascii():
+        return False
+    if wx_module is None:
+        try:
+            import wx as wx_module
+        except Exception as exc:
+            print(
+                f"chooser-wx-simulator=unavailable error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return False
+    try:
+        get_app = getattr(wx_module, "GetApp", None)
+        app = get_app() if callable(get_app) else None
+        if app is None:
+            if _WX_ACTION_APP is None:
+                _WX_ACTION_APP = wx_module.App(False)
+        simulator = wx_module.UIActionSimulator()
+        sent = bool(simulator.Text(text))
+        yield_events = getattr(wx_module, "YieldIfNeeded", None)
+        if callable(yield_events):
+            yield_events()
+        print(
+            f"chooser-wx-simulator=text-sent sent={sent} length={len(text)}",
+            flush=True,
+        )
+        return sent
+    except Exception as exc:
+        print(
+            f"chooser-wx-simulator=failed error={type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return False
+
+
+
 def focus_symbol_chooser_search_at_point(
     x: int,
     y: int,
@@ -472,17 +518,22 @@ def start_native_symbol_placement(
 
     # Filter on the lowercase LCSC suffix to avoid shifted punctuation.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
-    filter_set_accessibly = focus_symbol_chooser_search_at_point(
-        filter_x, filter_y, text=filter_text
-    )
-    # The wxWidgets text entry may ignore XTest key events in this modal dialog.
-    # Use the X11 PRIMARY selection and a middle-click paste first; fall back to
-    # the tested XTest path only when xclip is not installed or cannot run.
+    # The click above has put the actual wxSearchCtrl under the pointer. Prefer
+    # wx.UIActionSimulator for the text entry; it uses the wxWidgets-native
+    # input path. AT-SPI keysyms and clipboard/XTest remain compatibility
+    # fallbacks for environments where the simulator is unavailable.
+    focus_symbol_chooser_search_at_point(filter_x, filter_y)
+    wx_text_sent = type_focused_widget_with_wx(filter_text)
+    filter_set_accessibly = wx_text_sent
+    if wx_text_sent:
+        print("chooser-input=wx-ui-action-simulator", flush=True)
+    else:
+        filter_set_accessibly = focus_symbol_chooser_search_at_point(
+            filter_x, filter_y, text=filter_text
+        )
     xclip = shutil.which("xclip")
     primary_pasted = False
-    if filter_set_accessibly:
-        print("chooser-input=atspi-keyboard-string", flush=True)
-    elif xclip:
+    if not filter_set_accessibly and xclip:
         try:
             command_runner(
                 [xclip, "-selection", "clipboard", "-in", "-loops", "10"],
@@ -498,11 +549,9 @@ def start_native_symbol_placement(
             print("chooser-input=clipboard-ctrl-v", flush=True)
         except (OSError, subprocess.SubprocessError) as exc:
             print(
-                f"chooser-input=primary-paste-failed {type(exc).__name__}: {exc}",
+                f"chooser-input=clipboard-paste-failed {type(exc).__name__}: {exc}",
                 flush=True,
             )
-    # When AT-SPI has edited the actual Search widget successfully, do not
-    # overwrite it. Otherwise, replace any pasted text and retry with XTest.
     if not filter_set_accessibly:
         send("key", "--clearmodifiers", "ctrl+a")
         for character in filter_text:

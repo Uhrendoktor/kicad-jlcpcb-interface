@@ -14,6 +14,7 @@ from kicad_jlcpcb.cursor_placement import (  # noqa: E402
     capture_eeschema_window_id,
     focus_symbol_chooser_search_at_point,
     start_native_symbol_placement,
+    type_focused_widget_with_wx,
 )
 
 
@@ -171,6 +172,42 @@ class CursorPlacementTests(unittest.TestCase):
 
         self.assertIsNone(
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
+        )
+
+    def test_types_focused_text_with_wx_action_simulator(self):
+        calls = []
+
+        class FakeSimulator:
+            def Text(self, value):
+                calls.append(value)
+                return True
+
+        class FakeWx:
+            @staticmethod
+            def GetApp():
+                return object()
+
+            @staticmethod
+            def UIActionSimulator():
+                return FakeSimulator()
+
+            @staticmethod
+            def YieldIfNeeded():
+                return None
+
+        self.assertTrue(
+            type_focused_widget_with_wx("c25744", wx_module=FakeWx)
+        )
+        self.assertEqual(calls, ["c25744"])
+
+    def test_wx_action_simulator_rejects_non_ascii_filter_text(self):
+        class UnusedWx:
+            @staticmethod
+            def UIActionSimulator():
+                raise AssertionError("wx must not be created for non-ASCII input")
+
+        self.assertFalse(
+            type_focused_widget_with_wx("µF", wx_module=UnusedWx)
         )
 
     def test_atspi_synthesizes_keyboard_string_into_nested_search_entry(self):
