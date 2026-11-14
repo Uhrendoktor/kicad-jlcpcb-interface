@@ -508,6 +508,7 @@ class ComponentPopulatorCleanupTests(unittest.TestCase):
             "closed",
             "root",
             "messagebox",
+            "tk",
             "create_mode",
             "generated_library_symbol",
             "cursor_placement_started",
