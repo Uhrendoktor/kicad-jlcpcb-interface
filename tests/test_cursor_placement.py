@@ -125,9 +125,17 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "windowactivate", "--sync", "0x200"],
             runner.commands,
         )
-        self.assertNotIn(
+        self.assertIn(
             ["xdotool", "windowfocus", "--sync", "0x200"],
             runner.commands,
+        )
+        self.assertLess(
+            runner.commands.index(chooser_title_command),
+            runner.commands.index(["xdotool", "windowfocus", "--sync", "0x200"]),
+        )
+        self.assertLess(
+            runner.commands.index(["xdotool", "windowfocus", "--sync", "0x200"]),
+            loaded_index,
         )
         self.assertNotIn(
             ["xdotool", "windowmove", "--sync", "0x200", "0", "0"],
