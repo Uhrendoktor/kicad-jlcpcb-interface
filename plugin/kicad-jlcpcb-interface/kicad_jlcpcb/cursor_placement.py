@@ -224,7 +224,7 @@ def focus_symbol_chooser_search_at_point(
                 # EditableText.insertText/setTextContents can update the
                 # accessibility representation without updating wxGTK itself.
                 generated = bool(
-                    generate_key_event(None, text, key_string)
+                    generate_key_event(0, text, key_string)
                 )
                 time.sleep(0.1)
                 text_result = str(candidate.queryText().getText(0, -1))
