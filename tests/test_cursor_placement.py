@@ -178,7 +178,8 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertIn(
             [
-                "xdotool", "type", "--clearmodifiers", "--delay", "12", "C_C1591"
+                "xdotool", "type", "--window", "0x200",
+                "--clearmodifiers", "--delay", "12", "C_C1591"
             ],
             runner.commands,
         )
