@@ -122,7 +122,10 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(["xdotool", "getwindowname", "0x200"]),
             runner.commands.index(key_commands[0]),
         )
-        self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
+        self.assertLess(
+            runner.commands.index(key_commands[-1]),
+            runner.commands.index(return_command),
+        )
         self.assertLess(
             runner.commands.index(return_command),
             runner.commands.index(restore_pointer),
