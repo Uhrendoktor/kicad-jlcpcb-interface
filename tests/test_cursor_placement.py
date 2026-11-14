@@ -126,12 +126,9 @@ class CursorPlacementTests(unittest.TestCase):
         add_symbol_hotkey = ["xdotool", "key", "--clearmodifiers", "a"]
         title_command = ["xdotool", "getwindowname", "0x200"]
         type_command = [
-            "xdotool", "type", "--window", "0x200", "--clearmodifiers",
-            "--delay", "12", "R_C60489",
+            "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
-        return_command = [
-            "xdotool", "key", "--window", "0x200", "--clearmodifiers", "Return"
-        ]
+        return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         type_index = runner.commands.index(type_command)
         title_checks = [
@@ -197,8 +194,7 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(chooser_focus),
             runner.commands.index(
                 [
-                    "xdotool", "type", "--window", "0x200", "--clearmodifiers",
-                    "--delay", "12", "R_C60489",
+                    "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489",
                 ]
             ),
         )
