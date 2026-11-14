@@ -4,6 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
@@ -20,10 +21,20 @@ class FakeRunner:
         self.focus_ids = list(focus_ids)
         self.window_titles = dict(window_titles or {})
         self.commands = []
+        self.command_kwargs = []
         self.mouse_reads = 0
 
-    def __call__(self, arguments, **_kwargs):
+    def __call__(self, arguments, **kwargs):
         self.commands.append(arguments)
+        self.command_kwargs.append(kwargs)
+        if arguments[1] == "getwindowgeometry":
+            return SimpleNamespace(
+                stdout=(
+                    "WINDOW=0x200\\nX=521\\nY=439\\n"
+                    "WIDTH=880\\nHEIGHT=680\\nSCREEN=0"
+                ),
+                returncode=0,
+            )
         command = arguments[1]
         if command == "getwindowpid":
             return SimpleNamespace(stdout="4242", returncode=0)
@@ -90,7 +101,10 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
-    def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(self):
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
+    def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
+        self, _which
+    ):
         runner = FakeRunner(["0x200", "0x100"])
         kicad = FakeKiCad()
 
@@ -107,25 +121,28 @@ class CursorPlacementTests(unittest.TestCase):
             kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
         )
         chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
-        key_commands = [
-            ["xdotool", "key", "--clearmodifiers", character]
-            for character in "c60489"
+        filter_move = ["xdotool", "mousemove", "--sync", "631", "445"]
+        filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
+        clipboard_command = [
+            "xclip", "-selection", "primary", "-in", "-loops", "1"
         ]
+        paste_click = ["xdotool", "click", "2"]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         self.assertIn(chooser_focus, runner.commands)
-        for command in key_commands:
-            self.assertIn(command, runner.commands)
+        self.assertIn(filter_move, runner.commands)
+        self.assertIn(filter_click, runner.commands)
+        self.assertIn(clipboard_command, runner.commands)
+        self.assertIn(paste_click, runner.commands)
         self.assertIn(return_command, runner.commands)
         self.assertIn(restore_pointer, runner.commands)
-        self.assertLess(
-            runner.commands.index(["xdotool", "getwindowname", "0x200"]),
-            runner.commands.index(key_commands[0]),
-        )
-        self.assertLess(
-            runner.commands.index(key_commands[-1]),
-            runner.commands.index(return_command),
-        )
+        clipboard_index = runner.commands.index(clipboard_command)
+        self.assertEqual(runner.command_kwargs[clipboard_index]["input"], "c60489")
+        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_move))
+        self.assertLess(runner.commands.index(filter_move), runner.commands.index(filter_click))
+        self.assertLess(runner.commands.index(filter_click), clipboard_index)
+        self.assertLess(clipboard_index, runner.commands.index(paste_click))
+        self.assertLess(runner.commands.index(paste_click), runner.commands.index(return_command))
         self.assertLess(
             runner.commands.index(return_command),
             runner.commands.index(restore_pointer),

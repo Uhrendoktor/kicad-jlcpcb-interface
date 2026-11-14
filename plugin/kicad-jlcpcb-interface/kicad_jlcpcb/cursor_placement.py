@@ -201,20 +201,59 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
-    # Match KiCad Blocks' verified handoff: focus the native chooser window
-    # synchronously, then type into the chooser's already-focused Search field.
-    # No screen-coordinate click or direct-coordinate placement is involved.
+    # Focus the native chooser's Search field with a real pointer click. This
+    # is UI navigation only; KiCad still owns symbol selection and cursor
+    # placement. Do not synthesize an X/Y placement point.
     send("windowfocus", "--sync", chooser_id)
-    # The chooser's filter is case-insensitive; typing the LCSC suffix in
-    # lower case avoids shifted characters and still narrows to this generated
-    # project symbol (for example R_C25744 -> c25744).
+    chooser_geometry = shell_geometry(
+        send("getwindowgeometry", "--shell", chooser_id)
+    )
+    try:
+        chooser_x = chooser_geometry["X"]
+        chooser_y = chooser_geometry["Y"]
+        chooser_width = chooser_geometry["WIDTH"]
+        chooser_height = chooser_geometry["HEIGHT"]
+    except KeyError as exc:
+        raise RuntimeError(
+            "Could not locate the native symbol chooser Search field."
+        ) from exc
+    filter_x = chooser_x + min(80, max(40, chooser_width // 8))
+    filter_y = chooser_y + min(6, max(4, chooser_height // 100))
+    send("mousemove", "--sync", str(filter_x), str(filter_y))
+    send("click", "--clearmodifiers", "1")
+    pause(0.1)
+
+    # Filter on the lowercase LCSC suffix to avoid shifted punctuation.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
-    # Send regular key press/release events individually. This avoids the
-    # XTest text helper's character-mapping path, which is dropped by this
-    # modal wxWidgets chooser in some Linux environments.
-    for character in filter_text:
-        send("key", "--clearmodifiers", character)
-        pause(0.025)
+    # The wxWidgets text entry may ignore XTest key events in this modal dialog.
+    # Use the X11 PRIMARY selection and a middle-click paste first; fall back to
+    # the tested XTest path only when xclip is not installed or cannot run.
+    xclip = shutil.which("xclip")
+    primary_pasted = False
+    if xclip:
+        try:
+            command_runner(
+                [xclip, "-selection", "primary", "-in", "-loops", "1"],
+                input=filter_text,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                check=True,
+                timeout=5,
+            )
+            send("click", "2")
+            primary_pasted = True
+            print("chooser-input=primary-selection-paste", flush=True)
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(
+                f"chooser-input=primary-paste-failed {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+    if not primary_pasted:
+        for character in filter_text:
+            send("key", "--clearmodifiers", character)
+            pause(0.025)
+        print("chooser-input=xtest-keys", flush=True)
     pause(0.15)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
