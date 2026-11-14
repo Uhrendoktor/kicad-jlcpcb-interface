@@ -154,22 +154,50 @@ def start_native_symbol_placement(
     pause(0.15)
     send("key", "--clearmodifiers", "Return")
 
+    last_focus: tuple[str, str, str, str] = ("", "", "", "")
     for _ in range(30):
         focused_id = send("getwindowfocus", check=False)
-        if editor_window_id and focused_id == str(editor_window_id):
-            return
-        if focused_id and chooser_pid:
-            focused_pid = send("getwindowpid", focused_id, check=False)
-            focused_title = send("getwindowname", focused_id, check=False).casefold()
-            still_chooser = (
-                "choose symbol" in focused_title
-                or "select symbol" in focused_title
+        focused_pid = (
+            send("getwindowpid", focused_id, check=False) if focused_id else ""
+        )
+        focused_title = (
+            send("getwindowname", focused_id, check=False).casefold()
+            if focused_id else ""
+        )
+        focused_class = (
+            send("getwindowclassname", focused_id, check=False).casefold()
+            if focused_id else ""
+        )
+        last_focus = (focused_id, focused_pid, focused_class, focused_title)
+
+        still_chooser = (
+            "choose symbol" in focused_title
+            or "select symbol" in focused_title
+        )
+        is_eeschema = (
+            focused_class == "eeschema"
+            or "schematic editor" in focused_title
+            or (
+                bool(editor_pid)
+                and focused_pid == editor_pid
+                and not still_chooser
             )
-            if focused_pid == chooser_pid and not still_chooser:
-                return
+            or (
+                bool(chooser_pid)
+                and focused_pid == chooser_pid
+                and not still_chooser
+            )
+        )
+        if is_eeschema:
+            return
         pause(0.1)
 
+    focused_id, focused_pid, focused_class, focused_title = last_focus
     raise RuntimeError(
         "KiCad accepted the generated symbol selection but did not return to "
-        "Eeschema with the part on the cursor. Check the native chooser and retry."
+        "Eeschema with the part on the cursor. "
+        f"Editor={editor_window_id!r}/{editor_pid!r}; "
+        f"chooser={chooser_id!r}/{chooser_pid!r}; "
+        f"focused={focused_id!r}/{focused_pid!r} "
+        f"({focused_class!r} / {focused_title!r}). Check the native chooser and retry."
     )
