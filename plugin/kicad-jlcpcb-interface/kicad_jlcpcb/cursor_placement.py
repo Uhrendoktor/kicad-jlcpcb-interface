@@ -527,15 +527,22 @@ def start_native_symbol_placement(
     send("mousemove", "--sync", str(filter_x), str(filter_y))
     pointer = shell_geometry(send("getmouselocation", "--shell"))
     pointer_window = pointer.get("WINDOW")
-    pointer_pid = (
-        send("getwindowpid", str(pointer_window))
-        if pointer_window is not None else ""
-    )
+    try:
+        # X11 reports the Openbox reparenting frame when the pointer is over
+        # the chooser's client area. That frame has no PID; do not treat this
+        # normal window-manager parent as a placement failure.
+        pointer_pid = (
+            send("getwindowpid", str(pointer_window))
+            if pointer_window is not None else ""
+        )
+    except (OSError, subprocess.SubprocessError):
+        pointer_pid = "window-manager-frame"
     print(
         "chooser-pointer="
         f"position=({pointer.get('X')},{pointer.get('Y')}) "
         f"window={pointer_window!r} pid={pointer_pid!r} "
-        f"target={chooser_id!r}",
+        f"target={chooser_id!r} active={send('getactivewindow')!r} "
+        f"focus={send('getwindowfocus')!r}",
         flush=True,
     )
     if pointer.get("X") != filter_x or pointer.get("Y") != filter_y:
