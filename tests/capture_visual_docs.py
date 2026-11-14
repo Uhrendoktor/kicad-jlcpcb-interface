@@ -38,7 +38,6 @@ from kicad_jlcpcb.media import download_product_image  # noqa: E402
 from kicad_jlcpcb.model import (  # noqa: E402
     find_linked_components,
     find_selected_component,
-    iter_schematic_symbols,
 )
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
@@ -1201,7 +1200,8 @@ def _drive_populator_form(
             if assert_basic_shortlist:
                 if len(candidate_iids) > 5:
                     raise RuntimeError(
-                        f"Passive value search returned {len(candidate_iids)} rows; expected at most five."
+                        "Passive value search returned "
+                        f"{len(candidate_iids)} rows; expected at most five."
                     )
                 classes = [
                     (
@@ -1423,7 +1423,9 @@ def _drive_populator_form(
                     check=False,
                     timeout=10,
                 ).stdout.strip()
-                if "eeschema" not in window_class.casefold() and "schematic editor" not in title.casefold():
+                is_editor_class = "eeschema" in window_class.casefold()
+                is_editor_title = "schematic editor" in title.casefold()
+                if not (is_editor_class or is_editor_title):
                     raise RuntimeError(
                         "The native cursor handoff did not return focus to Eeschema: "
                         f"{window_class!r} / {title!r}"
