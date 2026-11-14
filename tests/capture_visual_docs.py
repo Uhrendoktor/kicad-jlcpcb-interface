@@ -1472,6 +1472,35 @@ def _capture_passive_component_workflows(
     cache_dir: Path,
 ) -> None:
     """Exercise both modes of the unified component action against live Eeschema."""
+    # Mimic the production entrypoint: ensure Eeschema is the focused window and
+    # capture its ID before either mode opens a Tk component dialog.
+    windows = subprocess.run(
+        ["xdotool", "search", "--onlyvisible", "--class", "eeschema"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    editor_candidates = [
+        item.strip() for item in windows.stdout.splitlines() if item.strip()
+    ]
+    if windows.returncode or not editor_candidates:
+        raise RuntimeError(
+            "The live GUI fixture could not find a visible Eeschema window."
+        )
+    subprocess.run(
+        ["xdotool", "windowfocus", "--sync", editor_candidates[0]],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    editor_window_id = capture_eeschema_window_id()
+    if not editor_window_id:
+        raise RuntimeError(
+            "The live GUI fixture could not capture the focused Eeschema window."
+        )
+
     # Populate: the entrypoint requires exactly one selected generic passive.
     schematic.clear_selection()
     schematic.add_to_selection([symbols["R2"]])
@@ -1571,12 +1600,6 @@ def _capture_passive_component_workflows(
     if not create_mode or add_target is not None or add_library_id:
         raise RuntimeError("An empty selection did not resolve to add mode.")
 
-    editor_window_id = capture_eeschema_window_id()
-    if not editor_window_id:
-        raise RuntimeError(
-            "The Add-mode GUI fixture could not capture the focused Eeschema window "
-            "before opening its component dialog."
-        )
     create = ComponentPopulator(
         schematic,
         None,
