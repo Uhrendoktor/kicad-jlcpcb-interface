@@ -307,11 +307,16 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
-        for character in "c60489":
-            self.assertIn(
-                ["xdotool", "key", "--clearmodifiers", character],
-                runner.commands,
-            )
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
+        )
+        self.assertIn(
+            [
+                "xdotool", "type", "--clearmodifiers", "--delay", "35",
+                "c60489",
+            ],
+            runner.commands,
+        )
 
     def test_uses_native_place_menu_when_add_hotkey_does_not_open_chooser(self):
         runner = FakeRunner(
