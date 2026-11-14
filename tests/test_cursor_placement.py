@@ -70,10 +70,12 @@ class FakeRunner:
             return SimpleNamespace(stdout=value, returncode=0)
         if command == "getmouselocation":
             self.mouse_reads += 1
-            return SimpleNamespace(
-                stdout="X=500\nY=150\nSCREEN=0\nWINDOW=0x100",
-                returncode=0,
+            output = (
+                "X=500\nY=150\nSCREEN=0\nWINDOW=0x100"
+                if self.mouse_reads == 1
+                else "X=601\nY=449\nSCREEN=0\nWINDOW=0x200"
             )
+            return SimpleNamespace(stdout=output, returncode=0)
         return SimpleNamespace(stdout="", returncode=0)
 
 
