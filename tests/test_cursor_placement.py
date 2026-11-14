@@ -100,7 +100,7 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
-    def test_starts_native_chooser_with_add_hotkey_and_returns_with_symbol_on_cursor(self):
+    def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(self):
         runner = FakeRunner(
             ["0x200", "0x100"],
             ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
@@ -120,7 +120,9 @@ class CursorPlacementTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(kicad.actions, [])
+        self.assertEqual(
+            kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
+        )
         editor_activate = ["xdotool", "windowactivate", "--sync", "0x100"]
         add_symbol_hotkey = ["xdotool", "key", "--clearmodifiers", "a"]
         title_command = ["xdotool", "getwindowname", "0x200"]
@@ -134,15 +136,11 @@ class CursorPlacementTests(unittest.TestCase):
             index for index, command in enumerate(runner.commands)
             if command == title_command
         ]
-        self.assertIn(editor_activate, runner.commands)
-        self.assertIn(add_symbol_hotkey, runner.commands)
-        self.assertLess(
-            runner.commands.index(editor_activate),
-            runner.commands.index(add_symbol_hotkey),
-        )
-        self.assertLess(runner.commands.index(add_symbol_hotkey), title_checks[0])
+        self.assertNotIn(editor_activate, runner.commands)
+        self.assertNotIn(add_symbol_hotkey, runner.commands)
+        self.assertLess(runner.commands.index(title_command), type_index)
         self.assertEqual(len(title_checks), 2)
-        chooser_focus = ["xdotool", "windowactivate", "--sync", "0x200"]
+        chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
         self.assertIn(chooser_focus, runner.commands)
         self.assertLess(runner.commands.index(chooser_focus), type_index)
         self.assertLess(type_index, runner.commands.index(return_command))
@@ -171,7 +169,9 @@ class CursorPlacementTests(unittest.TestCase):
             command_runner=runner,
             pause=lambda _seconds: None,
         )
-        self.assertEqual(kicad.actions, [])
+        self.assertEqual(
+            kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
+        )
         self.assertIn(
             ["xdotool", "windowactivate", "--sync", "0x100"], runner.commands
         )
@@ -197,23 +197,20 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
 
-    def test_falls_back_to_direct_focus_without_an_ewmh_window_manager(self):
+    def test_uses_direct_chooser_focus_as_in_kicad_blocks(self):
         runner = FakeRunner(["0x200", "0x100"])
-
-        def command_runner(arguments, **kwargs):
-            if arguments[1] == "windowactivate" and arguments[-1] == "0x200":
-                raise subprocess.CalledProcessError(1, arguments)
-            return runner(arguments, **kwargs)
-
         start_native_symbol_placement(
             "0x100",
             "R_C60489",
             xdotool="xdotool",
-            command_runner=command_runner,
+            command_runner=runner,
             pause=lambda _seconds: None,
         )
         self.assertIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
+        )
+        self.assertNotIn(
+            ["xdotool", "windowactivate", "--sync", "0x200"], runner.commands
         )
 
     def test_accepts_focus_return_to_another_eeschema_child_window(self):
