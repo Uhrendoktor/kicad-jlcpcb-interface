@@ -968,6 +968,14 @@ class ComponentPopulator:
                 "Enter a KiCad Library:Symbol and a component value before placing the part."
             )
 
+    def _start_generated_symbol_placement(self, generated: Any) -> None:
+        """Open the generated symbol in Eeschema using the active KiCad session."""
+        start_native_symbol_placement(
+            self.editor_window_id,
+            generated.symbol_name,
+            kicad=self.kicad,
+        )
+
     def apply(self) -> None:
         draft = self.draft
         if self.create_mode:
@@ -1043,10 +1051,7 @@ class ComponentPopulator:
                 # mapped over the native chooser.
                 self.root.withdraw()
                 withdrawn = True
-                start_native_symbol_placement(
-                    self.editor_window_id,
-                    generated.symbol_name,
-                )
+                self._start_generated_symbol_placement(generated)
                 self.cursor_placement_started = True
                 self.close()
                 return

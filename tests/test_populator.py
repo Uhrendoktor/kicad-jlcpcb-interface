@@ -536,6 +536,23 @@ class TkCleanupExecutor:
         )
 
 
+class ComponentPlacementHandoffTests(unittest.TestCase):
+    def test_forwards_the_live_kicad_connection_to_cursor_placement(self):
+        populator = object.__new__(ComponentPopulator)
+        populator.editor_window_id = "0x100"
+        populator.kicad = object()
+        generated = SimpleNamespace(symbol_name="R_C60489")
+
+        with patch("kicad_jlcpcb.populator.start_native_symbol_placement") as place:
+            populator._start_generated_symbol_placement(generated)
+
+        place.assert_called_once_with(
+            "0x100",
+            "R_C60489",
+            kicad=populator.kicad,
+        )
+
+
 class ComponentPopulatorCleanupTests(unittest.TestCase):
     def test_joins_workers_and_releases_tk_state_before_destroy(self):
         events = []
