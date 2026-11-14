@@ -42,6 +42,94 @@ def capture_eeschema_window_id(
     return window_id
 
 
+def set_symbol_chooser_filter_accessibly(
+    symbol_name: str,
+    *,
+    atspi_module=None,
+) -> bool:
+    """Set the native chooser's search entry through AT-SPI when available."""
+    if atspi_module is None:
+        try:
+            import pyatspi as atspi_module
+        except Exception as exc:
+            print(
+                f"chooser-atspi=unavailable error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return False
+
+    try:
+        desktop = atspi_module.Registry.getDesktop(0)
+    except Exception as exc:
+        print(
+            f"chooser-atspi=desktop-unavailable error={type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return False
+
+    stack = [(desktop, False, 0)]
+    visited = 0
+    dialog_found = False
+    accessible_nodes = []
+    while stack and visited < 1200:
+        node, in_chooser, depth = stack.pop()
+        visited += 1
+        try:
+            name = str(getattr(node, "name", "") or "")
+        except Exception:
+            name = ""
+        try:
+            role = str(node.getRoleName())
+        except Exception:
+            role = ""
+        chooser_node = in_chooser or "choose symbol" in name.casefold()
+        if chooser_node:
+            dialog_found = True
+            try:
+                interfaces = list(node.getInterfaces())
+            except Exception:
+                interfaces = []
+            accessible_nodes.append((name, role, interfaces))
+            if "EditableText" in interfaces or role.casefold() in {
+                "entry", "text", "search box",
+            }:
+                try:
+                    component = node.queryComponent()
+                    component.grabFocus()
+                    editable = node.queryEditableText()
+                    editable.setTextContents(symbol_name)
+                    entered = node.queryText().getText(0, -1)
+                    if str(entered) == symbol_name:
+                        print(
+                            "chooser-atspi=filter-set "
+                            f"role={role!r} interfaces={interfaces!r}",
+                            flush=True,
+                        )
+                        return True
+                except Exception as exc:
+                    accessible_nodes.append(
+                        (name, role, [*interfaces, f"set-failed:{type(exc).__name__}:{exc}"])
+                    )
+        if depth < 12:
+            try:
+                child_count = int(node.childCount)
+            except Exception:
+                child_count = 0
+            for index in range(min(child_count, 100)):
+                try:
+                    stack.append((node.getChildAtIndex(index), chooser_node, depth + 1))
+                except Exception:
+                    continue
+
+    print(
+        "chooser-atspi=editable-text-not-found "
+        f"dialog_found={dialog_found} inspected={visited} "
+        f"nodes={accessible_nodes[:30]!r}",
+        flush=True,
+    )
+    return False
+
+
 def start_native_symbol_placement(
     editor_window_id: str | None,
     symbol_name: str,
@@ -273,9 +361,12 @@ def start_native_symbol_placement(
             except subprocess.SubprocessError:
                 continue
         print(f"chooser-x11-visible-windows={visible_windows!r}", flush=True)
-    # Use XTest against the globally focused native chooser. xdotool's
-    # --window mode uses XSendEvent, which wxWidgets controls may ignore.
-    send("type", "--clearmodifiers", "--delay", "50", symbol_name)
+    # wxGTK's search control may ignore synthetic XTest typing while a
+    # modal chooser is active. Prefer its AT-SPI EditableText interface; fall
+    # back to ordinary XTest input on desktops without accessibility support.
+    filter_set_accessibly = set_symbol_chooser_filter_accessibly(symbol_name)
+    if not filter_set_accessibly:
+        send("type", "--clearmodifiers", "--delay", "50", symbol_name)
     pause(0.5)
     if debug_capture:
         try:
