@@ -171,8 +171,10 @@ def set_symbol_chooser_filter_accessibly(
                 "KEY_STRING",
                 getattr(atspi_module, "ATSPI_KEY_STRING", 4),
             )
+            # PyGObject's binding requires a numeric key value even for
+            # KEY_STRING, where the text payload carries the actual input.
             generated = generate_keyboard_event(
-                None, symbol_name, int(key_string)
+                0, symbol_name, int(key_string)
             )
             if generated is False:
                 hit_errors.append(

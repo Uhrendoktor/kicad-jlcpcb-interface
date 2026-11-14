@@ -217,7 +217,7 @@ class CursorPlacementTests(unittest.TestCase):
             )
         )
         self.assertEqual(search_entry.hit_test_calls, [(611, 445, 0)])
-        self.assertEqual(keyboard_calls, [(None, "R_C60489", 4)])
+        self.assertEqual(keyboard_calls, [(0, "R_C60489", 4)])
         self.assertEqual(search_entry.text, "R_C60489")
         self.assertTrue(search_entry.focused)
 
