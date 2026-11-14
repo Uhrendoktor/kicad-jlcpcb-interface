@@ -35,6 +35,7 @@ from .value_search import (
 )
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
+MAX_PASSIVE_CANDIDATES = 5
 
 
 MAX_CATALOGUE_IMAGE_BYTES = MAX_PRODUCT_IMAGE_BYTES
@@ -557,13 +558,11 @@ class ComponentPopulator:
                     if mode == "value":
                         try:
                             all_matches = exact_passive_candidates(query, result)
-                            matches = exact_passive_candidates(
-                                query, result, limit=5
-                            )
+                            match_count = len(all_matches)
+                            matches = all_matches[:MAX_PASSIVE_CANDIDATES]
                         except ValueError as exc:
                             self.status_var.set(f"Could not interpret {query!r}: {exc}")
                             continue
-                        match_count = len(all_matches)
                     else:
                         matches_by_id = {}
                         for details in result:
