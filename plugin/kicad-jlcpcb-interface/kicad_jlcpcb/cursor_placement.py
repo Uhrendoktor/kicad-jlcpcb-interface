@@ -45,17 +45,13 @@ def start_native_symbol_placement(
     editor_window_id: str | None,
     symbol_name: str,
     *,
+    kicad=None,
     xdotool: str | None = None,
     command_runner: Callable = subprocess.run,
     pause: Callable[[float], None] = time.sleep,
 ) -> None:
     """Choose a generated library symbol in Eeschema and leave it on the cursor."""
     executable = xdotool or shutil.which("xdotool")
-    if not executable:
-        raise RuntimeError(
-            "Cursor placement requires xdotool on the supported Linux/X11 desktop. "
-            "Install it with sudo apt install xdotool, then reopen the action."
-        )
     if not editor_window_id:
         raise RuntimeError(
             "Could not identify the active Eeschema window. Launch this action "
@@ -63,6 +59,27 @@ def start_native_symbol_placement(
         )
     if not symbol_name or any(char.isspace() for char in symbol_name):
         raise ValueError("The generated KiCad symbol name is invalid.")
+
+    run_action = getattr(kicad, "run_action", None)
+    action_started = False
+    if callable(run_action):
+        try:
+            run_action("eeschema.InteractiveDrawing.placeSymbol")
+            action_started = True
+        except Exception:
+            # Older KiCad IPC builds do not expose tool actions. The X11
+            # hotkey remains a compatible fallback for those versions.
+            action_started = False
+
+    if not executable:
+        if action_started:
+            # The native chooser is already open; let the user select the
+            # symbol manually when automatic X11 filtering is unavailable.
+            return
+        raise RuntimeError(
+            "Cursor placement requires xdotool on the supported Linux/X11 desktop. "
+            "Install it with sudo apt install xdotool, then reopen the action."
+        )
 
     def send(*arguments: str) -> str:
         result = command_runner(
@@ -77,19 +94,22 @@ def start_native_symbol_placement(
     editor_pid = send("getwindowpid", str(editor_window_id))
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
-    # Match the proven KiCad Blocks flow: focus the Eeschema window directly
-    # and send the default Add Symbol hotkey. The visual runner intentionally
-    # uses bare Xvfb here; no window manager is needed for this X11 handoff.
-    send("windowfocus", "--sync", str(editor_window_id))
-    pause(0.1)
-    send("key", "--clearmodifiers", "a")
+
+    if not action_started:
+        send("windowfocus", "--sync", str(editor_window_id))
+        pause(0.1)
+        send("key", "--clearmodifiers", "a")
 
     chooser_id = ""
     focused_id = ""
     for _ in range(50):
         focused_id = send("getwindowfocus")
         if focused_id and focused_id != str(editor_window_id):
-            if send("getwindowpid", focused_id) == editor_pid:
+            focused_pid = send("getwindowpid", focused_id)
+            focused_title = send("getwindowname", focused_id).casefold()
+            same_process = bool(editor_pid and focused_pid == editor_pid)
+            is_chooser = "choose symbol" in focused_title or "select symbol" in focused_title
+            if same_process or is_chooser:
                 chooser_id = focused_id
                 break
         pause(0.1)
@@ -97,7 +117,7 @@ def start_native_symbol_placement(
     if not chooser_id:
         focused_pid = send("getwindowpid", focused_id) if focused_id else ""
         focused_title = send("getwindowname", focused_id) if focused_id else ""
-        if focused_pid == editor_pid:
+        if not action_started and focused_pid == editor_pid:
             try:
                 send("key", "--clearmodifiers", "Escape")
             except subprocess.SubprocessError:
@@ -110,14 +130,10 @@ def start_native_symbol_placement(
             "then retry."
         )
 
-    # Send the mouse and keyboard events directly to the native chooser
-    # window. The search field is a wxSearchCtrl without a separate X11 child
-    # window, so targeting the chooser frame avoids pointer hit-testing against
-    # the floating preview canvas or GTK's transient focus traversal.
-    send("windowfocus", "--sync", chooser_id)
-    send("mousemove", "--sync", "--window", chooser_id, "150", "15")
-    send("click", "--window", chooser_id, "1")
-    send("type", "--window", chooser_id, "--delay", "12", symbol_name)
+    # KiCad's IPC action opens the native modal with its Filter control focused.
+    # Do not refocus the top-level frame: doing so steals focus from wxSearchCtrl
+    # and typed characters are ignored on wxGTK.
+    send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:

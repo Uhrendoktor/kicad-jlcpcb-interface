@@ -1113,14 +1113,14 @@ class ComponentPopulator:
 
             self.generated_library_symbol = generated
             editor_window_id = self.editor_window_id
+            kicad_client = self.kicad
             # Destroy the complete review UI and join both workers before
-            # returning input ownership to Eeschema. Merely withdrawing the Tk
-            # root left the hidden modal client alive during the native chooser
-            # interaction in the Xvfb integration run.
+            # returning input ownership to Eeschema. Keep the IPC client alive
+            # so the native Place Symbol tool can be started through run_action.
             self.close()
             try:
                 start_native_symbol_placement(
-                    editor_window_id, generated.symbol_name
+                    editor_window_id, generated.symbol_name, kicad=kicad_client
                 )
             except Exception as exc:
                 error_root = self.tk.Tk()
