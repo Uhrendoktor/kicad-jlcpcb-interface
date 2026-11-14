@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import gc
 import queue
 import shutil
+import threading
 import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
@@ -38,6 +40,35 @@ PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 
 
 MAX_CATALOGUE_IMAGE_BYTES = MAX_PRODUCT_IMAGE_BYTES
+
+_TK_GC_LOCK = threading.RLock()
+_TK_GC_LEASES = 0
+_TK_GC_WAS_ENABLED = False
+
+
+def _acquire_tk_gc_lease() -> None:
+    """Keep cyclic garbage collection on Tk's owning thread while a root lives."""
+    global _TK_GC_LEASES, _TK_GC_WAS_ENABLED
+    with _TK_GC_LOCK:
+        if _TK_GC_LEASES == 0:
+            _TK_GC_WAS_ENABLED = gc.isenabled()
+            if _TK_GC_WAS_ENABLED:
+                gc.disable()
+        _TK_GC_LEASES += 1
+
+
+def _release_tk_gc_lease() -> None:
+    """Collect Tk cycles on the UI thread before restoring automatic collection."""
+    global _TK_GC_LEASES, _TK_GC_WAS_ENABLED
+    with _TK_GC_LOCK:
+        if _TK_GC_LEASES <= 0:
+            return
+        _TK_GC_LEASES -= 1
+        if _TK_GC_LEASES == 0:
+            gc.collect()
+            if _TK_GC_WAS_ENABLED:
+                gc.enable()
+            _TK_GC_WAS_ENABLED = False
 
 
 def _is_automatically_mapped_passive(draft: ComponentDraft) -> bool:
@@ -112,6 +143,8 @@ class ComponentPopulator:
         self.closed = False
 
         self.root = tk.Tk()
+        _acquire_tk_gc_lease()
+        self._tk_gc_lease = True
         self.palette = apply_tk_theme(self.root, theme)
         self.theme = self.root._kicad_jlcpcb_theme
         self.root.title("Component Workspace")
@@ -1153,6 +1186,7 @@ class ComponentPopulator:
         # destroyed, which otherwise triggers Tcl_AsyncDelete on the wrong thread.
         state = self.__dict__
         root = state["root"]
+        tk_gc_lease = bool(state.get("_tk_gc_lease"))
         try:
             root.after_cancel(state.get("_poll_id"))
         except Exception:
@@ -1182,6 +1216,8 @@ class ComponentPopulator:
         for name, value in preserved.items():
             setattr(self, name, value)
         root.destroy()
+        if tk_gc_lease:
+            _release_tk_gc_lease()
 
     def run(self) -> None:
         self.root.mainloop()
