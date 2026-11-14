@@ -97,6 +97,15 @@ DEMO_PARTS = (
         "position": (120.0, 125.0),
     },
     {
+        "reference": "R3",
+        "value": "10k",
+        "lib_id": "Device:R",
+        "lcsc": "C60489",
+        "mpn": "RC0402JR-0710KL",
+        "footprint": "Resistor_SMD:R_0402_1005Metric",
+        "position": (240.0, 175.0),
+    },
+    {
         "reference": "C1",
         "value": "100nF",
         "lib_id": "Device:C",
