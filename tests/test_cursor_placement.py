@@ -38,7 +38,7 @@ class FakeRunner:
             output = (
                 "X=500\nY=150\nSCREEN=0\nWINDOW=0x100"
                 if self.mouse_reads == 1
-                else "X=120\nY=390\nSCREEN=0\nWINDOW=0x200"
+                else "X=120\nY=366\nSCREEN=0\nWINDOW=0x200"
             )
             return SimpleNamespace(stdout=output, returncode=0)
         if command == "getwindowfocus":
@@ -144,7 +144,7 @@ class CursorPlacementTests(unittest.TestCase):
         filter_geometry = [
             "xdotool", "getwindowgeometry", "--shell", "0x200"
         ]
-        focus_filter = ["xdotool", "mousemove", "--sync", "120", "390"]
+        focus_filter = ["xdotool", "mousemove", "--sync", "120", "366"]
         verify_pointer = ["xdotool", "getmouselocation", "--shell"]
         click_filter = ["xdotool", "click", "1"]
         self.assertIn(filter_geometry, runner.commands)
