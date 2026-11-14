@@ -99,7 +99,7 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
-    def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(self):
+    def test_starts_native_chooser_with_add_hotkey_and_returns_with_symbol_on_cursor(self):
         runner = FakeRunner(
             ["0x200", "0x100"],
             ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
@@ -119,58 +119,32 @@ class CursorPlacementTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(
-            kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
-        )
-        self.assertNotIn(
-            ["xdotool", "windowfocus", "--sync", "0x100"], runner.commands
-        )
-        self.assertNotIn(
-            ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
-        )
+        self.assertEqual(kicad.actions, [])
+        editor_activate = ["xdotool", "windowactivate", "--sync", "0x100"]
+        add_symbol_hotkey = ["xdotool", "key", "--clearmodifiers", "a"]
         title_command = ["xdotool", "getwindowname", "0x200"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
-        self.assertNotIn(
-            ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
-        )
+        restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
+        type_index = runner.commands.index(type_command)
         title_checks = [
             index for index, command in enumerate(runner.commands)
             if command == title_command
         ]
-        geometry_command = ["xdotool", "getwindowgeometry", "--shell", "0x200"]
-        filter_move = ["xdotool", "mousemove", "--sync", "130", "400"]
-        filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
-        restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
-        type_index = runner.commands.index(type_command)
-        return_index = runner.commands.index(return_command)
-        focus_pause_index = runner.commands.index(["pause", 0.1])
+        self.assertIn(editor_activate, runner.commands)
+        self.assertIn(add_symbol_hotkey, runner.commands)
+        self.assertLess(
+            runner.commands.index(editor_activate),
+            runner.commands.index(add_symbol_hotkey),
+        )
+        self.assertLess(runner.commands.index(add_symbol_hotkey), title_checks[0])
         self.assertEqual(len(title_checks), 2)
-        self.assertLess(title_checks[-1], runner.commands.index(geometry_command))
-        self.assertLess(
-            runner.commands.index(filter_click), focus_pause_index
+        self.assertNotIn(
+            ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
-        self.assertLess(focus_pause_index, type_index)
-        self.assertLess(type_index, return_index)
-        self.assertIn(geometry_command, runner.commands)
-        self.assertLess(
-            runner.commands.index(geometry_command),
-            runner.commands.index(filter_move),
-        )
-        self.assertLess(
-            runner.commands.index(filter_move),
-            runner.commands.index(filter_click),
-        )
-        self.assertLess(
-            runner.commands.index(filter_click),
-            runner.commands.index(type_command),
-        )
-        self.assertLess(
-            runner.commands.index(type_command),
-            runner.commands.index(return_command),
-        )
+        self.assertLess(type_index, runner.commands.index(return_command))
         focus_checks = [
             index for index, command in enumerate(runner.commands)
             if command == ["xdotool", "getwindowfocus"]
@@ -184,12 +158,8 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertIn(0.1, pauses)
         self.assertIn(0.15, pauses)
-        self.assertFalse(
-            any(command[1] == "click" for command in runner.commands
-                if command != filter_click)
-        )
 
-    def test_falls_back_to_add_hotkey_when_ipc_action_is_unavailable(self):
+    def test_uses_add_hotkey_even_when_ipc_action_would_be_unavailable(self):
         runner = FakeRunner(["0x200", "0x100"])
         kicad = FakeKiCad(raises=True)
         start_native_symbol_placement(
@@ -200,17 +170,18 @@ class CursorPlacementTests(unittest.TestCase):
             command_runner=runner,
             pause=lambda _seconds: None,
         )
-        self.assertEqual(
-            kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
-        )
+        self.assertEqual(kicad.actions, [])
         self.assertIn(
-            ["xdotool", "windowfocus", "--sync", "0x100"], runner.commands
+            ["xdotool", "windowactivate", "--sync", "0x100"], runner.commands
         )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
         self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
+        )
+        self.assertNotIn(
+            ["xdotool", "key", "--clearmodifiers", "Tab"], runner.commands
         )
         self.assertIn(
             [
