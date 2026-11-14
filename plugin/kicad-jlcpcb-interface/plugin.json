@@ -30,7 +30,7 @@
     {
       "identifier": "passive-component",
       "name": "JLCPCB Add or Update Component",
-      "description": "With one symbol selected, review and populate catalogue fields without changing its pinout; with no selection, search by LCSC code or a free-text query, accept suggested mappings or choose a KiCad Library:Symbol and add a project-local copy.",
+      "description": "With one symbol selected, review and populate catalogue fields without changing its pinout; with no selection, search by LCSC code or a free-text query (including passive values such as 10k), review a Basic-first shortlist, generate a project-local symbol and place it using KiCad's native cursor tool.",
       "show-button": true,
       "scopes": [
         "schematic"

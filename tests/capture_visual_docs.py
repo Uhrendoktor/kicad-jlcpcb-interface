@@ -22,6 +22,7 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
+from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -40,7 +41,6 @@ from kicad_jlcpcb.model import (  # noqa: E402
     find_selected_component,
     iter_schematic_symbols,
 )
-from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
     resolve_component_action_target,
@@ -59,7 +59,7 @@ ASSET_NAMES = (
     "populate-component-applied.png",
     "add-component-proposed.png",
     "add-component-confirmation.png",
-    "add-component-placed.png",
+    "add-component-cursor.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
     "schematic-properties-opened.png",
@@ -95,6 +95,15 @@ DEMO_PARTS = (
         "mpn": "RC0402JR-071KL",
         "footprint": "Resistor_SMD:R_0402_1005Metric",
         "position": (120.0, 125.0),
+    },
+    {
+        "reference": "R3",
+        "value": "10k",
+        "lib_id": "Device:R",
+        "lcsc": "C60489",
+        "mpn": "RC0402JR-0710KL",
+        "footprint": "Resistor_SMD:R_0402_1005Metric",
+        "position": (240.0, 175.0),
     },
     {
         "reference": "C1",
@@ -678,24 +687,6 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             kicad=kicad,
         )
         reload_project_symbol_library(kicad, generated_library)
-        placed = place_component_from_draft(
-            schematic,
-            draft,
-            240.0,
-            175.0,
-            library_id=generated_library.library_id,
-        )
-        placed_library_id = symbol_library_id(placed)
-        if (
-            placed.reference != "R3"
-            or placed_library_id != generated_library.library_id
-            or placed.value != "10k"
-            or placed.footprint_field.text.value
-            != "Resistor_SMD:R_0402_1005Metric"
-        ):
-            raise RuntimeError(
-                "Direct LCSC placement did not retain the generated project-local library ID."
-            )
         generated_root = parse_sexpr(
             generated_library.library_path.read_text(encoding="utf-8")
         )
@@ -747,11 +738,6 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         table_text = generated_library.table_path.read_text(encoding="utf-8")
         if generated_library.nickname not in table_text:
             raise RuntimeError("The project symbol table does not register the generated library.")
-        saved_schematic = (work_dir / "jlcpcb-live-demo.kicad_sch").read_text(encoding="utf-8")
-        if generated_library.library_id not in saved_schematic:
-            raise RuntimeError(
-                "The saved schematic does not reference the generated project-local library ID."
-            )
         print(
             "live-project-library-generation=passed "
             f"library_id={generated_library.library_id} "
@@ -801,61 +787,6 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             raise RuntimeError("Generated metadata fields should not clutter the symbol drawing.")
         if created["R1"].description_field.text.value != draft.description:
             raise RuntimeError("KiCad did not retain the native R1 Description property.")
-        placed_components = find_linked_components(schematic)
-        placed_reference = next(
-            (item for item in placed_components if item.reference == "R3"), None
-        )
-        if (
-            placed_reference is None
-            or placed_reference.part_code != "C60489"
-            or placed_reference.value != "10k"
-            or placed_reference.footprint != "Resistor_SMD:R_0402_1005Metric"
-            or placed_reference.datasheet != draft.datasheet_url
-            or placed_reference.manufacturer_part_number != draft.mpn
-        ):
-            raise RuntimeError(
-                "Direct LCSC placement did not preserve the linked value, footprint, "
-                "datasheet and MPN fields in the live schematic."
-            )
-        placed_symbol_readback = next(
-            (
-                item
-                for item in iter_schematic_symbols(schematic)
-                if item.reference == "R3"
-            ),
-            None,
-        )
-        if placed_symbol_readback is None:
-            raise RuntimeError(
-                "The direct-placed R3 symbol is missing from the schematic hierarchy."
-            )
-        raw_placed_fields = {
-            field.name: field for field in placed_symbol_readback.user_fields
-        }
-        for name, expected_value in (
-            ("LCSC", draft.lcsc),
-            ("MPN", draft.mpn),
-            ("Manufacturer", draft.manufacturer),
-        ):
-            field = raw_placed_fields.get(name)
-            if field is None or field.text.value != expected_value:
-                raise RuntimeError(
-                    f"Direct LCSC placement did not retain custom field {name!r}."
-                )
-        if placed_symbol_readback.description_field.text.value != draft.description:
-            raise RuntimeError(
-                "Direct LCSC placement did not retain the built-in Description property."
-            )
-        print(
-            "live-lcsc-direct-placement=passed "
-            f"reference={placed_reference.reference} "
-            f"part={placed_reference.part_code} value={placed_reference.value} "
-            f"footprint={placed_reference.footprint} "
-            f"datasheet={bool(placed_reference.datasheet)} "
-            f"mpn={placed_reference.manufacturer_part_number} "
-            f"custom_fields={len(raw_placed_fields)}",
-            flush=True,
-        )
         print(
             "live-lcsc-field-population=passed "
             f"lcsc={draft.lcsc} kind={draft.kind} value={draft.value} "
@@ -1192,6 +1123,7 @@ def _drive_populator_form(
     expected_footprint: str,
     validate_result,
     require_image: bool = False,
+    cursor_completion: bool = False,
 ) -> None:
     """Capture the real LCSC proposal form, confirm it, and verify the IPC result."""
     root = populator.root
@@ -1415,11 +1347,41 @@ def _drive_populator_form(
                 populator.messagebox.showerror = original_showerror
 
             validate_result(populator)
-            root.update()
-            _capture_window(root, output_dir / completed_asset)
+            if cursor_completion:
+                _capture_desktop(output_dir / completed_asset)
+                subprocess.run(
+                    ["xdotool", "key", "--clearmodifiers", "Escape"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                time.sleep(0.15)
+                expected_count = getattr(
+                    populator, "_visual_initial_symbol_count", None
+                )
+                if expected_count is not None:
+                    actual_count = len(list(iter_schematic_symbols(populator.schematic)))
+                    if actual_count != expected_count:
+                        raise RuntimeError(
+                            "Escape did not cancel cursor placement cleanly: "
+                            f"symbol count changed {expected_count} -> {actual_count}."
+                        )
+            else:
+                root.update()
+                _capture_window(root, output_dir / completed_asset)
             state["done"] = True
             close_populator()
         except BaseException as exc:
+            if cursor_completion:
+                try:
+                    _capture_desktop(
+                        output_dir / "add-component-chooser-failure.png"
+                    )
+                except Exception as capture_exc:
+                    failures.append(
+                        f"chooser diagnostic capture failed: {capture_exc}"
+                    )
             failures.append(f"{type(exc).__name__}: {exc}")
             try:
                 close_populator()
@@ -1536,7 +1498,7 @@ def _capture_passive_component_workflows(
 
     # Add: the entrypoint requires an empty Eeschema selection. The project-local
     # library is already registered by the live fixture, so this exercises the
-    # same reload-and-place path that users get after the first-use reopen/retry.
+    # same reload-and-cursor-handoff path used after the first-use reopen/retry.
     schematic.clear_selection()
     selection = list(schematic.get_selection())
     if selection:
@@ -1551,42 +1513,42 @@ def _capture_passive_component_workflows(
         cache_dir / "add-ui-cache",
         create_mode=True,
         kicad=kicad,
+        editor_window_id=capture_eeschema_window_id(),
         theme="light",
     )
     create.root.geometry("1024x768+780+30")
-    create.placement_mode_var.set("coordinates")
+    create._visual_initial_symbol_count = len(list(iter_schematic_symbols(schematic)))
     create.lcsc_var.set("C105637")
-    create.x_var.set("205.0")
-    create.y_var.set("160.0")
     create.lookup()
 
     def validate_create_result(populator: ComponentPopulator) -> None:
-        added = populator.symbol
+        generated = populator.generated_library
         if (
-            added is None
-            or added.reference != "R4"
-            or symbol_library_id(added) != "JLCPCB_Generated:R_C105637"
-            or added.value != "1k"
-            or added.footprint_field.text.value
-            != "Resistor_SMD:R_0402_1005Metric"
+            not populator.closed
+            or not populator.cursor_placement_started
+            or generated is None
+            or generated.library_id != "JLCPCB_Generated:R_C105637"
+            or generated.symbol_name != "R_C105637"
         ):
             raise RuntimeError(
-                "The confirmed add-component UI action did not place R4 linked to the "
-                "project-local generated LCSC symbol."
+                "The confirmed add-component workflow did not generate the expected "
+                "project-local passive symbol and hand it to KiCad's cursor tool."
             )
-        linked = next(
-            (item for item in find_linked_components(schematic) if item.reference == "R4"),
-            None,
-        )
-        if (
-            linked is None
-            or linked.part_code != "C105637"
-            or linked.value != "1k"
-            or linked.manufacturer_part_number != "RC0402JR-071KL"
-        ):
+        focused = subprocess.run(
+            ["xdotool", "getwindowfocus"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+        if focused != populator.editor_window_id:
             raise RuntimeError(
-                "The add-component UI action did not persist the LCSC metadata in the "
-                "schematic hierarchy."
+                "KiCad did not regain focus with the generated symbol on the cursor: "
+                f"focused={focused!r}, editor={populator.editor_window_id!r}."
+            )
+        if len(list(iter_schematic_symbols(schematic))) != populator._visual_initial_symbol_count:
+            raise RuntimeError(
+                "Cursor handoff unexpectedly inserted a schematic instance before placement."
             )
 
     _drive_populator_form(
@@ -1596,7 +1558,7 @@ def _capture_passive_component_workflows(
         light_asset="add-component-light.png",
         dark_asset="add-component-dark.png",
         confirmation_asset="add-component-confirmation.png",
-        completed_asset="add-component-placed.png",
+        completed_asset="add-component-cursor.png",
         confirmation_title="Confirm new schematic component",
         required_confirmation_text=(
             "original KiCad symbol pin numbers, pin types, units and graphics are retained"
@@ -1606,9 +1568,10 @@ def _capture_passive_component_workflows(
         expected_footprint="Resistor_SMD:R_0402_1005Metric",
         validate_result=validate_create_result,
         require_image=True,
+        cursor_completion=True,
     )
     print(
-        "live-add-mode-ui=passed reference=R4 "
+        "live-add-mode-ui=passed cursor_attached=true "
         "library_id=JLCPCB_Generated:R_C105637",
         flush=True,
     )
