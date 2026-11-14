@@ -402,10 +402,6 @@ class CursorPlacementTests(unittest.TestCase):
         "kicad_jlcpcb.cursor_placement.set_symbol_chooser_filter_accessibly",
         return_value=True,
     )
-    @patch(
-        "kicad_jlcpcb.cursor_placement.set_symbol_chooser_filter_accessibly",
-        return_value=True,
-    )
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
     def test_prefers_atspi_keyboard_events_before_clipboard_fallback(
         self, _which, set_filter
