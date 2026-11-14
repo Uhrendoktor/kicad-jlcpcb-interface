@@ -86,7 +86,7 @@ When a catalogue row needs closer inspection, **Select in schematic** takes you 
 | Nothing selected | **Add** | Search the catalogue, review the suggested symbol and fields, then create and place a project-local copy of a KiCad stock symbol. |
 | Multiple items or a non-symbol object | — | The action stops and asks you to select one symbol or clear the selection. |
 
-Both contexts use the same review-first dialog, which shows inference confidence, catalogue source/freshness and warnings. Its heading and available controls adapt to the selection: update mode edits catalogue fields on the selected symbol; add mode also exposes the KiCad `Library:Symbol`, reference prefix and placement controls. Value and Footprint are editable, and Footprint is optional during symbol creation.
+Both contexts use the same review-first dialog, which shows inference confidence, catalogue source/freshness and warnings. Its heading and available controls adapt to the selection: update mode edits catalogue fields on the selected symbol; add mode also exposes the KiCad `Library:Symbol`, reference prefix and cursor-placement instructions. Value and Footprint are editable, and Footprint is optional during symbol creation.
 
 The screenshots show the two contexts of that one action—not separate commands:
 
@@ -113,7 +113,7 @@ The screenshots show the two contexts of that one action—not separate commands
 
 In add mode, the tool suggests a generic stock symbol only when the catalogue description or attributes support a recognizable category. You can edit that suggestion or enter a KiCad identifier manually (for example, `Amplifier_Operational:LM358`) whenever the mapping is uncertain. The project-local library copies the chosen standalone symbol's original pins, units and graphics; it does not infer a manufacturer-specific pinout. Symbols that extend another library symbol must be replaced with a standalone choice.
 
-Add-mode placement uses KiCad's native Add Symbol chooser at the cursor on X11 when `xdotool` is available, or explicit X/Y coordinates in millimetres. A generated project-local symbol can be reused on subsequent runs.
+Add mode is cursor-only: KiCad's native Add Symbol chooser attaches the generated project-local copy to the mouse pointer. Launch the action from the focused Eeschema window on an X11 desktop with `xdotool` installed; there is no X/Y coordinate fallback. A generated project-local symbol can be reused on subsequent runs.
 
 > **First use in a project:** when the generated-library table entry does not yet exist, the open Eeschema session may not recognize the new library immediately. The library and table entry are saved, but no instance is placed. Close and reopen the project, then repeat the same add-mode search; the existing generated symbol is reused.
 

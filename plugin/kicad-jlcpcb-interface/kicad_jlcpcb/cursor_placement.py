@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -44,17 +45,13 @@ def start_native_symbol_placement(
     editor_window_id: str | None,
     symbol_name: str,
     *,
+    kicad=None,
     xdotool: str | None = None,
     command_runner: Callable = subprocess.run,
     pause: Callable[[float], None] = time.sleep,
 ) -> None:
     """Choose a generated library symbol in Eeschema and leave it on the cursor."""
     executable = xdotool or shutil.which("xdotool")
-    if not executable:
-        raise RuntimeError(
-            "Cursor placement requires xdotool on the supported Linux/X11 desktop. "
-            "Install it with sudo apt install xdotool, then reopen the action."
-        )
     if not editor_window_id:
         raise RuntimeError(
             "Could not identify the active Eeschema window. Launch this action "
@@ -62,6 +59,27 @@ def start_native_symbol_placement(
         )
     if not symbol_name or any(char.isspace() for char in symbol_name):
         raise ValueError("The generated KiCad symbol name is invalid.")
+
+    run_action = getattr(kicad, "run_action", None)
+    action_started = False
+    if callable(run_action):
+        try:
+            run_action("eeschema.InteractiveDrawing.placeSymbol")
+            action_started = True
+        except Exception:
+            # Older KiCad IPC builds do not expose tool actions. The X11
+            # hotkey remains a compatible fallback for those versions.
+            action_started = False
+
+    if not executable:
+        if action_started:
+            # The native chooser is already open; let the user select the
+            # symbol manually when automatic X11 filtering is unavailable.
+            return
+        raise RuntimeError(
+            "Cursor placement requires xdotool on the supported Linux/X11 desktop. "
+            "Install it with sudo apt install xdotool, then reopen the action."
+        )
 
     def send(*arguments: str) -> str:
         result = command_runner(
@@ -76,38 +94,139 @@ def start_native_symbol_placement(
     editor_pid = send("getwindowpid", str(editor_window_id))
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
-    send("windowfocus", "--sync", str(editor_window_id))
-    pause(0.1)
-    send("key", "--clearmodifiers", "a")
+
+    if not action_started:
+        send("windowfocus", "--sync", str(editor_window_id))
+        pause(0.1)
+        send("key", "--clearmodifiers", "a")
 
     chooser_id = ""
+    focused_id = ""
     for _ in range(50):
         focused_id = send("getwindowfocus")
         if focused_id and focused_id != str(editor_window_id):
-            if send("getwindowpid", focused_id) == editor_pid:
+            focused_pid = send("getwindowpid", focused_id)
+            focused_title = send("getwindowname", focused_id).casefold()
+            same_process = bool(editor_pid and focused_pid == editor_pid)
+            is_chooser = "choose symbol" in focused_title or "select symbol" in focused_title
+            if same_process or is_chooser:
                 chooser_id = focused_id
                 break
         pause(0.1)
 
     if not chooser_id:
-        if send("getwindowfocus") == str(editor_window_id):
+        focused_pid = send("getwindowpid", focused_id) if focused_id else ""
+        focused_title = send("getwindowname", focused_id) if focused_id else ""
+        if not action_started and focused_pid == editor_pid:
             try:
                 send("key", "--clearmodifiers", "Escape")
             except subprocess.SubprocessError:
                 pass
         raise RuntimeError(
-            "KiCad's native symbol chooser did not open. Check Eeschema "
-            "Preferences → Hotkeys and bind Add Symbol to A, then retry."
+            "KiCad's native symbol chooser did not open. "
+            f"Editor={editor_window_id!r}/{editor_pid!r}; "
+            f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
+            "Check Eeschema Preferences → Hotkeys and bind Add Symbol to A, "
+            "then retry."
         )
 
+    # KiCad's chooser calls ForceFocus(Filter) during its first paint. Wait
+    # until the catalogue title confirms that setup/painting has completed,
+    # but do not refocus the top-level frame: that steals child focus on wxGTK.
+    chooser_title = ""
+    chooser_ready = False
+    for _ in range(150):
+        chooser_title = send("getwindowname", chooser_id)
+        if "items loaded" in chooser_title.casefold():
+            chooser_ready = True
+            break
+        pause(0.1)
+    if not chooser_ready:
+        raise RuntimeError(
+            "KiCad's native symbol chooser did not finish loading its catalog "
+            f"within 15 seconds: {chooser_title!r}."
+        )
+    print(
+        "native-symbol-placement-trigger=ipc" if action_started else "native-symbol-placement-trigger=hotkey",
+        flush=True,
+    )
+
+    # In the native chooser the search control is a wx child widget inside the
+    # Eeschema frame, not a distinct X11 child window. Explicitly click inside
+    # its Filter text area. Coordinates are relative to the Eeschema top-level
+    # window so normal desktop window placement is supported.
+    geometry = send("getwindowgeometry", "--shell", str(editor_window_id))
+    dimensions = {
+        key: value
+        for item in geometry.split()
+        if "=" in item
+        for key, value in [item.split("=", 1)]
+    }
+    try:
+        editor_x = int(dimensions["X"])
+        editor_y = int(dimensions["Y"])
+    except (KeyError, ValueError) as exc:
+        raise RuntimeError(
+            f"Could not read the Eeschema window position: {geometry!r}."
+        ) from exc
+
+    filter_x = editor_x + 200
+    filter_y = editor_y + 380
+    send("mousemove", "--sync", str(filter_x), str(filter_y))
+    send("click", "1")
+    pause(0.05)
+
+    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
+    if debug_capture:
+        try:
+            from PIL import ImageGrab
+
+            clicked_capture = debug_capture.replace(".png", "-clicked.png")
+            ImageGrab.grab().save(clicked_capture)
+            print(
+                f"chooser-filter-click=pointer={send('getmouselocation', '--shell')!r} "
+                f"focus={send('getwindowfocus')!r} screenshot={clicked_capture!r}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"chooser-filter-click=failed error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+
+    send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
+    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
+    if debug_capture:
+        try:
+            from PIL import ImageGrab
+
+            ImageGrab.grab().save(debug_capture)
+            print(
+                f"chooser-search-debug=captured path={debug_capture!r} "
+                f"focus={send('getwindowfocus')!r}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"chooser-search-debug=failed error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
     send("key", "--clearmodifiers", "Return")
     for _ in range(30):
-        if send("getwindowfocus") == str(editor_window_id):
+        focused_id = send("getwindowfocus")
+        if focused_id == str(editor_window_id):
             return
         pause(0.1)
+
+    focused_id = send("getwindowfocus")
+    focused_pid = send("getwindowpid", focused_id) if focused_id else ""
+    focused_title = send("getwindowname", focused_id) if focused_id else ""
     raise RuntimeError(
         "KiCad accepted the symbol chooser selection but did not return focus "
-        "to Eeschema. Check the native chooser and retry placement."
+        f"to Eeschema. Editor={editor_window_id!r}/{editor_pid!r}; "
+        f"chooser={chooser_id!r} ({send('getwindowname', chooser_id)!r}); "
+        f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
+        "Check the native chooser and retry placement."
     )

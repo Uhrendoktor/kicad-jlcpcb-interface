@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import queue
 import shutil
 import webbrowser
@@ -27,7 +26,6 @@ from .draft import (
 from .library import generate_project_library_symbol, reload_project_symbol_library
 from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
-from .placement import place_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
 from .theme import apply_tk_theme
 from .value_search import (
@@ -101,6 +99,8 @@ class ComponentPopulator:
         self.selected_details = None
         self.candidate_rows: dict[str, tuple[Any, ComponentDraft]] = {}
         self.closed = False
+        self.generated_library_symbol = None
+        self.cursor_placement_started = False
 
         self.root = tk.Tk()
         self.palette = apply_tk_theme(self.root, theme)
@@ -123,11 +123,6 @@ class ComponentPopulator:
             if symbol is not None else ""
         )
         self.reference_prefix_var = tk.StringVar(value="")
-        self.x_var = tk.StringVar(value="100.0")
-        self.y_var = tk.StringVar(value="100.0")
-        self.placement_mode_var = tk.StringVar(
-            value="cursor" if self.cursor_placement_available else "coordinates"
-        )
         self.status_var = tk.StringVar(
             value=(
                 "Search by LCSC code, MPN, component name or passive value."
@@ -367,58 +362,27 @@ class ComponentPopulator:
                 text="Placement",
                 style="Muted.TLabel",
             ).grid(row=row, column=0, sticky="w", padx=(0, 14), pady=4)
-            placement = ttk.Frame(component_section)
-            placement.grid(row=row, column=1, sticky="ew", pady=4)
-            self.cursor_radio = ttk.Radiobutton(
-                placement,
-                text="At cursor",
-                variable=self.placement_mode_var,
-                value="cursor",
-                command=self._update_placement_controls,
-                state="normal" if self.cursor_placement_available else "disabled",
-            )
-            self.cursor_radio.pack(side="left", padx=(0, 14))
-            ttk.Radiobutton(
-                placement,
-                text="X/Y coordinates",
-                variable=self.placement_mode_var,
-                value="coordinates",
-                command=self._update_placement_controls,
-            ).pack(side="left")
-            row += 1
-            self.coordinates_frame = ttk.Frame(component_section)
-            self.coordinates_frame.grid(
-                row=row, column=1, sticky="w", pady=(0, 4)
-            )
             ttk.Label(
-                self.coordinates_frame,
-                text="X",
-                style="Muted.TLabel",
-            ).pack(side="left", padx=(0, 5))
-            self.x_entry = ttk.Entry(
-                self.coordinates_frame, textvariable=self.x_var, width=10
-            )
-            self.x_entry.pack(side="left")
-            ttk.Label(
-                self.coordinates_frame,
-                text="mm    Y",
-                style="Muted.TLabel",
-            ).pack(side="left", padx=(10, 5))
-            self.y_entry = ttk.Entry(
-                self.coordinates_frame, textvariable=self.y_var, width=10
-            )
-            self.y_entry.pack(side="left")
+                component_section,
+                text=(
+                    "KiCad's native Add Symbol chooser attaches the generated copy "
+                    "to the mouse cursor. Click in the schematic to place it or press "
+                    "Escape to cancel."
+                ),
+                wraplength=500,
+            ).grid(row=row, column=1, sticky="w", pady=4)
             row += 1
             if not self.cursor_placement_available:
                 ttk.Label(
                     component_section,
-                    text="Cursor placement requires X11 and xdotool.",
+                    text=(
+                        "Add mode is cursor-only. Launch this action from the focused "
+                        "Eeschema window on an X11 desktop with xdotool installed."
+                    ),
                     style="Muted.TLabel",
-                ).grid(
-                    row=row, column=1, sticky="w", pady=(0, 4)
-                )
+                    wraplength=500,
+                ).grid(row=row, column=1, sticky="w", pady=(0, 4))
                 row += 1
-            self._update_placement_controls()
 
         proposal_section = ttk.Frame(content)
         proposal_section.grid(row=3, column=0, sticky="ew", pady=(0, 12))
@@ -816,14 +780,6 @@ class ComponentPopulator:
         if self._is_https_url(self._datasheet_url):
             webbrowser.open(self._datasheet_url)
 
-    def _update_placement_controls(self) -> None:
-        if not self.create_mode:
-            return
-        if self.placement_mode_var.get() == "coordinates":
-            self.coordinates_frame.grid()
-        else:
-            self.coordinates_frame.grid_remove()
-
     def _set_notes(self, lines: tuple[str, ...]) -> None:
         visible = tuple(line.strip() for line in lines if line.strip())
         if not visible:
@@ -956,10 +912,16 @@ class ComponentPopulator:
                 "verify its freshness before applying."
             )
         self._set_notes(tuple(notes))
+        if self.create_mode and not self.cursor_placement_available:
+            notes.append(
+                "Cursor placement is unavailable. Launch this action from the focused "
+                "Eeschema window on X11 with xdotool installed."
+            )
         can_apply = (
             compatible
             and bool(draft.proposed_fields)
             and (not self.create_mode or complete_for_placement)
+            and (not self.create_mode or self.cursor_placement_available)
         )
         self.status_var.set(
             (
@@ -969,7 +931,15 @@ class ComponentPopulator:
             )
             if can_apply
             else (
-                "This proposal is incomplete or incompatible; automatic write-back is disabled."
+                (
+                    "Launch this action from the focused Eeschema window on X11 with "
+                    "xdotool to enable cursor-only Add mode."
+                )
+                if self.create_mode and not self.cursor_placement_available
+                else (
+                    "This proposal is incomplete or incompatible; automatic write-back "
+                    "is disabled."
+                )
             )
         )
         self.apply_button.configure(state="normal" if can_apply else "disabled")
@@ -985,10 +955,15 @@ class ComponentPopulator:
                 or self.selected_details
             )
             and bool(self.draft.proposed_fields)
-            and (not self.create_mode or ":" in hint)
+            and (not self.create_mode or (":" in hint and self.cursor_placement_available))
         )
         self.apply_button.configure(state="normal" if ready else "disabled")
-        if not ready:
+        if not self.cursor_placement_available:
+            self.status_var.set(
+                "Launch this action from the focused Eeschema window on X11 with "
+                "xdotool to enable cursor-only Add mode."
+            )
+        elif not ready:
             self.status_var.set(
                 "Enter a KiCad Library:Symbol and a component value before placing the part."
             )
@@ -1026,67 +1001,28 @@ class ComponentPopulator:
                 )
                 return
 
-            at_cursor = self.placement_mode_var.get() == "cursor"
-            if at_cursor and not self.cursor_placement_available:
+            if not self.cursor_placement_available:
                 self.messagebox.showerror(
                     "Cursor placement unavailable",
-                    "Launch this action from the active Eeschema window on X11 "
-                    "with xdotool installed, or switch to X/Y coordinate placement.",
+                    "Launch this action from the focused Eeschema window on an X11 "
+                    "desktop with xdotool installed. Add mode has no coordinate fallback.",
                     parent=self.root,
                 )
                 return
-            if at_cursor:
-                x_position = y_position = None
-                warning = (
-                    f"Copy {draft.symbol_hint} into the project-local library for "
-                    f"{draft.value} ({draft.lcsc}) and open KiCad's native Add Symbol chooser?\n\n"
-                    "The selected symbol's pin numbers and electrical types are retained; "
-                    "they are not inferred from the catalogue record. Verify pin mapping "
-                    "against the datasheet. Footprint is optional."
-                )
-            else:
-                try:
-                    x_position = float(self.x_var.get())
-                    y_position = float(self.y_var.get())
-                except ValueError:
-                    self.messagebox.showerror(
-                        "Invalid placement",
-                        "Enter numeric X and Y coordinates in millimetres.",
-                        parent=self.root,
-                    )
-                    return
-                if not math.isfinite(x_position) or not math.isfinite(y_position):
-                    self.messagebox.showerror(
-                        "Invalid placement",
-                        "Placement coordinates must be finite millimetre values.",
-                        parent=self.root,
-                    )
-                    return
-                try:
-                    reference = (
-                        next_component_reference(self.schematic, draft)
-                        if draft.reference_prefix
-                        else "the next available reference for the selected KiCad symbol"
-                    )
-                except Exception as exc:
-                    self.messagebox.showerror(
-                        "Cannot allocate component reference", str(exc), parent=self.root
-                    )
-                    return
-                warning = (
-                    f"Copy {draft.symbol_hint} into the project-local library and place "
-                    f"{reference} for {draft.lcsc} at X={x_position:g} mm, "
-                    f"Y={y_position:g} mm?\n\n"
-                    "The original KiCad symbol pin numbers, pin types, units and graphics "
-                    "are retained. The tool does not infer a manufacturer pin map. "
-                    "Verify electrical suitability; footprint is optional."
-                )
+            warning = (
+                f"Copy {draft.symbol_hint} into the project-local library for "
+                f"{draft.value} ({draft.lcsc}) and open KiCad's native Add Symbol chooser?\n\n"
+                "The selected symbol's pin numbers and electrical types are retained; "
+                "they are not inferred from catalogue data. Verify pin mapping against "
+                "the datasheet. Footprint is optional. KiCad will attach the symbol to "
+                "the mouse cursor; click to place or press Escape to cancel."
+            )
             if not self.messagebox.askyesno(
                 "Confirm new schematic component", warning, parent=self.root
             ):
                 return
 
-            iconified = False
+            withdrawn = False
             try:
                 if self.kicad is None:
                     raise RuntimeError("The KiCad project connection is unavailable.")
@@ -1095,45 +1031,34 @@ class ComponentPopulator:
                     project, draft, kicad=self.kicad
                 )
                 reload_project_symbol_library(self.kicad, generated)
-                if at_cursor:
-                    self.root.iconify()
-                    iconified = True
-                    start_native_symbol_placement(
-                        self.editor_window_id, generated.symbol_name
-                    )
-                    self.status_var.set(
-                        f"{generated.library_id} is attached to KiCad's cursor. "
-                        "Click to place or press Escape to cancel."
-                    )
-                    self.close()
-                    return
-                created = place_component_from_draft(
-                    self.schematic,
-                    draft,
-                    x_position,
-                    y_position,
-                    library_id=generated.library_id,
-                    reference_prefix=generated.reference_prefix,
+                self.generated_library_symbol = generated
+                try:
+                    current_grab = self.root.grab_current()
+                    if current_grab is not None:
+                        current_grab.grab_release()
+                except self.tk.TclError:
+                    pass
+                # Withdraw instead of iconifying: Xvfb may not have a window
+                # manager to honor the iconify hint, leaving the review form
+                # mapped over the native chooser.
+                self.root.withdraw()
+                withdrawn = True
+                start_native_symbol_placement(
+                    self.editor_window_id,
+                    generated.symbol_name,
+                    kicad=self.kicad,
                 )
+                self.cursor_placement_started = True
+                self.close()
+                return
             except Exception as exc:
-                if iconified and not self.closed:
+                if withdrawn and not self.closed:
                     self.root.deiconify()
                 self.status_var.set(f"Project library generation failed: {exc}")
                 self.messagebox.showerror(
                     "Component library generation failed", str(exc), parent=self.root
                 )
                 return
-
-            self.symbol = created
-            self.library_id = symbol_library_id(created)
-            self.status_var.set(
-                f"Generated {generated.library_path.name}, loaded {generated.library_id}, "
-                f"and placed {created.reference} at X={x_position:g} mm, "
-                f"Y={y_position:g} mm. Verify the pin mapping and add a footprint "
-                "before PCB layout if none was selected."
-            )
-            self.apply_button.configure(state="disabled")
-            return
         if draft is None or not draft.proposed_fields:
             return
         draft = replace(
@@ -1182,37 +1107,33 @@ class ComponentPopulator:
     def close(self) -> None:
         if self.closed:
             return
-        self.closed = True
+
+        # Join both background workers before Tcl is destroyed. Their callbacks
+        # only enqueue plain results; neither worker accesses Tk.
+        state = self.__dict__
+        root = state["root"]
         try:
-            self.root.after_cancel(self._poll_id)
+            root.after_cancel(state.get("_poll_id"))
         except Exception:
             pass
-        self._poll_id = None
-        # Release Tk variables on the GUI thread while their Tcl interpreter
-        # is still alive. This avoids cross-thread Variable.__del__ calls when
-        # a completed catalogue worker is being collected during dialog teardown.
-        for name in (
-            "lcsc_var",
-            "x_var",
-            "y_var",
-            "placement_mode_var",
-            "status_var",
-            "symbol_hint_var",
-            "value_var",
-            "footprint_var",
-            "reference_prefix_var",
-            "catalogue_status_var",
-        ):
-            variable = getattr(self, name, None)
-            setattr(self, name, None)
-            del variable
-        for variable in self.catalogue_vars.values():
-            del variable
-        self.catalogue_vars.clear()
-        self._image_ref = None
-        self.executor.shutdown(wait=False, cancel_futures=True)
-        self.image_executor.shutdown(wait=False, cancel_futures=True)
-        self.root.destroy()
+        state["executor"].shutdown(wait=True, cancel_futures=True)
+        state["image_executor"].shutdown(wait=True, cancel_futures=True)
+
+        # Release all Tk variables, widgets and image references on this GUI
+        # thread while the interpreter is still alive. Preserve only the
+        # generated-symbol metadata used by the live cursor-placement check.
+        create_mode = bool(state.get("create_mode"))
+        generated_symbol = state.get("generated_library_symbol")
+        cursor_started = bool(state.get("cursor_placement_started"))
+        messagebox = state.get("messagebox")
+        state.clear()
+        self.closed = True
+        self.messagebox = messagebox
+        if create_mode:
+            self.create_mode = True
+            self.generated_library_symbol = generated_symbol
+            self.cursor_placement_started = cursor_started
+        root.destroy()
 
     def run(self) -> None:
         self.root.mainloop()

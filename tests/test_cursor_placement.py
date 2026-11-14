@@ -16,8 +16,9 @@ from kicad_jlcpcb.cursor_placement import (  # noqa: E402
 
 
 class FakeRunner:
-    def __init__(self, outputs=()):
+    def __init__(self, outputs=(), window_names=()):
         self.outputs = list(outputs)
+        self.window_names = list(window_names)
         self.commands = []
 
     def __call__(self, arguments, **_kwargs):
@@ -25,14 +26,38 @@ class FakeRunner:
         command = arguments[1]
         if command == "getwindowpid":
             return SimpleNamespace(stdout="4242", returncode=0)
+        if command == "getwindowgeometry":
+            if arguments[-1] == "0x100":
+                geometry = "WINDOW=0x100\nX=10\nY=20\nWIDTH=960\nHEIGHT=1024\nSCREEN=0"
+            else:
+                geometry = "WINDOW=0x200\nX=30\nY=360\nWIDTH=880\nHEIGHT=680\nSCREEN=0"
+            return SimpleNamespace(stdout=geometry, returncode=0)
         if command == "getwindowfocus":
             value = self.outputs.pop(0) if self.outputs else "0x100"
             return SimpleNamespace(stdout=value, returncode=0)
         if command == "getwindowclassname":
             return SimpleNamespace(stdout="eeschema", returncode=0)
         if command == "getwindowname":
+            if arguments[-1] == "0x200":
+                value = (
+                    self.window_names.pop(0)
+                    if self.window_names
+                    else "Choose Symbol (22936 items loaded)"
+                )
+                return SimpleNamespace(stdout=value, returncode=0)
             return SimpleNamespace(stdout="Schematic Editor", returncode=0)
         return SimpleNamespace(stdout="", returncode=0)
+
+
+class FakeKiCad:
+    def __init__(self, raises=False):
+        self.actions = []
+        self.raises = raises
+
+    def run_action(self, name):
+        self.actions.append(name)
+        if self.raises:
+            raise RuntimeError("run_action unavailable")
 
 
 class CursorPlacementTests(unittest.TestCase):
@@ -65,30 +90,93 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
-    def test_starts_native_chooser_and_returns_with_symbol_on_cursor(self):
-        runner = FakeRunner(["0x200", "0x100"])
+    def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(self):
+        runner = FakeRunner(
+            ["0x200", "0x100"],
+            ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
+        )
+        pauses = []
+        kicad = FakeKiCad()
+
         start_native_symbol_placement(
             "0x100",
             "R_C60489",
+            kicad=kicad,
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=pauses.append,
+        )
+
+        self.assertEqual(
+            kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
+        )
+        self.assertNotIn(
+            ["xdotool", "windowfocus", "--sync", "0x100"], runner.commands
+        )
+        self.assertNotIn(
+            ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        )
+        geometry_command = [
+            "xdotool", "getwindowgeometry", "--shell", "0x100"
+        ]
+        move_command = ["xdotool", "mousemove", "--sync", "210", "400"]
+        click_command = ["xdotool", "click", "1"]
+        clear_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
+        type_command = [
+            "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
+        ]
+        return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
+        chooser_title_command = ["xdotool", "getwindowname", "0x200"]
+        self.assertLess(
+            runner.commands.index(chooser_title_command),
+            runner.commands.index(geometry_command),
+        )
+        self.assertLess(
+            runner.commands.index(geometry_command),
+            runner.commands.index(move_command),
+        )
+        self.assertLess(runner.commands.index(move_command), runner.commands.index(click_command))
+        self.assertLess(runner.commands.index(click_command), runner.commands.index(clear_command))
+        self.assertLess(runner.commands.index(clear_command), runner.commands.index(type_command))
+        self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
+        self.assertIn(0.15, pauses)
+        self.assertIn(0.1, pauses)
+
+    def test_falls_back_to_add_hotkey_when_ipc_action_is_unavailable(self):
+        runner = FakeRunner(["0x200", "0x100"])
+        kicad = FakeKiCad(raises=True)
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            kicad=kicad,
             xdotool="xdotool",
             command_runner=runner,
             pause=lambda _seconds: None,
         )
+        self.assertEqual(
+            kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
+        )
+        self.assertIn(
+            ["xdotool", "windowfocus", "--sync", "0x100"], runner.commands
+        )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        self.assertIn(
-            [
-                "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
-            ],
-            runner.commands,
-        )
-        self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
-        )
+
+    def test_rejects_focus_return_to_a_different_eeschema_child_window(self):
+        runner = FakeRunner(["0x200", *["0x300"] * 31])
+        with self.assertRaisesRegex(RuntimeError, "did not return focus to Eeschema"):
+            start_native_symbol_placement(
+                "0x100",
+                "R_C60489",
+                xdotool="xdotool",
+                command_runner=runner,
+                pause=lambda _seconds: None,
+            )
+        self.assertIn(["xdotool", "getwindowpid", "0x300"], runner.commands)
 
     def test_reports_missing_native_chooser(self):
-        runner = FakeRunner(["0x100"] * 55)
+        runner = FakeRunner(["0x100"] * 56)
         with self.assertRaisesRegex(RuntimeError, "chooser did not open"):
             start_native_symbol_placement(
                 "0x100",
