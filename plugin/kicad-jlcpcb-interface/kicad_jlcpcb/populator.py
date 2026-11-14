@@ -1146,34 +1146,40 @@ class ComponentPopulator:
     def close(self) -> None:
         if self.closed:
             return
-        self.closed = True
+
+        # Join both workers before destroying Tcl. Their callbacks only enqueue
+        # plain lookup/image results and never access Tk. Waiting here guarantees
+        # a worker cannot release a final Tk reference after the interpreter is
+        # destroyed, which otherwise triggers Tcl_AsyncDelete on the wrong thread.
+        state = self.__dict__
+        root = state["root"]
         try:
-            self.root.after_cancel(self._poll_id)
+            root.after_cancel(state.get("_poll_id"))
         except Exception:
             pass
-        self._poll_id = None
-        # Release Tk variables on the GUI thread while their Tcl interpreter
-        # is still alive. This avoids cross-thread Variable.__del__ calls when
-        # a completed catalogue worker is being collected during dialog teardown.
-        for name in (
-            "lcsc_var",
-            "status_var",
-            "symbol_hint_var",
-            "value_var",
-            "footprint_var",
-            "reference_prefix_var",
-            "catalogue_status_var",
-        ):
-            variable = getattr(self, name, None)
-            setattr(self, name, None)
-            del variable
-        for variable in self.catalogue_vars.values():
-            del variable
-        self.catalogue_vars.clear()
-        self._image_ref = None
-        self.executor.shutdown(wait=False, cancel_futures=True)
-        self.image_executor.shutdown(wait=False, cancel_futures=True)
-        self.root.destroy()
+        state["executor"].shutdown(wait=True, cancel_futures=True)
+        state["image_executor"].shutdown(wait=True, cancel_futures=True)
+
+        # Drop every widget, Tk variable, queue and callback reference on the
+        # owning UI thread. Keep only the result metadata that the caller may
+        # inspect after Add hands the generated symbol to KiCad's cursor.
+        preserved = {
+            name: state.get(name)
+            for name in (
+                "create_mode",
+                "generated_library",
+                "selected_details",
+                "draft",
+                "symbol",
+                "messagebox",
+                "library_id",
+            )
+        }
+        state.clear()
+        self.closed = True
+        for name, value in preserved.items():
+            setattr(self, name, value)
+        root.destroy()
 
     def run(self) -> None:
         self.root.mainloop()
