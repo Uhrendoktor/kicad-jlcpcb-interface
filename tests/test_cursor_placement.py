@@ -140,7 +140,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertLess(runner.commands.index(clear_command), runner.commands.index(type_command))
         self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
         self.assertIn(0.15, pauses)
-        self.assertIn(0.1, pauses)
+        self.assertIn(0.05, pauses)
 
     def test_falls_back_to_add_hotkey_when_ipc_action_is_unavailable(self):
         runner = FakeRunner(["0x200", "0x100"])
