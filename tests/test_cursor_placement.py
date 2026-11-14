@@ -32,7 +32,20 @@ class FakeRunner:
         if command == "getwindowclassname":
             return SimpleNamespace(stdout="eeschema", returncode=0)
         if command == "getwindowname":
-            return SimpleNamespace(stdout="Schematic Editor", returncode=0)
+            window_id = arguments[2] if len(arguments) > 2 else ""
+            title = (
+                "Choose Symbol (22935 items loaded)"
+                if window_id == "0x200"
+                else "Schematic Editor"
+            )
+            return SimpleNamespace(stdout=title, returncode=0)
+        if command == "search":
+            return SimpleNamespace(stdout="0x200", returncode=0)
+        if command == "getwindowgeometry":
+            return SimpleNamespace(
+                stdout="WINDOW=0x200\\nX=20\\nY=260\\nWIDTH=600\\nHEIGHT=480",
+                returncode=0,
+            )
         return SimpleNamespace(stdout="", returncode=0)
 
 
@@ -88,6 +101,16 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        )
+        self.assertIn(
+            [
+                "xdotool",
+                "search",
+                "--onlyvisible",
+                "--name",
+                "Choose Symbol",
+            ],
+            runner.commands,
         )
         self.assertIn(
             [
