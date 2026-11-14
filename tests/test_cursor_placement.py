@@ -398,7 +398,12 @@ class CursorPlacementTests(unittest.TestCase):
         set_filter.assert_called_once_with(
             "R_C60489", x=120, y=366, clipboard_ready=True
         )
-        self.assertFalse(any(command[:1] == ["xclip"] for command in runner.commands))
+        self.assertIn(
+            ["xclip", "-selection", "clipboard", "-in"], runner.commands
+        )
+        self.assertNotIn(
+            ["xdotool", "key", "--clearmodifiers", "ctrl+v"], runner.commands
+        )
         self.assertNotIn(
             ["xdotool", "type", "--clearmodifiers", "--delay", "50", "R_C60489"],
             runner.commands,
