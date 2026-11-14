@@ -144,7 +144,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(len(title_checks), 2)
         chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
         self.assertIn(chooser_focus, runner.commands)
-        focus_filter = ["xdotool", "mousemove", "--sync", "118", "370"]
+        focus_filter = ["xdotool", "mousemove", "--window", "0x200", "90", "15"]
         click_filter = ["xdotool", "click", "1"]
         clear_filter = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
         self.assertIn(focus_filter, runner.commands)
