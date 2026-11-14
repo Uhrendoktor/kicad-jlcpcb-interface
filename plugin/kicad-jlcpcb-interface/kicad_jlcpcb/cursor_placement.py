@@ -167,7 +167,7 @@ def start_native_symbol_placement(
                 send("key", "--clearmodifiers", "alt+p")
                 pause(0.15)
                 send("key", "--clearmodifiers", "a")
-                send("key", "--window", str(chooser_id), "--clearmodifiers", "Return")
+                send("key", "--clearmodifiers", "Return")
             except subprocess.SubprocessError:
                 pass
             chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
@@ -286,7 +286,7 @@ def start_native_symbol_placement(
                 f"error={type(exc).__name__}: {exc}",
                 flush=True,
             )
-    send("key", "--clearmodifiers", "Return")
+    send("key", "--window", str(chooser_id), "--clearmodifiers", "Return")
 
     def restore_placement_pointer() -> None:
         # Restore the user's original cursor after KiCad has attached the
