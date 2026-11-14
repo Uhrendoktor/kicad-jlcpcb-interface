@@ -127,7 +127,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     def test_rejects_focus_return_to_a_different_eeschema_child_window(self):
-        runner = FakeRunner(["0x200", "0x300"])
+        runner = FakeRunner(["0x200", *["0x300"] * 31])
         with self.assertRaisesRegex(RuntimeError, "did not return focus to Eeschema"):
             start_native_symbol_placement(
                 "0x100",
