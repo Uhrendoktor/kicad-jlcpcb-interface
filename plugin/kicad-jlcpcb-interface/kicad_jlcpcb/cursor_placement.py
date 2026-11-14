@@ -261,13 +261,9 @@ def start_native_symbol_placement(
             except subprocess.SubprocessError:
                 continue
         print(f"chooser-x11-visible-windows={visible_windows!r}", flush=True)
-    # Target the native chooser window explicitly. The dialog is a child
-    # window of Eeschema; on some wxWidgets/KiCad builds XTest events sent only
-    # to the current global focus are swallowed by the parent frame.
-    send(
-        "type", "--window", str(chooser_id),
-        "--clearmodifiers", "--delay", "12", symbol_name,
-    )
+    # Use XTest against the globally focused native chooser. xdotool's
+    # --window mode uses XSendEvent, which wxWidgets controls may ignore.
+    send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
     if debug_capture:
         try:
