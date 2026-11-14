@@ -20,7 +20,7 @@ ASSET_NAMES = {
     "populate-component-applied.png",
     "add-component-proposed.png",
     "add-component-confirmation.png",
-    "add-component-chooser-open.png",
+    "add-component-placed-selected.png"
     "schematic-before-selection.png",
     "schematic-component-selected.png",
     "schematic-properties-opened.png",

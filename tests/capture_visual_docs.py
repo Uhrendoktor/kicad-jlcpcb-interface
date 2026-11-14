@@ -22,7 +22,6 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
-from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -41,7 +40,10 @@ from kicad_jlcpcb.model import (  # noqa: E402
     find_selected_component,
     iter_schematic_symbols,
 )
-from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
+from kicad_jlcpcb.placement import (  # noqa: E402
+    place_component_from_draft,
+    schematic_page_center_mm,
+)
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
     resolve_component_action_target,
@@ -60,7 +62,7 @@ ASSET_NAMES = (
     "populate-component-applied.png",
     "add-component-proposed.png",
     "add-component-confirmation.png",
-    "add-component-chooser-open.png",
+    "add-component-placed-selected.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
     "schematic-properties-opened.png",
@@ -1414,40 +1416,11 @@ def _drive_populator_form(
 
             validate_result(populator)
             if populator.create_mode:
-                chooser = subprocess.run(
-                    [
-                        "xdotool", "search", "--onlyvisible", "--name",
-                        "Choose Symbol",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    timeout=10,
-                )
-                chooser_windows = [
-                    value.strip()
-                    for value in chooser.stdout.splitlines()
-                    if value.strip()
-                ]
-                if chooser.returncode or not chooser_windows:
+                if not populator.placement_completed or populator.placed_symbol is None:
                     raise RuntimeError(
-                        "The native Add Symbol chooser did not remain open for "
-                        "manual project-library selection."
+                        "Add mode did not place and select the generated symbol."
                     )
                 _capture_desktop(output_dir / completed_asset)
-                cancelled = subprocess.run(
-                    ["xdotool", "key", "--clearmodifiers", "Escape"],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    timeout=10,
-                )
-                if cancelled.returncode:
-                    raise RuntimeError(
-                        "Could not dismiss the native chooser after capturing its "
-                        "manual-selection state: "
-                        + (cancelled.stderr.strip() or str(cancelled.returncode))
-                    )
             else:
                 root.update()
                 _capture_window(root, output_dir / completed_asset)
@@ -1456,10 +1429,10 @@ def _drive_populator_form(
         except BaseException as exc:
             diagnostic = ""
             if populator.create_mode:
-                screenshot = output_dir / "add-component-chooser-failure.png"
+                screenshot = output_dir / "add-component-placement-failure.png"
                 try:
                     _capture_desktop(screenshot)
-                    diagnostic = f"; chooser screenshot: {screenshot.name}"
+                    diagnostic = f"; placement screenshot: {screenshot.name}"
                 except BaseException as capture_error:
                     diagnostic = (
                         "; chooser screenshot failed: "
@@ -1615,12 +1588,6 @@ def _capture_passive_component_workflows(
             "The live Add mode fixture could not focus Eeschema: "
             + (focused.stderr.strip() or str(focused.returncode))
         )
-    editor_window_id = capture_eeschema_window_id()
-    if editor_window_id is None:
-        raise RuntimeError(
-            "The active Eeschema window could not be captured for cursor placement."
-        )
-
     create = ComponentPopulator(
         schematic,
         None,
@@ -1628,7 +1595,6 @@ def _capture_passive_component_workflows(
         create_mode=True,
         kicad=kicad,
         theme="light",
-        editor_window_id=editor_window_id,
     )
     create.root.geometry("1120x860+780+30")
     create.lcsc_var.set("C105637")
@@ -1638,14 +1604,45 @@ def _capture_passive_component_workflows(
         generated = populator.generated_library_symbol
         if (
             generated is None
-            or not populator.cursor_placement_started
+            or not populator.placement_completed
+            or populator.placed_symbol is None
             or generated.library_id != "JLCPCB_Generated:R_C105637"
             or generated.symbol_name != "R_C105637"
             or not generated.library_path.is_file()
         ):
             raise RuntimeError(
-                "The Add mode UI did not generate the project symbol and hand it "
-                "to Eeschema's native cursor-placement tool."
+                "The Add mode UI did not generate, place and select the "
+                "project-local symbol through schematic IPC."
+            )
+
+        placed = populator.placed_symbol
+        expected_x, expected_y = schematic_page_center_mm(schematic)
+        position = getattr(placed, "position", None)
+        if position is None:
+            raise RuntimeError("The generated schematic symbol has no IPC position.")
+        actual_x = float(position.x) / 1_000_000
+        actual_y = float(position.y) / 1_000_000
+        if abs(actual_x - expected_x) > 0.02 or abs(actual_y - expected_y) > 0.02:
+            raise RuntimeError(
+                "The generated schematic symbol is not at the page center: "
+                f"expected=({expected_x}, {expected_y}) mm; "
+                f"actual=({actual_x}, {actual_y}) mm."
+            )
+
+        placed_id = str(
+            getattr(getattr(placed, "id", None), "value", None)
+            or getattr(placed, "id", "")
+        )
+        selected_ids = {
+            str(
+                getattr(getattr(item, "id", None), "value", None)
+                or getattr(item, "id", "")
+            )
+            for item in schematic.get_selection()
+        }
+        if not placed_id or placed_id not in selected_ids:
+            raise RuntimeError(
+                "Eeschema did not report the newly placed symbol as selected."
             )
         library_root = parse_sexpr(
             generated.library_path.read_text(encoding="utf-8")
@@ -1673,7 +1670,7 @@ def _capture_passive_component_workflows(
         light_asset="add-component-light.png",
         dark_asset="add-component-dark.png",
         confirmation_asset="add-component-confirmation.png",
-        completed_asset="add-component-chooser-open.png",
+        completed_asset="add-component-placed-selected.png",
         confirmation_title="Confirm new schematic component",
         required_confirmation_text="JLCPCB_Generated project library",
         expected_lcsc="C105637",
@@ -1683,7 +1680,7 @@ def _capture_passive_component_workflows(
         require_image=True,
     )
     print(
-        "live-add-mode-ui=passed chooser=opened-for-manual-selection "
+        "live-add-mode-ui=passed placement=page-center-and-selected "
         "library_id=JLCPCB_Generated:R_C105637",
         flush=True,
     )

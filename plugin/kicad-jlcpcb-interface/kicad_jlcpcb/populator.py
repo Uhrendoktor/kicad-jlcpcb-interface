@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import queue
-import shutil
 import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
@@ -13,7 +12,6 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from .catalogue_widgets import build_product_preview, display_product_image
-from .cursor_placement import capture_eeschema_window_id, start_native_symbol_placement
 from .draft import (
     SUPPORTED_PLACEHOLDERS,
     ComponentDraft,
@@ -27,6 +25,7 @@ from .library import generate_project_library_symbol, reload_project_symbol_libr
 from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
 from .provider import JlcSearchProvider, normalize_lcsc_code
+from .placement import place_and_select_component_from_draft
 from .theme import apply_tk_theme
 from .value_search import (
     exact_passive_candidates,
@@ -58,7 +57,6 @@ class ComponentPopulator:
         kicad: Any | None = None,
         library_id: str | None = None,
         theme: str | None = None,
-        editor_window_id: str | None = None,
     ):
         import tkinter as tk
         from tkinter import messagebox, ttk
@@ -70,10 +68,6 @@ class ComponentPopulator:
         self.symbol = symbol
         self.kicad = kicad
         self.create_mode = bool(create_mode)
-        self.editor_window_id = str(editor_window_id or "").strip() or None
-        self.cursor_placement_available = bool(
-            self.editor_window_id and shutil.which("xdotool")
-        )
         if self.create_mode and symbol is not None:
             raise ValueError("Create mode does not accept an existing symbol.")
         if not self.create_mode and symbol is None:
@@ -100,7 +94,8 @@ class ComponentPopulator:
         self.candidate_rows: dict[str, tuple[Any, ComponentDraft]] = {}
         self.closed = False
         self.generated_library_symbol = None
-        self.cursor_placement_started = False
+        self.placed_symbol = None
+        self.placement_completed = False
 
         self.root = tk.Tk()
         self.palette = apply_tk_theme(self.root, theme)
@@ -365,24 +360,12 @@ class ComponentPopulator:
             ttk.Label(
                 component_section,
                 text=(
-                    "KiCad's native Add Symbol chooser attaches the generated copy "
-                    "to the mouse cursor. Click in the schematic to place it or press "
-                    "Escape to cancel."
+                    "The generated symbol is inserted at the sheet center, "
+                    "brought into view and selected. Move it to its final position."
                 ),
                 wraplength=500,
             ).grid(row=row, column=1, sticky="w", pady=4)
             row += 1
-            if not self.cursor_placement_available:
-                ttk.Label(
-                    component_section,
-                    text=(
-                        "Add mode is cursor-only. Launch this action from the focused "
-                        "Eeschema window on an X11 desktop with xdotool installed."
-                    ),
-                    style="Muted.TLabel",
-                    wraplength=500,
-                ).grid(row=row, column=1, sticky="w", pady=(0, 4))
-                row += 1
 
         proposal_section = ttk.Frame(content)
         proposal_section.grid(row=3, column=0, sticky="ew", pady=(0, 12))
@@ -912,16 +895,10 @@ class ComponentPopulator:
                 "verify its freshness before applying."
             )
         self._set_notes(tuple(notes))
-        if self.create_mode and not self.cursor_placement_available:
-            notes.append(
-                "Cursor placement is unavailable. Launch this action from the focused "
-                "Eeschema window on X11 with xdotool installed."
-            )
         can_apply = (
             compatible
             and bool(draft.proposed_fields)
             and (not self.create_mode or complete_for_placement)
-            and (not self.create_mode or self.cursor_placement_available)
         )
         self.status_var.set(
             (
@@ -931,15 +908,8 @@ class ComponentPopulator:
             )
             if can_apply
             else (
-                (
-                    "Launch this action from the focused Eeschema window on X11 with "
-                    "xdotool to enable cursor-only Add mode."
-                )
-                if self.create_mode and not self.cursor_placement_available
-                else (
-                    "This proposal is incomplete or incompatible; automatic write-back "
-                    "is disabled."
-                )
+                "This proposal is incomplete or incompatible; automatic write-back "
+                "is disabled."
             )
         )
         self.apply_button.configure(state="normal" if can_apply else "disabled")
@@ -955,25 +925,23 @@ class ComponentPopulator:
                 or self.selected_details
             )
             and bool(self.draft.proposed_fields)
-            and (not self.create_mode or (":" in hint and self.cursor_placement_available))
+            and (not self.create_mode or ":" in hint)
         )
         self.apply_button.configure(state="normal" if ready else "disabled")
-        if not self.cursor_placement_available:
-            self.status_var.set(
-                "Launch this action from the focused Eeschema window on X11 with "
-                "xdotool to enable cursor-only Add mode."
-            )
-        elif not ready:
+        if not ready:
             self.status_var.set(
                 "Enter a KiCad Library:Symbol and a component value before placing the part."
             )
 
-    def _start_generated_symbol_placement(self, generated: Any) -> None:
-        """Open the generated symbol in Eeschema using the active KiCad session."""
-        start_native_symbol_placement(
-            self.editor_window_id,
-            generated.symbol_name,
-            kicad=self.kicad,
+    def _place_generated_symbol(
+        self, generated: Any, draft: ComponentDraft
+    ) -> None:
+        """Place the generated project symbol at the sheet center and select it."""
+        self.placed_symbol = place_and_select_component_from_draft(
+            self.schematic,
+            draft,
+            library_id=generated.library_id,
+            reference_prefix=draft.reference_prefix,
         )
 
     def apply(self) -> None:
@@ -1009,23 +977,15 @@ class ComponentPopulator:
                 )
                 return
 
-            if not self.cursor_placement_available:
-                self.messagebox.showerror(
-                    "Cursor placement unavailable",
-                    "Launch this action from the focused Eeschema window on an X11 "
-                    "desktop with xdotool installed. Add mode has no coordinate fallback.",
-                    parent=self.root,
-                )
-                return
             warning = (
                 f"Copy {draft.symbol_hint} into the project-local library for "
-                f"{draft.value} ({draft.lcsc}) and open KiCad's native Add Symbol chooser?\n\n"
+                f"{draft.value} ({draft.lcsc}) and insert it at the center of "
+                "the current schematic sheet?\n\n"
                 "The selected symbol's pin numbers and electrical types are retained; "
                 "they are not inferred from catalogue data. Verify pin mapping against "
-                "the datasheet. Footprint is optional. In the native chooser, select the "
-                "new copy under the JLCPCB_Generated project library and confirm it. "
-                "KiCad will then attach the symbol to the mouse cursor; click to place "
-                "or press Escape to cancel."
+                "the datasheet. Footprint is optional. After insertion, KiCad will bring "
+                "the new symbol into view and select it so you can move it to its final "
+                "position."
             )
             if not self.messagebox.askyesno(
                 "Confirm new schematic component", warning, parent=self.root
@@ -1048,13 +1008,11 @@ class ComponentPopulator:
                         current_grab.grab_release()
                 except self.tk.TclError:
                     pass
-                # Withdraw instead of iconifying: Xvfb may not have a window
-                # manager to honor the iconify hint, leaving the review form
-                # mapped over the native chooser.
+                # Hide the review window so the newly selected schematic item is visible.
                 self.root.withdraw()
                 withdrawn = True
-                self._start_generated_symbol_placement(generated)
-                self.cursor_placement_started = True
+                self._place_generated_symbol(generated, draft)
+                self.placement_completed = True
                 self.close()
                 return
             except Exception as exc:
@@ -1126,11 +1084,12 @@ class ComponentPopulator:
         state["image_executor"].shutdown(wait=True, cancel_futures=True)
 
         # Release all Tk variables, widgets and image references on this GUI
-        # thread while the interpreter is still alive. Preserve only the
-        # generated-symbol metadata used by the live cursor-placement check.
+        # thread while the interpreter is still alive. Preserve placement evidence
+        # for the live Eeschema fixture after the window is closed.
         create_mode = bool(state.get("create_mode"))
         generated_symbol = state.get("generated_library_symbol")
-        cursor_started = bool(state.get("cursor_placement_started"))
+        placed_symbol = state.get("placed_symbol")
+        placement_completed = bool(state.get("placement_completed"))
         messagebox = state.get("messagebox")
         state.clear()
         self.closed = True
@@ -1138,7 +1097,8 @@ class ComponentPopulator:
         if create_mode:
             self.create_mode = True
             self.generated_library_symbol = generated_symbol
-            self.cursor_placement_started = cursor_started
+            self.placed_symbol = placed_symbol
+            self.placement_completed = placement_completed
         root.destroy()
 
     def run(self) -> None:
@@ -1293,7 +1253,6 @@ def run_component_action() -> None:
         symbol, library_id, create_mode = resolve_component_action_target(
             schematic, list(schematic.get_selection())
         )
-        editor_window_id = capture_eeschema_window_id() if create_mode else None
         settings_directory = Path(
             kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
         ).expanduser()
@@ -1304,7 +1263,6 @@ def run_component_action() -> None:
             create_mode=create_mode,
             kicad=kicad,
             library_id=library_id or None,
-            editor_window_id=editor_window_id,
         ).run()
     except Exception as exc:
         import tkinter as tk

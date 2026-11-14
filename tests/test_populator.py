@@ -537,19 +537,26 @@ class TkCleanupExecutor:
 
 
 class ComponentPlacementHandoffTests(unittest.TestCase):
-    def test_forwards_the_live_kicad_connection_to_cursor_placement(self):
+    def test_places_generated_symbol_at_sheet_center_and_selects_it(self):
         populator = object.__new__(ComponentPopulator)
-        populator.editor_window_id = "0x100"
-        populator.kicad = object()
-        generated = SimpleNamespace(symbol_name="R_C60489")
+        populator.schematic = object()
+        populator.placed_symbol = None
+        generated = SimpleNamespace(library_id="JLCPCB_Generated:R_C60489")
+        draft = SimpleNamespace(reference_prefix="R")
+        placed = object()
 
-        with patch("kicad_jlcpcb.populator.start_native_symbol_placement") as place:
-            populator._start_generated_symbol_placement(generated)
+        with patch(
+            "kicad_jlcpcb.populator.place_and_select_component_from_draft",
+            return_value=placed,
+        ) as place:
+            populator._place_generated_symbol(generated, draft)
 
+        self.assertIs(populator.placed_symbol, placed)
         place.assert_called_once_with(
-            "0x100",
-            "R_C60489",
-            kicad=populator.kicad,
+            populator.schematic,
+            draft,
+            library_id="JLCPCB_Generated:R_C60489",
+            reference_prefix="R",
         )
 
 
@@ -568,7 +575,8 @@ class ComponentPopulatorCleanupTests(unittest.TestCase):
         populator.messagebox = messagebox
         populator.create_mode = True
         populator.generated_library_symbol = generated
-        populator.cursor_placement_started = True
+        populator.placement_completed = True
+        populator.placed_symbol = generated
 
         resource_names = (
             "lcsc_var",
@@ -637,7 +645,8 @@ class ComponentPopulatorCleanupTests(unittest.TestCase):
         self.assertTrue(populator.create_mode)
         self.assertIs(populator.messagebox, messagebox)
         self.assertIs(populator.generated_library_symbol, generated)
-        self.assertTrue(populator.cursor_placement_started)
+        self.assertTrue(populator.placement_completed)
+        self.assertIs(populator.placed_symbol, generated)
         self.assertEqual(
             set(populator.__dict__),
             {
@@ -645,7 +654,8 @@ class ComponentPopulatorCleanupTests(unittest.TestCase):
                 "messagebox",
                 "create_mode",
                 "generated_library_symbol",
-                "cursor_placement_started",
+                "placement_completed",
+                "placed_symbol",
             },
         )
 

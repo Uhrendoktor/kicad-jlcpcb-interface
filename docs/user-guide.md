@@ -156,7 +156,7 @@ The direct JLCPCB detail and MPN endpoints are undocumented website endpoints, n
 | Nothing selected | **Add** | Search the catalogue, review a suggested or manually selected KiCad symbol, then create and place a project-local copy. |
 | Multiple items or a non-symbol object | — | The action rejects the selection. Select one symbol to update it, or clear the selection to add a component. |
 
-Both contexts use the same window size and information hierarchy: catalogue search, a product preview card, a match list, editable KiCad details, proposed fields, review notes and one persistent action footer. The preview shows the supplier image when one is available, plus description, manufacturer, MPN, LCSC code, package, stock, indicative unit price, library class and source freshness. Product-page and datasheet links are enabled only when the catalogue provides HTTPS URLs. Add mode reveals the extra **Library:Symbol**, **Reference prefix** and cursor-placement instructions in the same layout; update mode keeps the selected symbol identity visible and retains its pin mapping.
+Both contexts use the same window size and information hierarchy: catalogue search, a product preview card, a match list, editable KiCad details, proposed fields, review notes and one persistent action footer. The preview shows the supplier image when one is available, plus description, manufacturer, MPN, LCSC code, package, stock, indicative unit price, library class and source freshness. Product-page and datasheet links are enabled only when the catalogue provides HTTPS URLs. Add mode reveals the extra **Library:Symbol**, **Reference prefix** and sheet-center placement instructions in the same layout; update mode keeps the selected symbol identity visible and retains its pin mapping.
 
 ### Shared review process
 
@@ -194,13 +194,13 @@ Existing fields with matching names are updated; unrelated custom fields are pre
 
 ### Add a new project-local symbol
 
-Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a project-local copy of a standalone KiCad stock-library symbol, then opens KiCad's native Add Symbol chooser so you can select the copy from the `JLCPCB_Generated` project library.
+Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a project-local copy of a standalone KiCad stock-library symbol, inserts an instance at the center of the current sheet, and selects it in Eeschema.
 
 1. Save the KiCad project and clear the Eeschema selection.
 2. Search by LCSC code, manufacturer part number, device name or another keyword. Resistor/capacitor value queries such as 10k, 4k7, 470R, 100nF and 4.7uF use exact-value candidate filtering; other free-text searches show catalogue candidates to review.
 3. Select a catalogue row when the search returns multiple parts. Review the suggested symbol, Value, package, Footprint, metadata, confidence and warnings.
 4. In **Component details**, accept or edit the suggested KiCad `Library:Symbol`. When no confident symbol mapping is available, enter a stock ID manually, for example `Amplifier_Operational:LM358`. You can also replace an uncertain automatic suggestion. Edit Value, optional Footprint and Reference prefix as required.
-5. Confirm **Generate and place component**. KiCad opens its native Add Symbol chooser. Select the new copy under the `JLCPCB_Generated` project library and confirm the chooser. KiCad then attaches the selected symbol to the mouse cursor; click in the schematic to place it or press Escape to cancel. Add mode has no X/Y coordinate fallback.
+5. Confirm **Generate and place component**. The add-on creates the instance at the current sheet's center, brings it into view and selects it. Move the selected symbol to its final position using KiCad's normal move tool.
 
 Automatic symbol suggestions currently cover common resistors, capacitors, inductors, diodes, LEDs, fuses and crystals. The suggestions are generic symbol templates, not manufacturer-specific pin maps. When classification is ambiguous, the symbol field remains for manual selection rather than guessing an IC pinout.
 
@@ -215,7 +215,7 @@ For the selected KiCad Library:Symbol, the add-on:
 - Refuses symbols that extend another library symbol, because the generator copies a standalone definition rather than resolving inherited definitions. Choose a standalone stock symbol instead.
 - Writes the selected Value, optional Footprint, Datasheet and Description plus hidden LCSC, Manufacturer, MPN, category and catalogue attribute properties.
 - Writes or extends the project-local JLCPCB_Generated.kicad_sym library and registers it in sym-lib-table using a project-relative KiCad project variable URI.
-- Reloads the project library before opening KiCad's native Add Symbol chooser.
+- Reloads the project library before creating the schematic instance through IPC.
 
 The generated symbol ID uses the selected reference prefix and LCSC part number, so repeat generation for the same part can reuse the existing project-local symbol. The generator protects unowned files and refuses to overwrite a generated symbol that has been manually modified. The library writer uses atomic file replacement and creates a backup when extending an existing generated library.
 
@@ -233,7 +233,7 @@ The existing generated symbol is detected and reused; placement can continue whe
 
 #### Placement and electrical checks
 
-Add mode is cursor-only. It opens KiCad's native Add Symbol chooser through the Eeschema IPC placement action. Select the newly generated item from the `JLCPCB_Generated` project library and confirm the chooser; KiCad attaches it to the mouse cursor for placement. On KiCad builds without the IPC action, the add-on uses Eeschema's `A` shortcut as a compatibility fallback on X11. No X/Y coordinate placement fallback is offered.
+Add mode creates a real schematic instance at the center of the current sheet using KiCad's supported schematic IPC API. It then uses `FocusOnItems` to bring that instance into view and `add_to_selection` to select it. The page-center coordinate is snapped to KiCad's standard 50 mil (1.27 mm) grid. The user can then move the selected symbol to their desired location. No native chooser, keyboard simulation or X11 runtime helper is used.
 
 The optional Footprint field is a KiCad footprint-library reference, not a footprint generator. A symbol can be created without a footprint, but it will need a suitable footprint before PCB layout. Always inspect the symbol/footprint pair and verify pin numbers, electrical types, package dimensions and ratings against the manufacturer datasheet.
 
