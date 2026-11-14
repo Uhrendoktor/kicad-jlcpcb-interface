@@ -11,6 +11,7 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.cursor_placement import (  # noqa: E402
     capture_eeschema_window_id,
+    set_symbol_chooser_filter_accessibly,
     start_native_symbol_placement,
 )
 
@@ -58,6 +59,49 @@ class FakeRunner:
         return SimpleNamespace(stdout="", returncode=0)
 
 
+class FakeAccessible:
+    def __init__(self, name="", role="panel", children=(), interfaces=()):
+        self.name = name
+        self.role = role
+        self.children = list(children)
+        self.interfaces = list(interfaces)
+        self.text = ""
+        self.focused = False
+
+    @property
+    def childCount(self):
+        return len(self.children)
+
+    def getRoleName(self):
+        return self.role
+
+    def getInterfaces(self):
+        return self.interfaces
+
+    def getChildAtIndex(self, index):
+        return self.children[index]
+
+    def queryComponent(self):
+        return self
+
+    def grabFocus(self):
+        self.focused = True
+        return True
+
+    def queryEditableText(self):
+        return self
+
+    def setTextContents(self, text):
+        self.text = text
+        return True
+
+    def queryText(self):
+        return self
+
+    def getText(self, _start, _end):
+        return self.text
+
+
 class FakeKiCad:
     def __init__(self, raises=False):
         self.actions = []
@@ -97,6 +141,49 @@ class CursorPlacementTests(unittest.TestCase):
 
         self.assertIsNone(
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
+        )
+
+    def test_sets_chooser_search_entry_through_atspi(self):
+        search_entry = FakeAccessible(
+            role="text",
+            interfaces=["Accessible", "Component", "Text", "EditableText"],
+        )
+        chooser = FakeAccessible(
+            name="Choose Symbol (22936 items loaded)",
+            role="dialog",
+            children=[search_entry],
+        )
+        desktop = FakeAccessible(children=[chooser])
+
+        class FakeRegistry:
+            @staticmethod
+            def getDesktop(_index):
+                return desktop
+
+        class FakeATspi:
+            Registry = FakeRegistry
+
+        self.assertTrue(
+            set_symbol_chooser_filter_accessibly(
+                "R_C60489", atspi_module=FakeATspi
+            )
+        )
+        self.assertEqual(search_entry.text, "R_C60489")
+        self.assertTrue(search_entry.focused)
+
+    def test_atspi_filter_falls_back_when_chooser_is_not_accessible(self):
+        class FakeRegistry:
+            @staticmethod
+            def getDesktop(_index):
+                return FakeAccessible(children=[])
+
+        class FakeATspi:
+            Registry = FakeRegistry
+
+        self.assertFalse(
+            set_symbol_chooser_filter_accessibly(
+                "R_C60489", atspi_module=FakeATspi
+            )
         )
 
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(self):
