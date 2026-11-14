@@ -67,13 +67,14 @@ def build_product_preview(
     details.grid(row=0, column=1, sticky="nsew")
     details.columnconfigure(0, weight=1)
 
-    ttk.Label(
+    description_label = ttk.Label(
         details,
         textvariable=variables[keys["description"]],
         style="ProductTitle.TLabel",
-        wraplength=780,
+        wraplength=620,
         justify="left",
-    ).grid(row=0, column=0, sticky="w")
+    )
+    description_label.grid(row=0, column=0, sticky="ew")
 
     identity = ttk.Frame(details, style="ProductPreview.TFrame")
     identity.grid(row=1, column=0, sticky="ew", pady=(4, 8))
@@ -136,25 +137,29 @@ def build_product_preview(
     )
     datasheet_button.pack(side="left")
 
-    ttk.Label(
+    source_label = ttk.Label(
         details,
         textvariable=variables[keys["source"]],
         style="ProductMeta.TLabel",
-        wraplength=820,
+        wraplength=620,
         justify="left",
-    ).grid(row=4, column=0, sticky="w", pady=(5, 0))
-    ttk.Label(
+    )
+    source_label.grid(row=4, column=0, sticky="w", pady=(5, 0))
+    status_label = ttk.Label(
         details,
         textvariable=status_var,
         style="ProductMeta.TLabel",
-        wraplength=820,
+        wraplength=620,
         justify="left",
-    ).grid(row=5, column=0, sticky="w", pady=(2, 0))
+    )
+    status_label.grid(row=5, column=0, sticky="w", pady=(2, 0))
 
     def fit_text(event) -> None:
         wrap = max(280, int(event.width) - 16)
-        for label in ():
-            label.configure(wraplength=wrap)
+        description_label.configure(wraplength=wrap)
+        mpn_label.configure(wraplength=wrap)
+        source_label.configure(wraplength=wrap)
+        status_label.configure(wraplength=wrap)
 
     details.bind("<Configure>", fit_text)
     return ProductPreviewControls(

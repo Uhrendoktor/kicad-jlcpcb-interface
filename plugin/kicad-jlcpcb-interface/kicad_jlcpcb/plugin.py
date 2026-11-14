@@ -738,6 +738,11 @@ remove duplicated source status        actions = ttk.Frame(content)
             return f"{parsed.hostname} / {filename}" if filename else parsed.hostname
         return str(url or "—")
 
+    @staticmethod
+    def _is_https_url(url: str) -> bool:
+        parsed = urlparse(str(url or ""))
+        return parsed.scheme == "https" and bool(parsed.hostname)
+
     def _clear_catalogue_detail(self) -> None:
         self._catalogue_details = None
         for key in (

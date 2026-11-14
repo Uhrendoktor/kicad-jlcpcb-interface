@@ -106,9 +106,9 @@ class ComponentPopulator:
         self.root = tk.Tk()
         self.palette = apply_tk_theme(self.root, theme)
         self.theme = self.root._kicad_jlcpcb_theme
-        self.root.title("JLCPCB Add or Update Component")
-        self.root.geometry("1180x900")
-        self.root.minsize(980, 740)
+        self.root.title("Component Workspace")
+        self.root.geometry("1120x860")
+        self.root.minsize(880, 640)
         self._image_ref = None
         self._image_lcsc = ""
         self._image_pending = False
@@ -442,6 +442,8 @@ class ComponentPopulator:
         self.proposal_rows.grid(row=1, column=0, sticky="ew")
         self.proposal_rows.columnconfigure(1, weight=1)
         self._proposal_value_labels = []
+        self.proposal_section = proposal_section
+        proposal_section.grid_remove()
 
         self.notes_section = ttk.Frame(content)
         self.notes_section.grid(row=4, column=0, sticky="ew", pady=(0, 12))
@@ -522,10 +524,9 @@ class ComponentPopulator:
         self._clear_proposal_rows()
         self.candidate_tree.delete(*self.candidate_tree.get_children())
         self.candidate_rows.clear()
+        self._set_candidates_visible(False)
         self._reset_catalogue_preview()
-        self._set_notes(
-            ("Waiting for a fresh catalogue lookup. No symbol fields have been changed.",)
-        )
+        self._set_notes(())
         self.status_var.set(
             f"Searching JLCPCB for exact-value {query} matches…"
             if mode == "value"
@@ -608,6 +609,7 @@ class ComponentPopulator:
 
                     for index, (details, draft) in enumerate(matches):
                         self._insert_candidate(index, details, draft)
+                    self._set_candidates_visible(len(matches) > 1)
                     if not matches:
                         self.status_var.set(
                             f"No catalogue matches found for {query}. Try an LCSC code, "
@@ -642,6 +644,7 @@ class ComponentPopulator:
                     continue
                 self.selected_details = details
                 self.draft = build_component_draft(details)
+                self._set_candidates_visible(False)
                 self._insert_candidate(0, details, self.draft)
                 self.candidate_tree.selection_set("candidate-0")
                 self.candidate_tree.focus("candidate-0")
@@ -650,6 +653,12 @@ class ComponentPopulator:
             pass
         if not self.closed:
             self._poll_id = self.root.after(100, self._poll_results)
+
+    def _set_candidates_visible(self, visible: bool) -> None:
+        if visible:
+            self.candidate_section.grid()
+        else:
+            self.candidate_section.grid_remove()
 
     def _on_candidate_selected(self, _event=None) -> None:
         """Show the catalogue preview and proposal for the selected match."""
@@ -723,12 +732,8 @@ class ComponentPopulator:
         self.catalogue_vars["description"].set(
             details.description or details.manufacturer_part_number or details.lcsc
         )
-        self.catalogue_vars["manufacturer"].set(
-            f"Manufacturer: {details.manufacturer or '—'}"
-        )
-        self.catalogue_vars["mpn"].set(
-            f"MPN: {details.manufacturer_part_number or '—'}"
-        )
+        self.catalogue_vars["manufacturer"].set(details.manufacturer or "—")
+        self.catalogue_vars["mpn"].set(details.manufacturer_part_number or "—")
         self.catalogue_vars["lcsc"].set(details.lcsc or "—")
         self.catalogue_vars["package"].set(details.package or "—")
         self.catalogue_vars["stock"].set(
@@ -758,8 +763,9 @@ class ComponentPopulator:
         self.datasheet_button.configure(
             state="normal" if self._is_https_url(self._datasheet_url) else "disabled"
         )
+        image_urls = details.image_urls or ((details.image_url,) if details.image_url else ())
         self.catalogue_status_var.set(
-            "Loading product image…" if details.image_url else "No supplier image on this record."
+            "Loading product image…" if image_urls else "No supplier image on this record."
         )
         self._request_product_image(details)
 
@@ -778,7 +784,11 @@ class ComponentPopulator:
         self._image_ref = None
         self.image_label.configure(
             image="",
-            text="Loading image…" if details.image_url else "No catalogue image",
+            text=(
+                "Loading image…"
+                if details.image_urls or details.image_url
+                else "No catalogue image"
+            ),
             padding=8,
         )
         image_urls = details.image_urls or ((details.image_url,) if details.image_url else ())
@@ -805,6 +815,8 @@ class ComponentPopulator:
         self._image_ref = display_product_image(
             self.image_label, image_data, self.root, size=(148, 118)
         )
+        if image_data is None and self._image_attempted and not self._image_pending:
+            self.image_label.configure(text="Image unavailable")
 
     def open_product_page(self) -> None:
         if self._is_https_url(self._product_url):
@@ -842,17 +854,28 @@ class ComponentPopulator:
     def _render_proposal_rows(self, fields: tuple[tuple[str, str], ...]) -> None:
         self._clear_proposal_rows()
         for index, (name, value) in enumerate(fields):
-            row = ttk.Frame(self.proposal_rows)
+            row = self.ttk.Frame(self.proposal_rows)
             row.grid(row=index, column=0, columnspan=2, sticky="ew", pady=2)
             row.columnconfigure(1, weight=1)
-            ttk.Label(
-                row, text=name, style="Muted.TLabel", width=20, anchor="nw"
+            self.ttk.Label(
+                row,
+                text=name,
+                style="Muted.TLabel",
+                width=20,
+                anchor="nw",
             ).grid(row=0, column=0, sticky="nw", padx=(0, 14))
-            value_label = ttk.Label(
-                row, text=value or "—", wraplength=760, justify="left"
+            value_label = self.ttk.Label(
+                row,
+                text=value or "—",
+                wraplength=max(280, self.content_canvas.winfo_width() - 190),
+                justify="left",
             )
             value_label.grid(row=0, column=1, sticky="ew")
             self._proposal_value_labels.append(value_label)
+        if fields:
+            self.proposal_section.grid()
+        else:
+            self.proposal_section.grid_remove()
 
 
     def _render_draft(self, draft: ComponentDraft, cached: bool) -> None:
