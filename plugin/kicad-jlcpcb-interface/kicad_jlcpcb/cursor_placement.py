@@ -35,8 +35,11 @@ def capture_eeschema_window_id(
     focused = read("getwindowfocus")
     if focused:
         candidates.append(focused)
+    focused_is_eeschema = bool(
+        focused and _is_eeschema_window(focused, read)
+    )
 
-    if not candidates or not _is_eeschema_window(candidates[0], read):
+    if not focused_is_eeschema:
         for arguments in (
             ("search", "--onlyvisible", "--class", "eeschema"),
             ("search", "--onlyvisible", "--name", "[Ss]chematic [Ee]ditor"),
@@ -52,8 +55,9 @@ def capture_eeschema_window_id(
         if window_id in seen:
             continue
         seen.add(window_id)
-        if not _is_eeschema_window(window_id, read):
-            continue
+        if window_id != focused or not focused_is_eeschema:
+            if not _is_eeschema_window(window_id, read):
+                continue
         if read("getwindowpid", window_id) == plugin_pid:
             # Plugin Tk windows share KiCad's WM_CLASS for taskbar grouping.
             continue
