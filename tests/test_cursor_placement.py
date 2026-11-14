@@ -135,7 +135,10 @@ class CursorPlacementTests(unittest.TestCase):
         ]
         self.assertIn(editor_focus, runner.commands)
         self.assertIn(add_symbol_hotkey, runner.commands)
-        self.assertLess(runner.commands.index(editor_focus), runner.commands.index(add_symbol_hotkey))
+        self.assertLess(
+            runner.commands.index(editor_focus),
+            runner.commands.index(add_symbol_hotkey),
+        )
         self.assertLess(runner.commands.index(add_symbol_hotkey), title_checks[0])
         self.assertEqual(len(title_checks), 2)
         self.assertNotIn(
