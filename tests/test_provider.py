@@ -119,6 +119,7 @@ class ProviderTests(unittest.TestCase):
             details.image_url,
             "https://images.example.test/part.jpg?x-oss-signature=temporary",
         )
+        self.assertEqual(details.image_urls, (details.image_url,))
         self.assertEqual(details.source, "Community JLC search")
 
     def test_maps_older_nested_details_and_price_tiers(self):
@@ -151,6 +152,10 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(details.unit_price_usd, 0.0031)
         self.assertEqual(details.datasheet_url, "https://example.test/ds.pdf")
         self.assertEqual(details.image_url, "https://example.test/large.png")
+        self.assertEqual(
+            details.image_urls,
+            ("https://example.test/large.png", "https://example.test/small.png"),
+        )
         self.assertEqual(details.attributes["Capacitance"], "100nF")
 
     def test_direct_jlcpcb_lookup_is_preferred_and_signed_urls_are_not_persisted(self):

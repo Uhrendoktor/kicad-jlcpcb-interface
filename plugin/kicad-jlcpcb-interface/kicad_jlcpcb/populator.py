@@ -147,7 +147,7 @@ class ComponentPopulator:
         )
         self.symbol_var = tk.StringVar(value=symbol_summary)
         self.confidence_var = tk.StringVar(value="No proposal loaded.")
-        self.catalogue_status_var = tk.StringVar(value="Catalogue preview appears after lookup.")
+        self.catalogue_status_var = tk.StringVar(value="Select a part to preview its catalogue data.")
         self.catalogue_vars = {
             "description": tk.StringVar(value="Search for a part to preview its catalogue record."),
             "manufacturer": tk.StringVar(value="—"),
@@ -237,12 +237,16 @@ class ComponentPopulator:
                 scrollregion=self.content_canvas.bbox("all")
             ),
         )
-        self.content_canvas.bind(
-            "<Configure>",
-            lambda event: self.content_canvas.itemconfigure(
-                content_window, width=event.width
-            ),
-        )
+        def fit_workspace(event) -> None:
+            self.content_canvas.itemconfigure(content_window, width=event.width)
+            wrap = max(280, int(event.width) - 190)
+            for label in getattr(self, "_proposal_value_labels", ()):
+                label.configure(wraplength=wrap)
+            notes = getattr(self, "notes", None)
+            if notes is not None:
+                notes.configure(wraplength=max(320, int(event.width) - 32))
+
+        self.content_canvas.bind("<Configure>", fit_workspace)
 
         def scroll_content(event) -> None:
             if getattr(event, "num", None) == 4:

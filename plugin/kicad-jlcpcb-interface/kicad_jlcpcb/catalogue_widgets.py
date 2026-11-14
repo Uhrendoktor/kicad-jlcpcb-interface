@@ -77,14 +77,23 @@ def build_product_preview(
 
     identity = ttk.Frame(details, style="ProductPreview.TFrame")
     identity.grid(row=1, column=0, sticky="ew", pady=(4, 8))
-    ttk.Label(identity, textvariable=variables[keys["manufacturer"]], style="ProductMeta.TLabel").pack(
-        side="left"
+    identity.columnconfigure(1, weight=1)
+    ttk.Label(
+        identity,
+        textvariable=variables[keys["manufacturer"]],
+        style="ProductMeta.TLabel",
+    ).grid(row=0, column=0, columnspan=2, sticky="w")
+    ttk.Label(
+        identity, text="MPN", style="ProductKey.TLabel"
+    ).grid(row=1, column=0, sticky="nw", pady=(2, 0), padx=(0, 8))
+    mpn_label = ttk.Label(
+        identity,
+        textvariable=variables[keys["mpn"]],
+        style="ProductMeta.TLabel",
+        wraplength=520,
+        justify="left",
     )
-    ttk.Label(identity, text="  ·  ", style="ProductMeta.TLabel").pack(side="left")
-    ttk.Label(identity, text="MPN", style="ProductKey.TLabel").pack(side="left")
-    ttk.Label(identity, textvariable=variables[keys["mpn"]], style="ProductMeta.TLabel").pack(
-        side="left", padx=(5, 0)
-    )
+    mpn_label.grid(row=1, column=1, sticky="ew", pady=(2, 0))
 
     metrics = ttk.Frame(details, style="ProductPreview.TFrame")
     metrics.grid(row=2, column=0, sticky="ew")

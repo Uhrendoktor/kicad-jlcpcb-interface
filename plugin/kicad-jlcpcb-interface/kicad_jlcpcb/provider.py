@@ -188,17 +188,13 @@ def _image_urls(component: dict[str, Any], extra: dict[str, Any]) -> tuple[str, 
             for item in value:
                 add(item)
 
-    for key in ("image_url", "imageUrl", "img_url", "imgUrl"):
-        add(component.get(key))
+    add(component.get("productBigImageAccessIdUrl"))
     for key in ("images", "productImages", "product_images"):
         add(extra.get(key))
         add(component.get(key))
-    for key in (
-        "productBigImageAccessIdUrl",
-        "minImageAccessIdUrl",
-        "componentImageUrl",
-        "minImage",
-    ):
+    for key in ("image_url", "imageUrl", "img_url", "imgUrl"):
+        add(component.get(key))
+    for key in ("minImageAccessIdUrl", "componentImageUrl", "minImage"):
         add(component.get(key))
     return tuple(candidates)
 

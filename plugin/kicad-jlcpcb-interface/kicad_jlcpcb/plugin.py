@@ -837,6 +837,9 @@ remove duplicated source status        actions = ttk.Frame(content)
         if hasattr(self, "alternatives_tree"):
             self.alternatives_tree.delete(*self.alternatives_tree.get_children())
             self.alternatives_status_var.set("No linked component selected.")
+        if hasattr(self, "product_button"):
+            self.product_button.configure(state="disabled")
+            self.datasheet_button.configure(state="disabled")
         self.image_label.configure(
             image="",
             text="No linked schematic components match the search",

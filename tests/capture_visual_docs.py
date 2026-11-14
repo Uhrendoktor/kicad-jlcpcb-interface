@@ -1253,8 +1253,14 @@ def _drive_populator_form(
                     f"lcsc={draft.lcsc!r}, kind={draft.kind!r}, value={draft.value!r}, "
                     f"footprint={draft.footprint!r}, source={draft.source_label!r}"
                 )
-            if not populator.fields_tree.get_children():
+            root.update_idletasks()
+            if not populator.proposal_rows.winfo_children():
                 raise RuntimeError("The LCSC review form contains no proposed fields.")
+            if not populator.apply_button.winfo_viewable():
+                raise RuntimeError("The fixed component action is not visible.")
+            scroll_region = populator.content_canvas.bbox("all")
+            if not scroll_region or scroll_region[3] <= populator.content_canvas.winfo_height():
+                raise RuntimeError("The component workspace did not create a scrollable content area.")
 
             _capture_window(root, output_dir / proposal_asset)
             _capture_window(root, output_dir / light_asset)
@@ -1465,7 +1471,7 @@ def _capture_passive_component_workflows(
         theme="light",
     )
 
-    populate.root.geometry("1120x860+780+30")
+    populate.root.geometry("1024x768+780+30")
     populate.lcsc_var.set("C60489")
     populate.lookup()
 
@@ -1528,7 +1534,7 @@ def _capture_passive_component_workflows(
         kicad=kicad,
         theme="light",
     )
-    create.root.geometry("1120x860+780+30")
+    create.root.geometry("1024x768+780+30")
     create.placement_mode_var.set("coordinates")
     create.lcsc_var.set("C105637")
     create.x_var.set("205.0")

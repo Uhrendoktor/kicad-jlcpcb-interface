@@ -229,6 +229,67 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
     style.configure("TFrame", background=palette["background"])
     style.configure("TPanedwindow", background=palette["background"])
     style.configure(
+        "ProductPreview.TFrame",
+        background=palette["surface"],
+        borderwidth=0,
+        relief="flat",
+    )
+    style.configure(
+        "ProductImage.TFrame",
+        background=palette["surface_alt"],
+        borderwidth=0,
+        relief="flat",
+    )
+    style.configure(
+        "ProductImage.TLabel",
+        background=palette["surface_alt"],
+        foreground=palette["muted"],
+    )
+    style.configure(
+        "ProductTitle.TLabel",
+        background=palette["surface"],
+        foreground=palette["foreground"],
+        font=("TkDefaultFont", 11, "bold"),
+    )
+    style.configure(
+        "ProductMeta.TLabel",
+        background=palette["surface"],
+        foreground=palette["muted"],
+    )
+    style.configure(
+        "ProductKey.TLabel",
+        background=palette["surface"],
+        foreground=palette["muted"],
+        font=("TkDefaultFont", 8, "bold"),
+    )
+    style.configure(
+        "ProductMetric.TLabel",
+        background=palette["surface"],
+        foreground=palette["foreground"],
+        font=("TkDefaultFont", 10, "bold"),
+    )
+    style.configure(
+        "Warning.TLabel",
+        background=palette["background"],
+        foreground=palette["muted"],
+    )
+    style.configure(
+        "Link.TButton",
+        background=palette["surface"],
+        foreground=palette["accent"],
+        borderwidth=0,
+        bordercolor=palette["surface"],
+        focuscolor=palette["accent"],
+        padding=(0, 3),
+        relief="flat",
+    )
+    style.map(
+        "Link.TButton",
+        background=[("active", palette["hover"]), ("pressed", palette["selected"])],
+        foreground=[("disabled", palette["muted"]), ("!disabled", palette["accent"])],
+        bordercolor=[("focus", palette["accent"]), ("!focus", palette["surface"])],
+    )
+    style.configure(
         "TLabel",
         background=palette["background"],
         foreground=palette["foreground"],
@@ -264,8 +325,8 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
     style.configure(
         "Card.TFrame",
         background=palette["surface"],
-        borderwidth=1,
-        relief="solid",
+        borderwidth=0,
+        relief="flat",
     )
     style.configure(
         "Card.TLabel",

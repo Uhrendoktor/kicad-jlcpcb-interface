@@ -131,6 +131,39 @@ class CatalogueImageDownloadTests(unittest.TestCase):
         ):
             self.assertIsNone(_download_catalogue_image("https://example.com/part.png"))
 
+    def test_tries_later_supplier_rendition_when_first_url_is_not_an_image(self):
+        class Response:
+            def __init__(self, content_type, payload):
+                self.headers = {"Content-Type": content_type}
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def geturl(self):
+                return "https://images.example.com/part.png"
+
+            def read(self, _limit):
+                return self.payload
+
+        first = Response("text/html", b"blocked")
+        second = Response("image/png", b"valid-image")
+        with patch(
+            "kicad_jlcpcb.populator.urlopen",
+            side_effect=[first, second],
+        ) as open_url:
+            self.assertEqual(
+                _download_catalogue_image((
+                    "https://images.example.com/large.png",
+                    "https://images.example.com/fallback.png",
+                )),
+                b"valid-image",
+            )
+        self.assertEqual(open_url.call_count, 2)
+
     def test_rejects_oversized_image_responses(self):
         class Response:
             headers = {"Content-Type": "image/png"}
