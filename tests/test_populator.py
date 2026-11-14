@@ -4,6 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
@@ -11,6 +12,8 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.draft import symbol_library_id  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
+    MAX_CATALOGUE_IMAGE_BYTES,
+    _download_catalogue_image,
     resolve_component_action_target,
     resolve_passive_action_target,
     resolve_passive_library_id,
@@ -64,6 +67,88 @@ class FakeKiCad:
     def get_library_symbol(self, library_id: str, document=None):
         self.requests.append((library_id, document))
         return self.symbols[library_id]
+
+
+class CatalogueImageDownloadTests(unittest.TestCase):
+    def test_rejects_non_https_urls_without_network_access(self):
+        with patch("kicad_jlcpcb.populator.urlopen") as open_url:
+            self.assertIsNone(_download_catalogue_image("http://example.com/part.png"))
+            self.assertIsNone(_download_catalogue_image("file:///tmp/part.png"))
+        open_url.assert_not_called()
+
+    def test_accepts_bounded_https_image_responses(self):
+        class Response:
+            headers = {"Content-Type": "image/png"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def geturl(self):
+                return "https://images.example.com/part.png"
+
+            def read(self, limit):
+                self.asserted_limit = limit
+                return b"png-image"
+
+        response = Response()
+        with patch("kicad_jlcpcb.populator.urlopen", return_value=response) as open_url:
+            self.assertEqual(
+                _download_catalogue_image("https://images.example.com/part.png"),
+                b"png-image",
+            )
+        self.assertEqual(open_url.call_args.kwargs["timeout"], 7.0)
+        self.assertEqual(response.asserted_limit, MAX_CATALOGUE_IMAGE_BYTES + 1)
+
+    def test_rejects_non_image_and_downgraded_redirect_responses(self):
+        class Response:
+            def __init__(self, content_type, final_url):
+                self.headers = {"Content-Type": content_type}
+                self.final_url = final_url
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def geturl(self):
+                return self.final_url
+
+            def read(self, _limit):
+                return b"payload"
+
+        with patch(
+            "kicad_jlcpcb.populator.urlopen",
+            return_value=Response("application/json", "https://example.com/data"),
+        ):
+            self.assertIsNone(_download_catalogue_image("https://example.com/data"))
+        with patch(
+            "kicad_jlcpcb.populator.urlopen",
+            return_value=Response("image/png", "http://example.com/part.png"),
+        ):
+            self.assertIsNone(_download_catalogue_image("https://example.com/part.png"))
+
+    def test_rejects_oversized_image_responses(self):
+        class Response:
+            headers = {"Content-Type": "image/png"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def geturl(self):
+                return "https://example.com/large.png"
+
+            def read(self, limit):
+                return b"x" * limit
+
+        with patch("kicad_jlcpcb.populator.urlopen", return_value=Response()):
+            self.assertIsNone(_download_catalogue_image("https://example.com/large.png"))
 
 
 class SelectedSymbolResolutionTests(unittest.TestCase):

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Rebuild Add or Update Component around one consistent dialog layout for both selection contexts, with a shared catalogue match table, product-image preview, supplier identity/stock/price summary, product and datasheet links, KiCad field review and persistent confirmation footer. Add-only symbol and placement controls remain context-specific; image fetches are asynchronous, HTTPS-only and size-bounded.
 - Generalize the unified workflow as **JLCPCB Add or Update Component**. Updating accepts any single editable selected schematic symbol and preserves its library identity, graphics, pins, units and electrical pin types; add mode creates/reuses a project-local symbol copy. Multiple selections and non-symbol selections are rejected.
 - Add catalogue search by LCSC code, manufacturer part number and free-text keyword while retaining exact-value filtering for supported resistor/capacitor value queries. Common R/C/L, diode, LED, fuse and crystal categories receive cautious symbol suggestions; ambiguous parts require a manual KiCad `Library:Symbol` choice.
 - Generalize project-local symbol generation to copy standalone stock KiCad symbol definitions with their original pin numbers, electrical types, units and graphics. IC pin maps are never inferred from catalogue text. Footprints are optional and can be selected/edited manually when no reviewed mapping exists.
