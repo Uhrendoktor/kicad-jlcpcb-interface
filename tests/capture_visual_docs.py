@@ -1127,6 +1127,7 @@ def _drive_populator_form(
     require_image: bool = False,
     assert_basic_shortlist: bool = False,
     preferred_lcsc: str | None = None,
+    avoid_lcsc: str | None = None,
     capture_cursor: bool = False,
 ) -> None:
     """Capture the real LCSC proposal form, confirm it, and verify the IPC result."""
@@ -1145,17 +1146,30 @@ def _drive_populator_form(
     def advance() -> None:
         try:
             root.update()
-            if preferred_lcsc and populator.candidate_rows:
-                preferred_iid = next(
-                    (
-                        iid for iid, (details, _draft) in populator.candidate_rows.items()
-                        if details.lcsc == preferred_lcsc
-                    ),
-                    None,
-                )
-                if preferred_iid and populator.candidate_tree.selection() != (preferred_iid,):
-                    populator.candidate_tree.selection_set(preferred_iid)
-                    populator.candidate_tree.focus(preferred_iid)
+            if populator.candidate_rows:
+                selected_iid = None
+                if preferred_lcsc:
+                    selected_iid = next(
+                        (
+                            iid for iid, (details, _draft) in populator.candidate_rows.items()
+                            if details.lcsc == preferred_lcsc
+                        ),
+                        None,
+                    )
+                if selected_iid is None and avoid_lcsc:
+                    current = populator.candidate_tree.selection()
+                    current_details = populator.candidate_rows.get(current[0]) if current else None
+                    if current_details and current_details[0].lcsc == avoid_lcsc:
+                        selected_iid = next(
+                            (
+                                iid for iid, (details, _draft) in populator.candidate_rows.items()
+                                if details.lcsc != avoid_lcsc
+                            ),
+                            None,
+                        )
+                if selected_iid and populator.candidate_tree.selection() != (selected_iid,):
+                    populator.candidate_tree.selection_set(selected_iid)
+                    populator.candidate_tree.focus(selected_iid)
                     populator._on_candidate_selected()
             if (
                 populator.draft is None
@@ -1634,7 +1648,7 @@ def _capture_passive_component_workflows(
         expected_footprint=None,
         validate_result=validate_create_result,
         assert_basic_shortlist=True,
-        preferred_lcsc="C60489",
+        avoid_lcsc="C60489",
         capture_cursor=True,
     )
     print(
