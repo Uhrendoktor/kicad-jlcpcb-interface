@@ -43,7 +43,7 @@ class FakeRunner:
             return SimpleNamespace(stdout="0x200", returncode=0)
         if command == "getwindowgeometry":
             return SimpleNamespace(
-                stdout="WINDOW=0x200\\nX=20\\nY=260\\nWIDTH=600\\nHEIGHT=480",
+                stdout="WINDOW=0x200\nX=20\nY=260\nWIDTH=600\nHEIGHT=480",
                 returncode=0,
             )
         return SimpleNamespace(stdout="", returncode=0)
