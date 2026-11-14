@@ -210,32 +210,46 @@ def focus_symbol_chooser_search_at_point(
         text_result = None
         if focused and text is not None:
             try:
-                editable = candidate.queryEditableText()
-                text_iface = candidate.queryText()
-                before = str(text_iface.getText(0, -1))
-                if before:
-                    editable.deleteText(0, len(before))
-                inserted = editable.insertText(0, text, len(text))
-                text_result = str(text_iface.getText(0, -1))
-                if text_result != text:
-                    editable.setTextContents(text)
-                    text_result = str(text_iface.getText(0, -1))
-                candidate_details.append(
-                    (depth, role, name, bounds, text_result)
+                registry = atspi_module.Registry
+                generate_key_event = getattr(
+                    registry, "generateKeyboardEvent", None
                 )
-                if text_result == text:
+                key_string = getattr(atspi_module, "KEY_STRING", 4)
+                if not callable(generate_key_event):
+                    raise RuntimeError(
+                        "AT-SPI keyboard event synthesis is unavailable."
+                    )
+
+                # Send actual keyboard events to the focused Search widget.
+                # EditableText.insertText/setTextContents can update the
+                # accessibility representation without updating wxGTK itself.
+                generated = bool(
+                    generate_key_event(None, text, key_string)
+                )
+                time.sleep(0.1)
+                text_result = str(candidate.queryText().getText(0, -1))
+                candidate_details.append(
+                    (
+                        depth,
+                        role,
+                        name,
+                        bounds,
+                        f"keyboard-string={generated} text={text_result!r}",
+                    )
+                )
+                if generated and text_result == text:
                     print(
-                        "chooser-atspi=editable-child-set "
+                        "chooser-atspi=keyboard-string "
                         f"focused={focused} depth={depth} role={role!r} "
                         f"name={name!r} bounds={bounds!r} "
-                        f"inserted={bool(inserted)} "
+                        f"key_type={key_string!r} "
                         f"candidates={candidate_details[:20]!r}",
                         flush=True,
                     )
                     return True
             except Exception as exc:
                 candidate_details.append(
-                    (depth, role, name, bounds, f"text:{type(exc).__name__}:{exc}")
+                    (depth, role, name, bounds, f"keyboard:{type(exc).__name__}:{exc}")
                 )
                 last_error = exc
         elif focused and text is None:

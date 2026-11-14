@@ -173,7 +173,7 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
-    def test_atspi_edits_nested_search_entry_under_pointer(self):
+    def test_atspi_synthesizes_keyboard_string_into_nested_search_entry(self):
         search_entry = FakeAccessible("")
         search_entry.extents = (545, 424, 378, 34)
         search_wrapper = FakeAccessible("Search", children=[search_entry])
@@ -185,13 +185,25 @@ class CursorPlacementTests(unittest.TestCase):
         chooser.point_target = search_wrapper
         chooser.extents = (519, 399, 882, 705)
         desktop = FakeAccessible(children=[chooser])
+        generated_events = []
 
         class Registry:
             @staticmethod
             def getDesktop(_index):
                 return desktop
 
-        atspi = SimpleNamespace(Registry=Registry, DESKTOP_COORDS=0)
+            @staticmethod
+            def generateKeyboardEvent(keycode, keystring, kind):
+                generated_events.append((keycode, keystring, kind))
+                # Simulate the synthesized string reaching the focused field.
+                search_entry.text = keystring
+                return True
+
+        atspi = SimpleNamespace(
+            Registry=Registry,
+            DESKTOP_COORDS=0,
+            KEY_STRING=4,
+        )
 
         self.assertTrue(
             focus_symbol_chooser_search_at_point(
@@ -202,7 +214,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertFalse(search_wrapper.focused)
         self.assertTrue(search_entry.focused)
         self.assertEqual(search_entry.text, "c60489")
-        self.assertEqual(search_entry.text, "c60489")
+        self.assertEqual(generated_events, [(None, "c60489", 4)])
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
