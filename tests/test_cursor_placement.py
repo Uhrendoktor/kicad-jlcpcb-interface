@@ -4,6 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
@@ -33,6 +34,17 @@ class FakeRunner:
         if command == "getwindowname":
             return SimpleNamespace(stdout="Schematic Editor", returncode=0)
         return SimpleNamespace(stdout="", returncode=0)
+
+
+class FakeKiCad:
+    def __init__(self, *, fail=False):
+        self.actions = []
+        self.fail = fail
+
+    def run_action(self, action):
+        self.actions.append(action)
+        if self.fail:
+            raise RuntimeError("IPC action unavailable")
 
 
 class CursorPlacementTests(unittest.TestCase):
@@ -87,9 +99,62 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
         )
 
+    def test_prefers_kicad_native_place_symbol_ipc_action(self):
+        runner = FakeRunner(["0x200", "0x100"])
+        kicad = FakeKiCad()
+        start_native_symbol_placement(
+            "0x100",
+            "C_C1591",
+            kicad=kicad,
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+        self.assertEqual(
+            kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
+        )
+        self.assertNotIn(
+            ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        )
+        self.assertIn(
+            [
+                "xdotool", "type", "--clearmodifiers", "--delay", "12", "C_C1591"
+            ],
+            runner.commands,
+        )
+
+    def test_leaves_native_chooser_open_for_manual_choice_without_xdotool(self):
+        kicad = FakeKiCad()
+        with patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None):
+            start_native_symbol_placement(
+                None,
+                "R_C60489",
+                kicad=kicad,
+                command_runner=FakeRunner(),
+                pause=lambda _seconds: None,
+            )
+        self.assertEqual(
+            kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
+        )
+
+    def test_falls_back_to_eeschema_hotkey_when_ipc_action_fails(self):
+        runner = FakeRunner(["0x200", "0x100"])
+        kicad = FakeKiCad(fail=True)
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            kicad=kicad,
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        )
+
     def test_reports_missing_native_chooser(self):
         runner = FakeRunner(["0x100"] * 55)
-        with self.assertRaisesRegex(RuntimeError, "chooser did not open"):
+        with self.assertRaisesRegex(RuntimeError, "did not open its native"):
             start_native_symbol_placement(
                 "0x100",
                 "C_C1591",
