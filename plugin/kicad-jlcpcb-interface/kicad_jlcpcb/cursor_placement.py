@@ -436,98 +436,37 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
-    # Focus the native chooser's Search field with a real pointer click. This
-    # is UI navigation only; KiCad still owns symbol selection and cursor
-    # placement. Do not synthesize an X/Y placement point.
-    # Activate the modal chooser through the window manager, not only
-    # XSetInputFocus. Some wxGTK dialogs ignore keystrokes unless EWMH's active
-    # window is updated as well.
-    try:
-        send("windowactivate", "--sync", chooser_id)
-    except subprocess.SubprocessError:
-        send("windowfocus", "--sync", chooser_id)
-    pause(0.1)
+
+    # KiCad's native SYMBOL_CHOOSER_FRAME already focuses the Search control:
+    # LIB_TREE creates wxSearchCtrl, calls SetFocus(), and the frame's first
+    # paint calls KIPLATFORM::UI::ForceFocus(GetFocusTarget()). Preserve that
+    # native focus. Re-activating the top-level window or clicking the wrapper
+    # can steal focus from the embedded GTK text editor.
+    pause(0.2)
     active_window = send("getactivewindow")
-    if active_window != chooser_id:
-        send("windowfocus", "--sync", chooser_id)
-    chooser_geometry = shell_geometry(
-        send("getwindowgeometry", "--shell", chooser_id)
-    )
-    try:
-        chooser_x = chooser_geometry["X"]
-        chooser_y = chooser_geometry["Y"]
-        chooser_width = chooser_geometry["WIDTH"]
-    except KeyError as exc:
-        raise RuntimeError(
-            "Could not locate the native symbol chooser Search field."
-        ) from exc
-    filter_x = chooser_x + min(80, max(40, chooser_width // 8))
-    # The chooser's Search control begins slightly above the client-area
-    # origin reported by xdotool. Move inside the field rather than onto the
-    # Openbox frame boundary at the top edge.
-    filter_y = chooser_y + 10
-    send("mousemove", "--sync", str(filter_x), str(filter_y))
-    pointer = shell_geometry(send("getmouselocation", "--shell"))
-    pointer_window = pointer.get("WINDOW")
-    try:
-        # X11 reports the Openbox reparenting frame when the pointer is over
-        # the chooser's client area. That frame has no PID; do not treat this
-        # normal window-manager parent as a placement failure.
-        pointer_pid = (
-            send("getwindowpid", str(pointer_window))
-            if pointer_window is not None else ""
-        )
-    except (OSError, subprocess.SubprocessError):
-        pointer_pid = "window-manager-frame"
+    focused_window = send("getwindowfocus")
     print(
-        "chooser-pointer="
-        f"position=({pointer.get('X')},{pointer.get('Y')}) "
-        f"window={pointer_window!r} pid={pointer_pid!r} "
-        f"target={chooser_id!r} active={send('getactivewindow')!r}",
+        "chooser-native-focus="
+        f"focused={focused_window!r} active={active_window!r} "
+        f"chooser={chooser_id!r} title={chooser_title!r}",
         flush=True,
     )
-    if pointer.get("X") != filter_x or pointer.get("Y") != filter_y:
+    if focused_window != chooser_id or active_window != chooser_id:
         raise RuntimeError(
-            "The pointer did not reach the native Search field: "
-            f"expected=({filter_x},{filter_y}) actual=({pointer.get('X')},{pointer.get('Y')})."
+            "KiCad's native chooser did not retain its initial Search focus: "
+            f"focused={focused_window!r} active={active_window!r} "
+            f"expected={chooser_id!r}."
         )
-    send("click", "--clearmodifiers", "1")
-    pause(0.1)
 
-    # The physical click gives the embedded Search editor focus. Prefer
-    # AT-SPI key events sent to the hit-tested Search widget; this avoids
-    # EditableText cache-only updates. Use XTest/clipboard as fallbacks only.
+    # The native Search field starts empty on chooser construction. Type the
+    # generated symbol's lowercase library suffix directly into that control.
+    # No automation-supplied symbol placement coordinates are used.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
-    filter_set_accessibly = focus_symbol_chooser_search_at_point(
-        filter_x, filter_y, text=filter_text
+    send("type", "--clearmodifiers", "--delay", "35", filter_text)
+    print(
+        f"chooser-input=native-initial-focus text={filter_text!r}",
+        flush=True,
     )
-    if filter_set_accessibly:
-        print("chooser-input=atspi-key-events", flush=True)
-    else:
-        send("key", "--clearmodifiers", "ctrl+a")
-        xclip = shutil.which("xclip")
-        if xclip:
-            try:
-                command_runner(
-                    [xclip, "-selection", "clipboard", "-in", "-loops", "10"],
-                    input=filter_text,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    text=True,
-                    check=True,
-                    timeout=5,
-                )
-                send("key", "--clearmodifiers", "ctrl+v")
-                print("chooser-input=clipboard-ctrl-v", flush=True)
-            except (OSError, subprocess.SubprocessError) as exc:
-                print(
-                    f"chooser-input=clipboard-failed error={type(exc).__name__}: {exc}",
-                    flush=True,
-                )
-                send("type", "--clearmodifiers", "--delay", "35", filter_text)
-        else:
-            send("type", "--clearmodifiers", "--delay", "35", filter_text)
-            print("chooser-input=xtest-type", flush=True)
     pause(0.15)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
