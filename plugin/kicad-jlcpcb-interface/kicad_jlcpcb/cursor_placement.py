@@ -508,6 +508,34 @@ def start_native_symbol_placement(
             f"expected={chooser_id!r}."
         )
 
+    # KiCad's chooser is active and has initialized its native Search
+    # control. Click inside the actual Search entry to give the embedded GTK
+    # text widget input focus before composing the query. This is UI navigation
+    # only; no component placement coordinate is supplied to KiCad.
+    chooser_geometry = shell_geometry(
+        send("getwindowgeometry", "--shell", chooser_id)
+    )
+    try:
+        chooser_x = chooser_geometry["X"]
+        chooser_y = chooser_geometry["Y"]
+        chooser_width = chooser_geometry["WIDTH"]
+    except KeyError as exc:
+        raise RuntimeError(
+            "Could not locate the native symbol chooser Search field."
+        ) from exc
+    filter_x = chooser_x + min(80, max(40, chooser_width // 8))
+    filter_y = chooser_y + 10
+    send("mousemove", "--sync", str(filter_x), str(filter_y))
+    pointer = shell_geometry(send("getmouselocation", "--shell"))
+    if (pointer.get("X"), pointer.get("Y")) != (filter_x, filter_y):
+        raise RuntimeError(
+            "The pointer did not reach the native Search field: "
+            f"expected=({filter_x},{filter_y}) "
+            f"actual=({pointer.get('X')},{pointer.get('Y')})."
+        )
+    send("click", "1")
+    pause(0.1)
+
     # The native Search field starts empty on chooser construction. Type the
     # generated symbol's lowercase library suffix directly into that control.
     # No automation-supplied symbol placement coordinates are used.
