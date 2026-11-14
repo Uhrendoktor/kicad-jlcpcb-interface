@@ -151,10 +151,10 @@ def start_native_symbol_placement(
         flush=True,
     )
 
-    # In the native chooser the search control is a wx child widget inside the
-    # Eeschema frame, not a distinct X11 child window. Explicitly click inside
-    # its Filter text area. Coordinates are relative to the Eeschema top-level
-    # window so normal desktop window placement is supported.
+    # The Filter is a wx child control inside the Eeschema frame, not a
+    # separate X11 child window. Move relative to the Eeschema XID so the
+    # pointer is guaranteed to land inside the correct top-level window even
+    # when the desktop positions that window away from the X11 screen origin.
     geometry = send("getwindowgeometry", "--shell", str(editor_window_id))
     dimensions = {
         key: value
@@ -163,16 +163,35 @@ def start_native_symbol_placement(
         for key, value in [item.split("=", 1)]
     }
     try:
-        editor_x = int(dimensions["X"])
-        editor_y = int(dimensions["Y"])
+        editor_width = int(dimensions["WIDTH"])
+        editor_height = int(dimensions["HEIGHT"])
     except (KeyError, ValueError) as exc:
         raise RuntimeError(
-            f"Could not read the Eeschema window position: {geometry!r}."
+            f"Could not read the Eeschema window size: {geometry!r}."
         ) from exc
-
-    filter_x = editor_x + 200
-    filter_y = editor_y + 380
-    send("mousemove", "--sync", str(filter_x), str(filter_y))
+    filter_x = min(200, editor_width - 20)
+    filter_y = 380
+    if editor_width < 240 or editor_height <= filter_y:
+        raise RuntimeError(
+            f"The Eeschema window is too small for the native Filter field: "
+            f"{editor_width}x{editor_height}."
+        )
+    send(
+        "mousemove", "--sync", "--window", str(editor_window_id),
+        str(filter_x), str(filter_y),
+    )
+    pointer = send("getmouselocation", "--shell")
+    pointer_values = {
+        key: value
+        for item in pointer.split()
+        if "=" in item
+        for key, value in [item.split("=", 1)]
+    }
+    if pointer_values.get("WINDOW", "0") == "0":
+        raise RuntimeError(
+            "The pointer did not enter Eeschema's native symbol chooser Filter area: "
+            f"{pointer!r}."
+        )
     send("click", "1")
     pause(0.05)
 
@@ -184,7 +203,7 @@ def start_native_symbol_placement(
             clicked_capture = debug_capture.replace(".png", "-clicked.png")
             ImageGrab.grab().save(clicked_capture)
             print(
-                f"chooser-filter-click=pointer={send('getmouselocation', '--shell')!r} "
+                f"chooser-filter-click=pointer={pointer!r} "
                 f"focus={send('getwindowfocus')!r} screenshot={clicked_capture!r}",
                 flush=True,
             )

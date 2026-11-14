@@ -32,6 +32,11 @@ class FakeRunner:
             else:
                 geometry = "WINDOW=0x200\nX=30\nY=360\nWIDTH=880\nHEIGHT=680\nSCREEN=0"
             return SimpleNamespace(stdout=geometry, returncode=0)
+        if command == "getmouselocation":
+            return SimpleNamespace(
+                stdout="X=210\nY=400\nSCREEN=0\nWINDOW=0x100",
+                returncode=0,
+            )
         if command == "getwindowfocus":
             value = self.outputs.pop(0) if self.outputs else "0x100"
             return SimpleNamespace(stdout=value, returncode=0)
@@ -119,7 +124,10 @@ class CursorPlacementTests(unittest.TestCase):
         geometry_command = [
             "xdotool", "getwindowgeometry", "--shell", "0x100"
         ]
-        move_command = ["xdotool", "mousemove", "--sync", "210", "400"]
+        move_command = [
+            "xdotool", "mousemove", "--sync", "--window", "0x100", "200", "380"
+        ]
+        pointer_command = ["xdotool", "getmouselocation", "--shell"]
         click_command = ["xdotool", "click", "1"]
         clear_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
         type_command = [
@@ -135,7 +143,14 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(geometry_command),
             runner.commands.index(move_command),
         )
-        self.assertLess(runner.commands.index(move_command), runner.commands.index(click_command))
+        self.assertLess(
+            runner.commands.index(move_command),
+            runner.commands.index(pointer_command),
+        )
+        self.assertLess(
+            runner.commands.index(pointer_command),
+            runner.commands.index(click_command),
+        )
         self.assertLess(runner.commands.index(click_command), runner.commands.index(clear_command))
         self.assertLess(runner.commands.index(clear_command), runner.commands.index(type_command))
         self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
