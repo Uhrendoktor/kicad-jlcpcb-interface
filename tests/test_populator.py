@@ -14,8 +14,8 @@ from kicad_jlcpcb.draft import symbol_library_id  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     MAX_CATALOGUE_IMAGE_BYTES,
     _download_catalogue_image,
-    resolve_component_action_target,
     _is_automatically_mapped_passive,
+    resolve_component_action_target,
     resolve_passive_action_target,
     resolve_passive_library_id,
     resolve_selected_symbol,
