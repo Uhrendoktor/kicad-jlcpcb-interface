@@ -149,11 +149,11 @@ def start_native_symbol_placement(
     trigger = "ipc" if action_started else "hotkey"
     print(f"native-symbol-placement-trigger={trigger}", flush=True)
 
-    # The Filter is a wx child control inside the Eeschema frame, not a
-    # separate X11 child window. Move relative to the Eeschema XID so the
-    # pointer is guaranteed to land inside the correct top-level window even
-    # when the desktop positions that window away from the X11 screen origin.
-    geometry = send("getwindowgeometry", "--shell", str(editor_window_id))
+    # The chooser is a separate X11 top-level window owned by Eeschema.
+    # Its Filter control is at the upper-left of that window; move relative to
+    # the chooser XID and use a real XTest click so the wxSearchCtrl receives
+    # focus (click --window would only send XSendEvent to the parent frame).
+    geometry = send("getwindowgeometry", "--shell", chooser_id)
     dimensions = {
         key: value
         for item in geometry.split()
@@ -161,21 +161,21 @@ def start_native_symbol_placement(
         for key, value in [item.split("=", 1)]
     }
     try:
-        editor_width = int(dimensions["WIDTH"])
-        editor_height = int(dimensions["HEIGHT"])
+        chooser_width = int(dimensions["WIDTH"])
+        chooser_height = int(dimensions["HEIGHT"])
     except (KeyError, ValueError) as exc:
         raise RuntimeError(
-            f"Could not read the Eeschema window size: {geometry!r}."
+            f"Could not read KiCad's native chooser geometry: {geometry!r}."
         ) from exc
-    filter_x = min(200, editor_width - 20)
-    filter_y = 380
-    if editor_width < 240 or editor_height <= filter_y:
+    filter_x = min(200, chooser_width - 20)
+    filter_y = 20
+    if chooser_width < 240 or chooser_height <= filter_y:
         raise RuntimeError(
-            f"The Eeschema window is too small for the native Filter field: "
-            f"{editor_width}x{editor_height}."
+            f"KiCad's native chooser is too small for its Filter field: "
+            f"{chooser_width}x{chooser_height}."
         )
     send(
-        "mousemove", "--sync", "--window", str(editor_window_id),
+        "mousemove", "--sync", "--window", chooser_id,
         str(filter_x), str(filter_y),
     )
     pointer = send("getmouselocation", "--shell")
@@ -187,8 +187,8 @@ def start_native_symbol_placement(
     }
     if pointer_values.get("WINDOW", "0") == "0":
         raise RuntimeError(
-            "The pointer did not enter Eeschema's native symbol chooser Filter area: "
-            f"{pointer!r}."
+            "The pointer did not enter KiCad's native chooser Filter area: "
+            f"{pointer!r}; chooser={chooser_id!r}; geometry={geometry!r}."
         )
     send("click", "1")
     pause(0.05)

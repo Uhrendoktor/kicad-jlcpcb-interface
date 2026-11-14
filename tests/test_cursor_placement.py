@@ -34,7 +34,7 @@ class FakeRunner:
             return SimpleNamespace(stdout=geometry, returncode=0)
         if command == "getmouselocation":
             return SimpleNamespace(
-                stdout="X=210\nY=400\nSCREEN=0\nWINDOW=0x100",
+                stdout="X=230\nY=380\nSCREEN=0\nWINDOW=0x200",
                 returncode=0,
             )
         if command == "getwindowfocus":
@@ -122,10 +122,10 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
         geometry_command = [
-            "xdotool", "getwindowgeometry", "--shell", "0x100"
+            "xdotool", "getwindowgeometry", "--shell", "0x200"
         ]
         move_command = [
-            "xdotool", "mousemove", "--sync", "--window", "0x100", "200", "380"
+            "xdotool", "mousemove", "--sync", "--window", "0x200", "200", "20"
         ]
         pointer_command = ["xdotool", "getmouselocation", "--shell"]
         click_command = ["xdotool", "click", "1"]
