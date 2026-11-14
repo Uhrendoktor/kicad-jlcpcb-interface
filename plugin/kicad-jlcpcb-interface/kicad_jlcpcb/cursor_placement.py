@@ -181,9 +181,29 @@ def start_native_symbol_placement(
     send("mousemove", "--sync", str(filter_x), str(filter_y))
     send("click", "--clearmodifiers", "1")
     pause(0.1)
+    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
+    if debug_capture:
+        try:
+            from PIL import ImageGrab
+
+            clicked_capture = debug_capture.replace(".png", "-clicked.png")
+            ImageGrab.grab().save(clicked_capture)
+            print(
+                f"chooser-search-debug=clicked geometry={chooser_geometry!r} "
+                f"target=({filter_x},{filter_y}) "
+                f"pointer={send('getmouselocation', '--shell')!r} "
+                f"raw_focus={send('getwindowfocus', '-f')!r} "
+                f"screenshot={clicked_capture!r}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"chooser-search-debug=click-capture-failed "
+                f"error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
-    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         try:
             from PIL import ImageGrab
