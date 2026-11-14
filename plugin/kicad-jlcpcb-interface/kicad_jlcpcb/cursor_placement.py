@@ -534,6 +534,15 @@ def start_native_symbol_placement(
             f"actual=({pointer.get('X')},{pointer.get('Y')})."
         )
     send("click", "1")
+    # X11 reports the pointer over Openbox's reparenting frame. Also deliver a
+    # client-targeted click to the chooser XID so wxGTK's embedded Search editor
+    # receives the focus event rather than relying on frame event forwarding.
+    send("click", "--window", chooser_id, "1")
+    print(
+        "chooser-search-click="
+        f"screen=({filter_x},{filter_y}) client={chooser_id!r}",
+        flush=True,
+    )
     pause(0.1)
 
     # The native Search field starts empty on chooser construction. Type the
