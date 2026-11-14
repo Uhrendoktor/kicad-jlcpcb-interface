@@ -147,6 +147,117 @@ def _capture_desktop(destination: Path) -> None:
     image.save(destination, format="PNG", optimize=True)
 
 
+def _verify_x11_keyboard_input() -> None:
+    """Verify XTest typing reaches a focused text entry in this Xvfb session.
+
+    This isolates X11/Openbox keyboard delivery from KiCad's wxGTK Search
+    widget. The temporary Tk window is destroyed before Eeschema is launched.
+    """
+    import tkinter as tk
+
+    xdotool = shutil.which("xdotool")
+    if not xdotool:
+        raise FileNotFoundError("xdotool is required for the X11 keyboard smoke test")
+
+    original = subprocess.run(
+        [xdotool, "getmouselocation", "--shell"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    ).stdout
+    root = tk.Tk()
+    root.title("KiCad X11 keyboard smoke test")
+    root.geometry("480x140+40+40")
+    root.resizable(False, False)
+    tk.Label(
+        root,
+        text="X11 input diagnostic — the field below should read x11-smoke",
+    ).pack(anchor="w", padx=14, pady=(14, 8))
+    value = tk.StringVar()
+    entry = tk.Entry(root, textvariable=value, width=42)
+    entry.pack(fill="x", padx=14, pady=(0, 12))
+    try:
+        root.deiconify()
+        root.update()
+        root.wait_visibility()
+        entry.focus_force()
+        root.update()
+
+        x = entry.winfo_rootx() + entry.winfo_width() // 2
+        y = entry.winfo_rooty() + entry.winfo_height() // 2
+        subprocess.run(
+            [xdotool, "mousemove", "--sync", str(x), str(y)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        subprocess.run(
+            [xdotool, "click", "1"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        subprocess.run(
+            [xdotool, "key", "--clearmodifiers", "ctrl+a"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        subprocess.run(
+            [xdotool, "type", "--clearmodifiers", "--delay", "50", "x11-smoke"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        time.sleep(0.15)
+        root.update()
+        actual = value.get()
+        print(
+            "x11-keyboard-smoke="
+            f"{'passed' if actual == 'x11-smoke' else 'failed'} "
+            f"text={actual!r} focus={subprocess.run([xdotool, 'getwindowfocus'], "
+            "check=True, capture_output=True, text=True, timeout=5).stdout.strip()!r} "
+            f"entry=({x},{y})",
+            flush=True,
+        )
+        if actual != "x11-smoke":
+            raise RuntimeError(
+                "XTest keyboard input did not reach a focused Tk Entry; "
+                f"expected 'x11-smoke', received {actual!r}."
+            )
+    finally:
+        try:
+            root.destroy()
+        finally:
+            try:
+                position = {
+                    key: int(value)
+                    for key, value in (
+                        line.split("=", 1) for line in original.splitlines()
+                        if "=" in line
+                    )
+                    if key in {"X", "Y"}
+                }
+                if {"X", "Y"}.issubset(position):
+                    subprocess.run(
+                        [
+                            xdotool, "mousemove", "--sync",
+                            str(position["X"]), str(position["Y"]),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+            except Exception:
+                pass
+
+
 def _validate_live_supplier_data(cache_dir: Path) -> None:
     """Fail visual capture unless the selected part and photo came from a fresh JLC response."""
     from io import BytesIO
@@ -1874,6 +1985,7 @@ def main() -> int:
         raise FileNotFoundError("kicad-cli-nightly or kicad-cli is required")
 
     _validate_live_supplier_data(cache_dir)
+    _verify_x11_keyboard_input()
 
     work_dir = Path(tempfile.mkdtemp(prefix="jlcpcb-live-eeschema-", dir=output_dir))
     process = None
