@@ -17,6 +17,50 @@ def capture_eeschema_window_id(
 ) -> str | None:
     """Return the focused Eeschema X11 window, or None when it is unavailable."""
     executable = xdotool or shutil.which("xdotool")
+    if not executable:
+        return None
+
+    def read(*arguments: str) -> str:
+        result = command_runner(
+            [executable, *arguments],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=3,
+        )
+        if getattr(result, "returncode", 1) != 0:
+            return ""
+        return str(getattr(result, "stdout", "") or "").strip()
+
+    window_id = read("getwindowfocus")
+    if not window_id:
+        return None
+    window_class = read("getwindowclassname", window_id).casefold()
+    window_title = read("getwindowname", window_id).casefold()
+    if "eeschema" not in window_class and "schematic editor" not in window_title:
+        return None
+    return window_id
+
+
+def start_native_symbol_placement(
+    editor_window_id: str | None,
+    symbol_name: str,
+    *,
+    kicad=None,
+    xdotool: str | None = None,
+    command_runner: Callable = subprocess.run,
+    pause: Callable[[float], None] = time.sleep,
+) -> None:
+    """Choose a generated library symbol in Eeschema and leave it on the cursor."""
+    executable = xdotool or shutil.which("xdotool")
+    if not editor_window_id:
+        raise RuntimeError(
+            "Could not identify the active Eeschema window. Launch this action "
+            "from the Schematic Editor to enable cursor placement."
+        )
+    if not symbol_name or any(char.isspace() for char in symbol_name):
+        raise ValueError("The generated KiCad symbol name is invalid.")
+
     run_action = getattr(kicad, "run_action", None)
     action_started = False
     if callable(run_action):

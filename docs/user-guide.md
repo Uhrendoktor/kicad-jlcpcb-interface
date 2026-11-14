@@ -233,7 +233,7 @@ The existing generated symbol is detected and reused; placement can continue whe
 
 #### Placement and electrical checks
 
-Add mode is cursor-only. It opens KiCad's native Add Symbol chooser with Eeschema's `A` hotkey so KiCad initializes keyboard focus in the Filter field before the generated symbol name is entered. The action must be launched from the focused Eeschema window, and automatic filtering requires `xdotool` on an X11 desktop. If cursor handoff is unavailable, Add is disabled with an explanation; there is no X/Y coordinate fallback. Check Eeschema Preferences → Hotkeys if `A` does not open the chooser.
+Add mode is cursor-only. It opens KiCad's native Add Symbol chooser through the Eeschema IPC placement action, then filters to the generated project-local symbol and accepts the chooser selection. On KiCad builds where the IPC tool action is unavailable, it uses Eeschema's `A` Add Symbol hotkey as a compatibility fallback. Launch the action from the focused Eeschema window on an X11 desktop with `xdotool` installed; no X/Y coordinate fallback is offered. Check Eeschema Preferences → Hotkeys if the fallback hotkey does not open the chooser.
 
 The optional Footprint field is a KiCad footprint-library reference, not a footprint generator. A symbol can be created without a footprint, but it will need a suitable footprint before PCB layout. Always inspect the symbol/footprint pair and verify pin numbers, electrical types, package dimensions and ratings against the manufacturer datasheet.
 
