@@ -22,6 +22,7 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
+from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -1570,6 +1571,12 @@ def _capture_passive_component_workflows(
     if not create_mode or add_target is not None or add_library_id:
         raise RuntimeError("An empty selection did not resolve to add mode.")
 
+    editor_window_id = capture_eeschema_window_id()
+    if not editor_window_id:
+        raise RuntimeError(
+            "The Add-mode GUI fixture could not capture the focused Eeschema window "
+            "before opening its component dialog."
+        )
     create = ComponentPopulator(
         schematic,
         None,
@@ -1577,6 +1584,7 @@ def _capture_passive_component_workflows(
         create_mode=True,
         kicad=kicad,
         theme="light",
+        editor_window_id=editor_window_id,
     )
     create.root.geometry("1024x768+780+30")
     create.lcsc_var.set("10k")
