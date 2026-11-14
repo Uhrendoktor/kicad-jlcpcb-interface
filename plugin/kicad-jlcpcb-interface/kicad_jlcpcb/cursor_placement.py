@@ -191,11 +191,14 @@ def start_native_symbol_placement(
             "is active and that Add Symbol is available in its hotkeys."
         )
 
-    # KiCad's chooser may be a child window within the editor process. Focus
-    # that child before typing so the native filter receives the generated ID.
+    # KiCad remembers its last symbol search across chooser sessions. Replace
+    # that text before typing so a stale filter cannot hide the generated symbol.
+    # The tree applies text filters through a debounce timer; wait for it to
+    # regenerate and preselect the matching library item before pressing Enter.
     send("windowfocus", "--sync", chooser_id)
+    send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
-    pause(0.15)
+    pause(0.6)
     send("key", "--clearmodifiers", "Return")
 
     for _ in range(30):
