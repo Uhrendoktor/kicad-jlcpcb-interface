@@ -293,10 +293,12 @@ class CursorPlacementTests(unittest.TestCase):
         filter_move = ["xdotool", "mousemove", "--sync", "601", "449"]
         pointer_check = ["xdotool", "getmouselocation", "--shell"]
         filter_click = ["xdotool", "click", "1"]
+        client_click = ["xdotool", "click", "--window", "0x200", "1"]
         self.assertIn(filter_geometry, runner.commands)
         self.assertIn(filter_move, runner.commands)
         self.assertIn(pointer_check, runner.commands)
         self.assertIn(filter_click, runner.commands)
+        self.assertIn(client_click, runner.commands)
         self.assertEqual(
             sum(command == pointer_check for command in runner.commands), 2
         )
@@ -323,6 +325,10 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(return_command, runner.commands)
         self.assertLess(
             runner.commands.index(filter_click),
+            runner.commands.index(client_click),
+        )
+        self.assertLess(
+            runner.commands.index(client_click),
             runner.commands.index(clear_search),
         )
         self.assertLess(
