@@ -1161,6 +1161,11 @@ class ComponentPopulator:
         messagebox = state.get("messagebox")
         state.clear()
         self.closed = True
+        # Keep the destroyed root reachable through the caller's UI-thread
+        # stack frame. Tk widget/root objects form Python reference cycles;
+        # dropping the final root reference here can let a worker-thread GC
+        # finalize Tcl_AsyncDelete on the wrong thread while executors unwind.
+        self.root = root
         self.messagebox = messagebox
         if create_mode:
             self.create_mode = True

@@ -485,6 +485,7 @@ class ComponentPopulatorCleanupTests(unittest.TestCase):
         self.assertTrue(all(not event[2] for event in resource_events))
         self.assertEqual(events[-1][0], "root-destroyed")
         self.assertTrue(root.destroyed)
+        self.assertIs(populator.root, root)
         self.assertTrue(populator.closed)
         self.assertTrue(populator.create_mode)
         self.assertIs(populator.messagebox, messagebox)
@@ -494,6 +495,7 @@ class ComponentPopulatorCleanupTests(unittest.TestCase):
             set(populator.__dict__),
             {
                 "closed",
+                "root",
                 "messagebox",
                 "create_mode",
                 "generated_library_symbol",
