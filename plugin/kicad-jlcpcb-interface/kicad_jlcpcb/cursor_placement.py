@@ -61,22 +61,7 @@ def start_native_symbol_placement(
     if not symbol_name or any(char.isspace() for char in symbol_name):
         raise ValueError("The generated KiCad symbol name is invalid.")
 
-    run_action = getattr(kicad, "run_action", None)
-    action_started = False
-    if callable(run_action):
-        try:
-            run_action("eeschema.InteractiveDrawing.placeSymbol")
-            action_started = True
-        except Exception:
-            # Older KiCad IPC builds do not expose tool actions. The X11
-            # hotkey remains a compatible fallback for those versions.
-            action_started = False
-
     if not executable:
-        if action_started:
-            # The native chooser is already open; let the user select the
-            # symbol manually when automatic X11 filtering is unavailable.
-            return
         raise RuntimeError(
             "Cursor placement requires xdotool on the supported Linux/X11 desktop. "
             "Install it with sudo apt install xdotool, then reopen the action."
@@ -116,10 +101,19 @@ def start_native_symbol_placement(
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
 
-    if not action_started:
+    # Use Eeschema's Add Symbol hotkey rather than the IPC action.
+    # The hotkey opens the native chooser with its Filter field focused;
+    # the IPC tool action opens the same dialog without that focus setup.
+    try:
+        # Ask the window manager to activate Eeschema. windowfocus only changes
+        # X input focus and may leave Openbox's active-window state unchanged.
+        send("windowactivate", "--sync", str(editor_window_id))
+    except subprocess.SubprocessError:
+        # Bare Xvfb and minimal X11 sessions may not provide an EWMH window
+        # manager; retain the direct focus fallback for those environments.
         send("windowfocus", "--sync", str(editor_window_id))
-        pause(0.1)
-        send("key", "--clearmodifiers", "a")
+    pause(0.1)
+    send("key", "--clearmodifiers", "a")
 
     chooser_id = ""
     focused_id = ""
@@ -138,7 +132,7 @@ def start_native_symbol_placement(
     if not chooser_id:
         focused_pid = send("getwindowpid", focused_id) if focused_id else ""
         focused_title = send("getwindowname", focused_id) if focused_id else ""
-        if not action_started and focused_pid == editor_pid:
+        if focused_pid == editor_pid:
             try:
                 send("key", "--clearmodifiers", "Escape")
             except subprocess.SubprocessError:
@@ -170,60 +164,50 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
-    # The chooser title is updated when the catalogue finishes loading, but
-    # its wxSearchCtrl does not reliably retain keyboard focus after the modal
-    # handoff in some X11 sessions. Click the actual Filter control, then put
-    # the pointer back where it was before the chooser opened. This only
-    # focuses the search field; KiCad still owns the symbol-placement cursor.
-    chooser_geometry = shell_geometry(
-        send("getwindowgeometry", "--shell", chooser_id)
-    )
-    try:
-        chooser_x = chooser_geometry["X"]
-        chooser_y = chooser_geometry["Y"]
-        chooser_width = chooser_geometry["WIDTH"]
-        chooser_height = chooser_geometry["HEIGHT"]
-    except KeyError as exc:
-        raise RuntimeError("Could not locate the native symbol chooser Filter field.") from exc
-    # Use coordinates relative to the chooser client window. Absolute
-    # coordinates from getwindowgeometry include window-manager decoration
-    # offsets, which can place the click outside the modal dialog.
-    filter_x = min(100, max(40, chooser_width // 4))
-    filter_y = min(24, max(16, chooser_height // 28))
-    send(
-        "mousemove", "--sync", "--window", str(chooser_id),
-        str(filter_x), str(filter_y),
-    )
-    send("click", "--clearmodifiers", "1")
-    pause(0.1)
-    mouse_after_click = shell_geometry(send("getmouselocation", "--shell"))
-    if mouse_after_click.get("WINDOW", 0) == 0:
-        raise RuntimeError(
-            "The click intended for KiCad's native chooser Filter field landed "
-            f"on the X11 root window, not the chooser: relative_target=({filter_x},{filter_y}) "
-            f"geometry={chooser_geometry!r} pointer={mouse_after_click!r}."
-        )
+    # The Add Symbol hotkey leaves keyboard focus in the native Filter field.
+    # Do not refocus the chooser frame: that would discard the child focus.
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
-        try:
-            from PIL import ImageGrab
-
-            clicked_capture = debug_capture.replace(".png", "-clicked.png")
-            ImageGrab.grab().save(clicked_capture)
-            print(
-                f"chooser-search-debug=clicked geometry={chooser_geometry!r} "
-                f"target=({filter_x},{filter_y}) "
-                f"pointer={mouse_after_click!r} "
-                f"raw_focus={send('getwindowfocus', '-f')!r} "
-                f"screenshot={clicked_capture!r}",
-                flush=True,
-            )
-        except Exception as exc:
-            print(
-                f"chooser-search-debug=click-capture-failed "
-                f"error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
+        xwininfo = shutil.which("xwininfo")
+        if xwininfo:
+            for label, arguments in (
+                ("chooser", ["-id", str(chooser_id), "-tree"]),
+                ("root", ["-root", "-tree"]),
+            ):
+                result = command_runner(
+                    [xwininfo, *arguments],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=5,
+                )
+                output = str(getattr(result, "stdout", "") or "").strip()
+                print(
+                    f"chooser-xwininfo-{label}=\\n{output[:12000]}",
+                    flush=True,
+                )
+        result = command_runner(
+            [executable, "search", "--onlyvisible", "--name", ".*"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        visible_windows = []
+        for window_id in str(getattr(result, "stdout", "") or "").split()[:100]:
+            try:
+                visible_windows.append(
+                    (
+                        window_id,
+                        send("getwindowname", window_id),
+                        send("getwindowclassname", window_id),
+                        send("getwindowpid", window_id),
+                        send("getwindowgeometry", "--shell", window_id),
+                    )
+                )
+            except subprocess.SubprocessError:
+                continue
+        print(f"chooser-x11-visible-windows={visible_windows!r}", flush=True)
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
     if debug_capture:
@@ -246,8 +230,8 @@ def start_native_symbol_placement(
     send("key", "--clearmodifiers", "Return")
 
     def restore_placement_pointer() -> None:
-        # The chooser click only focuses its text input. Restore the user's
-        # original cursor after KiCad has attached the symbol to the pointer.
+        # Restore the user's original cursor after KiCad has attached the
+        # selected symbol to the pointer.
         send(
             "mousemove", "--sync",
             str(original_pointer["X"]), str(original_pointer["Y"]),
