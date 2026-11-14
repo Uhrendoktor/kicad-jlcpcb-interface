@@ -284,10 +284,32 @@ def start_native_symbol_placement(
             f"target=({filter_x},{filter_y}), pointer={filter_pointer!r}, "
             f"chooser={chooser_geometry!r}."
         )
+    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
+    if debug_capture:
+        try:
+            from PIL import ImageGrab
+
+            probe_capture = debug_capture.replace(".png", "-key-probe.png")
+            send("key", "--clearmodifiers", "r")
+            pause(0.1)
+            ImageGrab.grab().save(probe_capture)
+            print(
+                f"chooser-search-debug=single-key-probe focus={send('getwindowfocus')!r} "
+                f"screenshot={probe_capture!r}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                "chooser-search-debug=probe-capture-failed "
+                f"error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+    # Remove the diagnostic character if it reached the Filter field, then
+    # send the full project-local symbol name through the same XTest path.
+    send("key", "--clearmodifiers", "BackSpace")
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
 
-    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         try:
             from PIL import ImageGrab
