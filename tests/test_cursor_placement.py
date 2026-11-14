@@ -113,29 +113,33 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
         self.assertIn(
-            ["xdotool", "mousemove", "--sync", "170", "280"],
+            [
+                "xdotool",
+                "key",
+                "--window",
+                "0x200",
+                "--clearmodifiers",
+                "ctrl+a",
+            ],
             runner.commands,
         )
-        self.assertIn(["xdotool", "click", "1"], runner.commands)
-        mousemove = runner.commands.index(
-            ["xdotool", "mousemove", "--sync", "170", "280"]
-        )
-        click = runner.commands.index(["xdotool", "click", "1"])
-        clear = runner.commands.index(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
-        )
-        self.assertLess(mousemove, click)
-        self.assertLess(click, clear)
         self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
-        )
-        self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "BackSpace"], runner.commands
+            [
+                "xdotool",
+                "key",
+                "--window",
+                "0x200",
+                "--clearmodifiers",
+                "BackSpace",
+            ],
+            runner.commands,
         )
         self.assertIn(
             [
                 "xdotool",
                 "type",
+                "--window",
+                "0x200",
                 "--clearmodifiers",
                 "--delay",
                 "12",
@@ -144,17 +148,27 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
         self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "Down"], runner.commands
+            [
+                "xdotool", "key", "--window", "0x200", "--clearmodifiers", "Down"
+            ],
+            runner.commands,
         )
         down = runner.commands.index(
-            ["xdotool", "key", "--clearmodifiers", "Down"]
+            [
+                "xdotool", "key", "--window", "0x200", "--clearmodifiers", "Down"
+            ]
         )
         enter = runner.commands.index(
-            ["xdotool", "key", "--clearmodifiers", "Return"]
+            [
+                "xdotool", "key", "--window", "0x200", "--clearmodifiers", "Return"
+            ]
         )
         self.assertLess(down, enter)
         self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
+            [
+                "xdotool", "key", "--window", "0x200", "--clearmodifiers", "Return"
+            ],
+            runner.commands,
         )
 
     def test_prefers_kicad_native_place_symbol_ipc_action(self):
