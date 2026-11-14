@@ -44,6 +44,8 @@ class FakeRunner:
         command = arguments[1]
         if command == "getwindowpid":
             return SimpleNamespace(stdout="4242", returncode=0)
+        if command == "getactivewindow":
+            return SimpleNamespace(stdout="0x200", returncode=0)
         if command == "getwindowfocus":
             value = self.focus_ids.pop(0) if self.focus_ids else "0x100"
             return SimpleNamespace(stdout=value, returncode=0)
