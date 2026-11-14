@@ -20,6 +20,7 @@ class FakeRunner:
         self.outputs = list(outputs)
         self.window_names = list(window_names)
         self.commands = []
+        self.mouse_reads = 0
 
     def __call__(self, arguments, **_kwargs):
         self.commands.append(arguments)
@@ -33,10 +34,13 @@ class FakeRunner:
                 geometry = "WINDOW=0x200\nX=30\nY=360\nWIDTH=880\nHEIGHT=680\nSCREEN=0"
             return SimpleNamespace(stdout=geometry, returncode=0)
         if command == "getmouselocation":
-            return SimpleNamespace(
-                stdout="X=500\nY=150\nSCREEN=0\nWINDOW=0x100",
-                returncode=0,
+            self.mouse_reads += 1
+            output = (
+                "X=500\nY=150\nSCREEN=0\nWINDOW=0x100"
+                if self.mouse_reads == 1
+                else "X=130\nY=400\nSCREEN=0\nWINDOW=0x200"
             )
+            return SimpleNamespace(stdout=output, returncode=0)
         if command == "getwindowfocus":
             value = self.outputs.pop(0) if self.outputs else "0x100"
             return SimpleNamespace(stdout=value, returncode=0)
@@ -137,7 +141,7 @@ class CursorPlacementTests(unittest.TestCase):
             if command == title_command
         ]
         geometry_command = ["xdotool", "getwindowgeometry", "--shell", "0x200"]
-        filter_move = ["xdotool", "mousemove", "--sync", "130", "376"]
+        filter_move = ["xdotool", "mousemove", "--sync", "130", "400"]
         filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         type_index = runner.commands.index(type_command)

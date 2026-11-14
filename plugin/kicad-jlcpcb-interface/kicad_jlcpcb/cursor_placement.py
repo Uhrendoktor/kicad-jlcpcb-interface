@@ -177,10 +177,19 @@ def start_native_symbol_placement(
     except KeyError as exc:
         raise RuntimeError("Could not locate the native symbol chooser Filter field.") from exc
     filter_x = chooser_x + min(100, max(40, chooser_width // 4))
-    filter_y = chooser_y + min(16, max(10, chooser_height // 30))
+    # The dialog's X11 geometry includes the title-bar area. In KiCad's
+    # current layout the Filter control sits about 40 px below that origin.
+    filter_y = chooser_y + min(56, max(32, chooser_height // 17))
     send("mousemove", "--sync", str(filter_x), str(filter_y))
     send("click", "--clearmodifiers", "1")
     pause(0.1)
+    mouse_after_click = shell_geometry(send("getmouselocation", "--shell"))
+    if mouse_after_click.get("WINDOW", 0) == 0:
+        raise RuntimeError(
+            "The click intended for KiCad's native chooser Filter field landed "
+            f"on the X11 root window, not the chooser: target=({filter_x},{filter_y}) "
+            f"geometry={chooser_geometry!r} pointer={mouse_after_click!r}."
+        )
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         try:
@@ -191,7 +200,7 @@ def start_native_symbol_placement(
             print(
                 f"chooser-search-debug=clicked geometry={chooser_geometry!r} "
                 f"target=({filter_x},{filter_y}) "
-                f"pointer={send('getmouselocation', '--shell')!r} "
+                f"pointer={mouse_after_click!r} "
                 f"raw_focus={send('getwindowfocus', '-f')!r} "
                 f"screenshot={clicked_capture!r}",
                 flush=True,
