@@ -53,7 +53,7 @@ def focus_symbol_chooser_search_at_point(
     text: str | None = None,
     atspi_module=None,
 ) -> bool:
-    """Give keyboard focus to the actual native Search widget under an X11 point."""
+    """Send key events to the Search widget already focused by the caller's X11 click."""
     if atspi_module is None:
         try:
             import pyatspi as atspi_module
@@ -199,15 +199,11 @@ def focus_symbol_chooser_search_at_point(
             bounds = candidate.queryComponent().getExtents(coord_type)
         except Exception:
             bounds = None
-        try:
-            component = candidate.queryComponent()
-            focused = bool(component.grabFocus())
-        except Exception as exc:
-            candidate_details.append(
-                (depth, role, name, bounds, f"focus:{type(exc).__name__}:{exc}")
-            )
-            last_error = exc
-            continue
+        # start_native_symbol_placement() has already clicked this exact
+        # Search-field point and verified the pointer coordinates. Do not call
+        # AT-SPI grabFocus() here: wxGTK may focus the wxSearchCtrl wrapper and
+        # steal focus from its embedded text editor.
+        focused = True
 
         text_result = None
         if focused and text is not None:
