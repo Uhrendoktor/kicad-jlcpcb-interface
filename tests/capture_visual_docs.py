@@ -22,6 +22,7 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
+from kicad_jlcpcb import populator as populator_module  # noqa: E402
 from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
@@ -1664,9 +1665,50 @@ def _capture_passive_component_workflows(
                 "Generated passive symbol is missing the chosen catalogue value or metadata."
             )
 
-    _drive_populator_form(
-        create,
-        output_dir,
+    original_native_handoff = populator_module.start_native_symbol_placement
+
+    def capture_failed_native_handoff(*args, **kwargs):
+        try:
+            return original_native_handoff(*args, **kwargs)
+        except Exception as exc:
+            # Preserve the exact native chooser state for CI diagnosis. The
+            # failure artifact is uploaded with if: always() by the visual job.
+            _capture_desktop(output_dir / "add-component-chooser-failure.png")
+            focused = subprocess.run(
+                ["xdotool", "getwindowfocus"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            ).stdout.strip()
+            title = subprocess.run(
+                ["xdotool", "getwindowname", focused],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            ).stdout.strip() if focused else ""
+            window_tree = subprocess.run(
+                ["xwininfo", "-id", focused, "-tree"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            ) if focused else None
+            (output_dir / "add-component-chooser-failure.txt").write_text(
+                f"exception={type(exc).__name__}: {exc}\\n"
+                f"focused_window={focused!r}\\n"
+                f"focused_title={title!r}\\n"
+                f"window_tree={getattr(window_tree, 'stdout', '')}\\n",
+                encoding="utf-8",
+            )
+            raise
+
+    populator_module.start_native_symbol_placement = capture_failed_native_handoff
+    try:
+        _drive_populator_form(
+            create,
+            output_dir,
         proposal_asset="add-component-proposed.png",
         light_asset="add-component-light.png",
         dark_asset="add-component-dark.png",
@@ -1683,8 +1725,10 @@ def _capture_passive_component_workflows(
         validate_result=validate_create_result,
         assert_basic_shortlist=True,
         avoid_lcsc="C60489",
-        capture_cursor=True,
-    )
+            capture_cursor=True,
+        )
+    finally:
+        populator_module.start_native_symbol_placement = original_native_handoff
     print(
         "live-add-mode-ui=passed "
         f"query=10k selected={create.selected_details.lcsc} "
