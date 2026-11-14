@@ -396,7 +396,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
         set_filter.assert_called_once_with(
-            "R_C60489", x=120, y=366
+            "R_C60489", x=120, y=366, clipboard_ready=True
         )
         self.assertFalse(any(command[:1] == ["xclip"] for command in runner.commands))
         self.assertNotIn(
@@ -405,7 +405,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
-    def test_pastes_symbol_name_through_x11_primary_selection(self, _which):
+    def test_falls_back_to_clipboard_shortcut_when_atspi_unavailable(self, _which):
         runner = FakeRunner(["0x200", "0x100"])
         start_native_symbol_placement(
             "0x100",
@@ -416,9 +416,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
         xclip_command = ["xclip", "-selection", "clipboard", "-in"]
-        middle_click = ["xdotool", "click", "2"]
         self.assertIn(xclip_command, runner.commands)
-        self.assertIn(middle_click, runner.commands)
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
             runner.commands,
