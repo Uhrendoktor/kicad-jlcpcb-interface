@@ -125,11 +125,17 @@ class CursorPlacementTests(unittest.TestCase):
         )
         chooser_activate = ["xdotool", "windowactivate", "--sync", "0x200"]
         type_command = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
+            "xdotool", "type", "--window", "0x300", "--clearmodifiers",
+            "--delay", "12", "R_C60489",
         ]
-        return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
+        return_command = [
+            "xdotool", "key", "--window", "0x200", "--clearmodifiers", "Return"
+        ]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         self.assertIn(chooser_activate, runner.commands)
+        self.assertIn(
+            ["xdotool", "mousemove", "--sync", "110", "371"], runner.commands
+        )
         self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
@@ -149,6 +155,27 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(restore_pointer),
         )
         self.assertIn(0.15, pauses)
+
+    def test_rejects_root_window_as_filter_input_target(self):
+        runner = FakeRunner(
+            ["0x200", "0x100"],
+            ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
+            pointer_window="0",
+        )
+        with self.assertRaisesRegex(RuntimeError, "identify the X11 child"):
+            start_native_symbol_placement(
+                "0x100",
+                "R_C60489",
+                kicad=FakeKiCad(),
+                xdotool="xdotool",
+                command_runner=runner,
+                pause=lambda _seconds: None,
+            )
+        self.assertNotIn(
+            ["xdotool", "type", "--window", "0x0", "--clearmodifiers",
+             "--delay", "12", "R_C60489"],
+            runner.commands,
+        )
 
     def test_falls_back_to_add_hotkey_when_ipc_action_is_unavailable(self):
         runner = FakeRunner(
@@ -170,6 +197,13 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertIn(
             ["xdotool", "windowactivate", "--sync", "0x200"], runner.commands
+        )
+        self.assertIn(
+            [
+                "xdotool", "type", "--window", "0x300", "--clearmodifiers",
+                "--delay", "12", "R_C60489",
+            ],
+            runner.commands,
         )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands

@@ -251,13 +251,55 @@ def start_native_symbol_placement(
         # Retain compatibility with X11 sessions without EWMH activation.
         send("windowfocus", "--sync", chooser_id)
     pause(0.1)
+
+    # Route keyboard events to the X11 child under the Filter control instead
+    # of relying on global focus. xdotool --window uses XSendEvent for this
+    # target, which can reach a text child even when XTEST focus stays on the
+    # chooser frame.
+    chooser_geometry = shell_geometry(
+        send("getwindowgeometry", "--shell", chooser_id)
+    )
+    try:
+        chooser_x = chooser_geometry["X"]
+        chooser_y = chooser_geometry["Y"]
+        chooser_width = chooser_geometry["WIDTH"]
+        chooser_height = chooser_geometry["HEIGHT"]
+    except KeyError as exc:
+        raise RuntimeError(
+            "Could not locate the native symbol chooser Filter field."
+        ) from exc
+    filter_x = chooser_x + min(80, max(40, chooser_width // 8))
+    filter_y = chooser_y + min(12, max(8, chooser_height // 60))
+    send("mousemove", "--sync", str(filter_x), str(filter_y))
+    pause(0.1)
+    filter_pointer = shell_geometry(send("getmouselocation", "--shell"))
+    filter_window = filter_pointer.get("WINDOW", 0)
+    filter_pointer_x = filter_pointer.get("X", -1)
+    filter_pointer_y = filter_pointer.get("Y", -1)
+    if (
+        filter_window == 0
+        or not (
+            chooser_x <= filter_pointer_x < chooser_x + chooser_width
+            and chooser_y <= filter_pointer_y < chooser_y + chooser_height
+        )
+    ):
+        raise RuntimeError(
+            "Could not identify the X11 child under KiCad's native Filter field: "
+            f"pointer={filter_pointer!r}, chooser={chooser_geometry!r}."
+        )
+    filter_window_id = f"0x{filter_window:x}"
+    print(
+        "cursor-placement-filter-input-target="
+        f"window={filter_window_id} pointer=({filter_pointer_x},{filter_pointer_y})",
+        flush=True,
+    )
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         try:
             from PIL import ImageGrab
 
             probe_capture = debug_capture.replace(".png", "-key-probe.png")
-            send("key", "--clearmodifiers", "r")
+            send("key", "--window", filter_window_id, "--clearmodifiers", "r")
             pause(0.1)
             ImageGrab.grab().save(probe_capture)
             print(
@@ -271,10 +313,11 @@ def start_native_symbol_placement(
                 f"error={type(exc).__name__}: {exc}",
                 flush=True,
             )
-    # Remove the diagnostic character if it reached the Filter field, then
-    # send the full project-local symbol name through the same XTest path.
-    send("key", "--clearmodifiers", "BackSpace")
-    send("type", "--clearmodifiers", "--delay", "12", symbol_name)
+            send("key", "--window", filter_window_id, "--clearmodifiers", "BackSpace")
+    send(
+        "type", "--window", filter_window_id, "--clearmodifiers",
+        "--delay", "12", symbol_name,
+    )
     pause(0.15)
 
     if debug_capture:
@@ -295,7 +338,7 @@ def start_native_symbol_placement(
                 flush=True,
             )
 
-    send("key", "--clearmodifiers", "Return")
+    send("key", "--window", chooser_id, "--clearmodifiers", "Return")
 
     def restore_placement_pointer() -> None:
         send(
