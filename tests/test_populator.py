@@ -559,6 +559,31 @@ class ComponentPlacementHandoffTests(unittest.TestCase):
             reference_prefix="R",
         )
 
+    def test_uses_reference_prefix_from_manual_stock_symbol(self):
+        populator = object.__new__(ComponentPopulator)
+        populator.schematic = object()
+        populator.placed_symbol = None
+        generated = SimpleNamespace(
+            library_id="JLCPCB_Generated:D_C70003",
+            reference_prefix="D",
+        )
+        draft = SimpleNamespace(reference_prefix="")
+        placed = object()
+
+        with patch(
+            "kicad_jlcpcb.populator.place_and_select_component_from_draft",
+            return_value=placed,
+        ) as place:
+            populator._place_generated_symbol(generated, draft)
+
+        self.assertIs(populator.placed_symbol, placed)
+        place.assert_called_once_with(
+            populator.schematic,
+            draft,
+            library_id="JLCPCB_Generated:D_C70003",
+            reference_prefix="D",
+        )
+
 
 class ComponentPopulatorCleanupTests(unittest.TestCase):
     def test_joins_workers_and_releases_tk_state_before_destroy(self):
