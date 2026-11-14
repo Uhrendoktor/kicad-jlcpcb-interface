@@ -209,7 +209,12 @@ def start_native_symbol_placement(
     # lower case avoids shifted characters and still narrows to this generated
     # project symbol (for example R_C25744 -> c25744).
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
-    send("type", "--clearmodifiers", "--delay", "12", filter_text)
+    # Send regular key press/release events individually. This avoids the
+    # XTest text helper's character-mapping path, which is dropped by this
+    # modal wxWidgets chooser in some Linux environments.
+    for character in filter_text:
+        send("key", "--clearmodifiers", character)
+        pause(0.025)
     pause(0.15)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()

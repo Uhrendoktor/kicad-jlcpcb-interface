@@ -107,18 +107,20 @@ class CursorPlacementTests(unittest.TestCase):
             kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
         )
         chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
-        type_command = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "12", "c60489"
+        key_commands = [
+            ["xdotool", "key", "--clearmodifiers", character]
+            for character in "c60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         self.assertIn(chooser_focus, runner.commands)
-        self.assertIn(type_command, runner.commands)
+        for command in key_commands:
+            self.assertIn(command, runner.commands)
         self.assertIn(return_command, runner.commands)
         self.assertIn(restore_pointer, runner.commands)
         self.assertLess(
             runner.commands.index(["xdotool", "getwindowname", "0x200"]),
-            runner.commands.index(type_command),
+            runner.commands.index(key_commands[0]),
         )
         self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
         self.assertLess(
@@ -160,10 +162,11 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
-        self.assertIn(
-            ["xdotool", "type", "--clearmodifiers", "--delay", "12", "c60489"],
-            runner.commands,
-        )
+        for character in "c60489":
+            self.assertIn(
+                ["xdotool", "key", "--clearmodifiers", character],
+                runner.commands,
+            )
 
     def test_uses_native_place_menu_when_add_hotkey_does_not_open_chooser(self):
         runner = FakeRunner(
