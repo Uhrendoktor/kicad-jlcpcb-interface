@@ -362,11 +362,35 @@ def start_native_symbol_placement(
                 continue
         print(f"chooser-x11-visible-windows={visible_windows!r}", flush=True)
     # wxGTK's search control may ignore synthetic XTest typing while a
-    # modal chooser is active. Prefer its AT-SPI EditableText interface; fall
-    # back to ordinary XTest input on desktops without accessibility support.
-    filter_set_accessibly = set_symbol_chooser_filter_accessibly(symbol_name)
-    if not filter_set_accessibly:
-        send("type", "--clearmodifiers", "--delay", "50", symbol_name)
+    # modal chooser is active. First try an X11 PRIMARY-selection paste into
+    # the already-focused field (middle-click). If xclip is unavailable, use
+    # AT-SPI EditableText and finally ordinary XTest typing.
+    primary_pasted = False
+    xclip = shutil.which("xclip")
+    if xclip:
+        try:
+            command_runner(
+                [xclip, "-selection", "primary", "-in"],
+                input=symbol_name,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                check=True,
+                timeout=5,
+            )
+            send("click", "2")
+            primary_pasted = True
+            print("chooser-input=primary-selection-paste", flush=True)
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(
+                f"chooser-input=primary-paste-failed error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+    if not primary_pasted:
+        filter_set_accessibly = set_symbol_chooser_filter_accessibly(symbol_name)
+        if not filter_set_accessibly:
+            send("type", "--clearmodifiers", "--delay", "50", symbol_name)
+            print("chooser-input=xtest-type", flush=True)
     pause(0.5)
     if debug_capture:
         try:

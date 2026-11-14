@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,10 +22,12 @@ class FakeRunner:
         self.outputs = list(outputs)
         self.window_names = list(window_names)
         self.commands = []
+        self.command_kwargs = []
         self.mouse_reads = 0
 
-    def __call__(self, arguments, **_kwargs):
+    def __call__(self, arguments, **kwargs):
         self.commands.append(arguments)
+        self.command_kwargs.append(kwargs)
         command = arguments[1]
         if command == "getwindowpid":
             return SimpleNamespace(stdout="4242", returncode=0)
@@ -186,7 +189,8 @@ class CursorPlacementTests(unittest.TestCase):
             )
         )
 
-    def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(self):
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
+    def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(self, _which):
         runner = FakeRunner(
             ["0x200", "0x100"],
             ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
@@ -268,7 +272,8 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(0.1, pauses)
         self.assertIn(0.5, pauses)
 
-    def test_uses_add_hotkey_even_when_ipc_action_would_be_unavailable(self):
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
+    def test_uses_add_hotkey_even_when_ipc_action_would_be_unavailable(self, _which):
         runner = FakeRunner(["0x200", "0x100"])
         kicad = FakeKiCad(raises=True)
         start_native_symbol_placement(
@@ -307,6 +312,31 @@ class CursorPlacementTests(unittest.TestCase):
             ],
             runner.commands,
         )
+
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
+    def test_pastes_symbol_name_through_x11_primary_selection(self, _which):
+        runner = FakeRunner(["0x200", "0x100"])
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+
+        xclip_command = ["xclip", "-selection", "primary", "-in"]
+        middle_click = ["xdotool", "click", "2"]
+        self.assertIn(xclip_command, runner.commands)
+        self.assertIn(middle_click, runner.commands)
+        self.assertNotIn(
+            ["xdotool", "type", "--clearmodifiers", "--delay", "50", "R_C60489"],
+            runner.commands,
+        )
+        clipboard_index = runner.commands.index(xclip_command)
+        self.assertEqual(
+            runner.command_kwargs[clipboard_index]["input"], "R_C60489"
+        )
+        self.assertTrue(runner.command_kwargs[clipboard_index]["check"])
 
     def test_activates_native_chooser_before_x_test_input(self):
         runner = FakeRunner(["0x200", "0x100"])
