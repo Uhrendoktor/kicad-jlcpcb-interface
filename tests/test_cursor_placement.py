@@ -52,6 +52,43 @@ class CursorPlacementTests(unittest.TestCase):
             ],
         )
 
+    def test_finds_visible_eeschema_when_a_plugin_dialog_has_focus(self):
+        class SearchRunner(FakeRunner):
+            def __call__(self, arguments, **_kwargs):
+                self.commands.append(arguments)
+                command = arguments[1]
+                if command == "getwindowfocus":
+                    return SimpleNamespace(stdout="0x999", returncode=0)
+                if command == "getwindowclassname":
+                    return SimpleNamespace(
+                        stdout="tk" if arguments[-1] == "0x999" else "eeschema",
+                        returncode=0,
+                    )
+                if command == "getwindowname":
+                    return SimpleNamespace(
+                        stdout=(
+                            "Component Review"
+                            if arguments[-1] == "0x999"
+                            else "Schematic Editor"
+                        ),
+                        returncode=0,
+                    )
+                if command == "search":
+                    return SimpleNamespace(stdout="0x100", returncode=0)
+                if command == "getwindowpid":
+                    return SimpleNamespace(stdout="4242", returncode=0)
+                return SimpleNamespace(stdout="", returncode=0)
+
+        runner = SearchRunner()
+        self.assertEqual(
+            capture_eeschema_window_id(xdotool="xdotool", command_runner=runner),
+            "0x100",
+        )
+        self.assertIn(
+            ["xdotool", "search", "--onlyvisible", "--class", "eeschema"],
+            runner.commands,
+        )
+
     def test_does_not_capture_an_unrelated_window(self):
         def runner(arguments, **_kwargs):
             command = arguments[1]
