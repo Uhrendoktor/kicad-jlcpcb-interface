@@ -1108,7 +1108,7 @@ class ComponentPopulator:
             ):
                 return
 
-            iconified = False
+            workspace_hidden = False
             try:
                 if self.kicad is None:
                     raise RuntimeError("The KiCad project connection is unavailable.")
@@ -1118,8 +1118,14 @@ class ComponentPopulator:
                 )
                 self.generated_library = generated
                 reload_project_symbol_library(self.kicad, generated)
-                self.root.iconify()
-                iconified = True
+                # Withdraw the Tk workspace instead of iconifying it. Some X11
+                # window managers leave an iconified Tk root mapped above
+                # Eeschema, which prevents the native Add Symbol tool receiving
+                # focus. Keep the review state in memory and restore it only if
+                # the native handoff fails.
+                self.root.withdraw()
+                self.root.update_idletasks()
+                workspace_hidden = True
                 start_native_symbol_placement(
                     self.editor_window_id,
                     generated.symbol_name,
@@ -1132,8 +1138,10 @@ class ComponentPopulator:
                 self.close()
                 return
             except Exception as exc:
-                if iconified and not self.closed:
+                if workspace_hidden and not self.closed:
                     self.root.deiconify()
+                    self.root.lift()
+                    self.root.update_idletasks()
                 self.status_var.set(f"Project library generation failed: {exc}")
                 self.messagebox.showerror(
                     "Component library generation failed", str(exc), parent=self.root
