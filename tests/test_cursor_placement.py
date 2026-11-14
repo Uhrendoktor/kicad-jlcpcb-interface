@@ -329,6 +329,32 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
 
+    @patch(
+        "kicad_jlcpcb.cursor_placement.set_symbol_chooser_filter_accessibly",
+        return_value=True,
+    )
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
+    def test_prefers_atspi_point_target_before_clipboard_fallback(
+        self, _which, set_filter
+    ):
+        runner = FakeRunner(["0x200", "0x100"])
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+
+        set_filter.assert_called_once_with(
+            "R_C60489", x=120, y=366
+        )
+        self.assertFalse(any(command[:1] == ["xclip"] for command in runner.commands))
+        self.assertNotIn(
+            ["xdotool", "type", "--clearmodifiers", "--delay", "50", "R_C60489"],
+            runner.commands,
+        )
+
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
     def test_pastes_symbol_name_through_x11_primary_selection(self, _which):
         runner = FakeRunner(["0x200", "0x100"])

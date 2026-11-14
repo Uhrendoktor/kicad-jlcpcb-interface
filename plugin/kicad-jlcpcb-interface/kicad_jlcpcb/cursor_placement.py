@@ -415,36 +415,38 @@ def start_native_symbol_placement(
             except subprocess.SubprocessError:
                 continue
         print(f"chooser-x11-visible-windows={visible_windows!r}", flush=True)
-    # wxGTK's search control may ignore synthetic XTest typing while a
-    # modal chooser is active. First try an X11 PRIMARY-selection paste into
-    # the already-focused field (middle-click). If xclip is unavailable, use
-    # AT-SPI EditableText and finally ordinary XTest typing.
-    primary_pasted = False
-    xclip = shutil.which("xclip")
-    if xclip:
-        try:
-            command_runner(
-                [xclip, "-selection", "primary", "-in"],
-                input=symbol_name,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                check=True,
-                timeout=5,
-            )
-            send("click", "2")
-            primary_pasted = True
-            print("chooser-input=primary-selection-paste", flush=True)
-        except (OSError, subprocess.SubprocessError) as exc:
-            print(
-                f"chooser-input=primary-paste-failed error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
-    if not primary_pasted:
-        filter_set_accessibly = set_symbol_chooser_filter_accessibly(
-            symbol_name, x=filter_x, y=filter_y
-        )
-        if not filter_set_accessibly:
+    # Prefer AT-SPI hit-testing at the verified filter-field coordinates.
+    # Only use clipboard paste or XTest typing when the actual control cannot
+    # be identified or updated through the accessibility interface.
+    filter_set_accessibly = set_symbol_chooser_filter_accessibly(
+        symbol_name, x=filter_x, y=filter_y
+    )
+    if filter_set_accessibly:
+        print("chooser-input=atspi-filter", flush=True)
+    else:
+        primary_pasted = False
+        xclip = shutil.which("xclip")
+        if xclip:
+            try:
+                command_runner(
+                    [xclip, "-selection", "primary", "-in"],
+                    input=symbol_name,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    check=True,
+                    timeout=5,
+                )
+                send("click", "2")
+                primary_pasted = True
+                print("chooser-input=primary-selection-paste", flush=True)
+            except (OSError, subprocess.SubprocessError) as exc:
+                print(
+                    "chooser-input=primary-paste-failed "
+                    f"error={type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+        if not primary_pasted:
             send("type", "--clearmodifiers", "--delay", "50", symbol_name)
             print("chooser-input=xtest-type", flush=True)
     pause(0.5)
