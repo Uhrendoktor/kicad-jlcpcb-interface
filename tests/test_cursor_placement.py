@@ -394,7 +394,7 @@ class CursorPlacementTests(unittest.TestCase):
         _focus_search.assert_called_once_with(601, 449)
         clear_search = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
         type_search = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "35", "c60489"
+            "xdotool", "type", "--clearmodifiers", "--delay", "50", "c60489"
         ]
         self.assertIn(clear_search, runner.commands)
         self.assertIn(type_search, runner.commands)
