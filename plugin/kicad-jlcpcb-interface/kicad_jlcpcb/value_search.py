@@ -117,9 +117,12 @@ def parse_passive_value_query(query: str) -> tuple[str, Decimal]:
 
 
 def exact_passive_candidates(
-    query: str, results: Iterable[JlcPartDetails]
+    query: str,
+    results: Iterable[JlcPartDetails],
+    *,
+    limit: int | None = None,
 ) -> list[tuple[JlcPartDetails, ComponentDraft]]:
-    """Keep only exact-value, supported SMD passives and rank Basic parts first."""
+    """Keep exact-value, supported SMD passives; rank Basic parts first and optionally cap the list."""
     wanted_kind, wanted_value = parse_passive_value_query(query)
     matches: dict[str, tuple[JlcPartDetails, ComponentDraft]] = {}
     for details in results:
@@ -152,4 +155,7 @@ def exact_passive_candidates(
         stock = details.stock if details.stock is not None else -1
         return library_rank, preferred_rank, stock_rank, price_rank, -stock, details.lcsc
 
-    return sorted(matches.values(), key=rank)
+    ordered = sorted(matches.values(), key=rank)
+    if limit is None:
+        return ordered
+    return ordered[: max(0, int(limit))]
