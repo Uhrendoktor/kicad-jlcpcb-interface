@@ -164,8 +164,11 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
-    # The Add Symbol hotkey leaves keyboard focus in the native Filter field.
-    # Do not refocus the chooser frame: that would discard the child focus.
+    # Match the native chooser handoff used by kicad-blocks: focus the chooser
+    # window after its catalogue is ready, then type into its Filter control.
+    # The Add Symbol hotkey is important here; the IPC action does not focus
+    # the native Filter field consistently across KiCad builds.
+    send("windowfocus", "--sync", chooser_id)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         xwininfo = shutil.which("xwininfo")
