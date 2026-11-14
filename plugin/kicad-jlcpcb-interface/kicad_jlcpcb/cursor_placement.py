@@ -164,11 +164,14 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
-    # Match the native chooser handoff used by kicad-blocks: focus the chooser
-    # window after its catalogue is ready, then type into its Filter control.
-    # The Add Symbol hotkey is important here; the IPC action does not focus
-    # the native Filter field consistently across KiCad builds.
-    send("windowfocus", "--sync", chooser_id)
+    # Activate the native chooser after its catalogue is ready. This raises
+    # it above the review window and restores its Filter control as the input
+    # target. Minimal X11 sessions without an EWMH window manager fall back to
+    # direct focus, as in kicad-blocks.
+    try:
+        send("windowactivate", "--sync", chooser_id)
+    except subprocess.SubprocessError:
+        send("windowfocus", "--sync", chooser_id)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         xwininfo = shutil.which("xwininfo")
