@@ -232,7 +232,7 @@ def start_native_symbol_placement(
     if xclip:
         try:
             command_runner(
-                [xclip, "-selection", "primary", "-in", "-loops", "10"],
+                [xclip, "-selection", "clipboard", "-in", "-loops", "10"],
                 input=filter_text,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -240,9 +240,9 @@ def start_native_symbol_placement(
                 check=True,
                 timeout=5,
             )
-            send("click", "2")
+            send("key", "--clearmodifiers", "ctrl+v")
             primary_pasted = True
-            print("chooser-input=primary-selection-paste", flush=True)
+            print("chooser-input=clipboard-ctrl-v", flush=True)
         except (OSError, subprocess.SubprocessError) as exc:
             print(
                 f"chooser-input=primary-paste-failed {type(exc).__name__}: {exc}",
