@@ -99,7 +99,7 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
-    def test_starts_native_chooser_with_add_hotkey_and_returns_with_symbol_on_cursor(self):
+    def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(self):
         runner = FakeRunner(
             ["0x200", "0x100"],
             ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
@@ -137,10 +137,6 @@ class CursorPlacementTests(unittest.TestCase):
         ]
         self.assertIn(editor_activate, runner.commands)
         self.assertNotIn(add_symbol_hotkey, runner.commands)
-        self.assertLess(
-            runner.commands.index(editor_activate),
-            runner.commands.index(add_symbol_hotkey),
-        )
         self.assertLess(runner.commands.index(editor_activate), title_checks[0])
         self.assertEqual(len(title_checks), 2)
         self.assertNotIn(
