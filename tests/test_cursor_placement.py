@@ -178,8 +178,8 @@ class CursorPlacementTests(unittest.TestCase):
         calls = []
 
         class FakeSimulator:
-            def Text(self, value):
-                calls.append(value)
+            def Char(self, keycode):
+                calls.append(keycode)
                 return True
 
         class FakeWx:
@@ -198,7 +198,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertTrue(
             type_focused_widget_with_wx("c25744", wx_module=FakeWx)
         )
-        self.assertEqual(calls, ["c25744"])
+        self.assertEqual(calls, [ord(character) for character in "c25744"])
 
     def test_wx_action_simulator_rejects_non_ascii_filter_text(self):
         class UnusedWx:

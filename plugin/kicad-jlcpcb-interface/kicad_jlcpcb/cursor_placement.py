@@ -72,15 +72,24 @@ def type_focused_widget_with_wx(
             if _WX_ACTION_APP is None:
                 _WX_ACTION_APP = wx_module.App(False)
         simulator = wx_module.UIActionSimulator()
-        sent = bool(simulator.Text(text))
         yield_events = getattr(wx_module, "YieldIfNeeded", None)
-        if callable(yield_events):
-            yield_events()
+        for character in text:
+            sent = bool(simulator.Char(ord(character)))
+            if not sent:
+                print(
+                    "chooser-wx-simulator=key-failed "
+                    f"character={character!r}",
+                    flush=True,
+                )
+                return False
+            if callable(yield_events):
+                yield_events()
+            time.sleep(0.025)
         print(
-            f"chooser-wx-simulator=text-sent sent={sent} length={len(text)}",
+            f"chooser-wx-simulator=keys-sent count={len(text)}",
             flush=True,
         )
-        return sent
+        return True
     except Exception as exc:
         print(
             f"chooser-wx-simulator=failed error={type(exc).__name__}: {exc}",
