@@ -195,12 +195,6 @@ def start_native_symbol_placement(
     send("click", "--clearmodifiers", "1")
     pause(0.1)
     mouse_after_click = shell_geometry(send("getmouselocation", "--shell"))
-    if mouse_after_click.get("WINDOW", 0) == 0:
-        raise RuntimeError(
-            "The click intended for KiCad's native chooser Filter field landed "
-            f"on the X11 root window, not the chooser: relative_target=({filter_x},{filter_y}) "
-            f"geometry={chooser_geometry!r} pointer={mouse_after_click!r}."
-        )
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         try:
