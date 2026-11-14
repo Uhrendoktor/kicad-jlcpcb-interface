@@ -169,48 +169,30 @@ def start_native_symbol_placement(
         )
     chooser_id = top_level_chooser
 
-    # Focus the whole dialog, then click within its top-left search control.
+    # KiCad focuses the search field when the chooser opens. Preserve that
+    # widget focus, but send the synthetic key events to the chooser's XID so
+    # they cannot be consumed by the plugin's Tk window or the Eeschema canvas.
     send("windowfocus", "--sync", chooser_id)
-    pause(0.1)
-    geometry = send("getwindowgeometry", "--shell", chooser_id)
-    geometry_values = {
-        key: value
-        for line in geometry.splitlines()
-        if "=" in line
-        for key, value in (line.split("=", 1),)
-    }
-    try:
-        chooser_x = int(geometry_values.get("X", "0"))
-        chooser_y = int(geometry_values.get("Y", "0"))
-        chooser_width = int(geometry_values.get("WIDTH", "0"))
-    except ValueError:
-        chooser_x = chooser_y = chooser_width = 0
-    search_x = max(100, min(250, chooser_width // 4)) if chooser_width else 150
-    # Use root-screen coordinates: xdotool's --window mode can target the
-    # focused child XID rather than the dialog client area under wxGTK.
+    pause(0.2)
+    # Replace KiCad's remembered search rather than appending to stale filter
+    # text from a previous chooser session.
+    send("key", "--window", chooser_id, "--clearmodifiers", "ctrl+a")
+    send("key", "--window", chooser_id, "--clearmodifiers", "BackSpace")
     send(
-        "mousemove",
-        "--sync",
-        str(chooser_x + search_x),
-        str(chooser_y + 20),
+        "type",
+        "--window",
+        chooser_id,
+        "--clearmodifiers",
+        "--delay",
+        "12",
+        symbol_name,
     )
-    send("click", "1")
-    pause(0.1)
-    # KiCad remembers the last symbol search between sessions. Replace it
-    # instead of appending to stale filter text from the user's previous use.
-    send("key", "--clearmodifiers", "ctrl+a")
-    send("key", "--clearmodifiers", "BackSpace")
-    send("type", "--clearmodifiers", "--delay", "12", symbol_name)
-    # KiCad debounces symbol-search updates for 200 ms. Wait longer than that
-    # before Enter so the newly generated symbol is actually selected in the
-    # refreshed result tree rather than the stale pre-filter selection.
+    # KiCad debounces symbol-search updates for 200 ms.
     pause(0.4)
-    # The chooser can retain a library-node selection after filtering. Move
-    # onto the first visible symbol row before Enter; Enter on a library node
-    # only expands/collapses it and leaves the chooser open.
-    send("key", "--clearmodifiers", "Down")
+    # Select the first visible symbol result, then accept it.
+    send("key", "--window", chooser_id, "--clearmodifiers", "Down")
     pause(0.1)
-    send("key", "--clearmodifiers", "Return")
+    send("key", "--window", chooser_id, "--clearmodifiers", "Return")
 
     last_focus: tuple[str, str, str, str] = ("", "", "", "")
     for _ in range(30):
