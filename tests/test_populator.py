@@ -131,6 +131,40 @@ class CatalogueImageDownloadTests(unittest.TestCase):
         ):
             self.assertIsNone(_download_catalogue_image("https://example.com/part.png"))
 
+    def test_quotes_non_ascii_supplier_image_paths(self):
+        class Response:
+            headers = {"Content-Type": "image/jpeg"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def geturl(self):
+                return "https://images.example.com/C105637-%E6%AD%A3%E9%9D%A2.jpg"
+
+            def read(self, _limit):
+                return b"valid-jpeg"
+
+        captured = []
+
+        def opener(request, timeout):
+            captured.append(request.full_url)
+            return Response()
+
+        with patch("kicad_jlcpcb.populator.urlopen", side_effect=opener):
+            self.assertEqual(
+                _download_catalogue_image(
+                    "https://images.example.com/C105637-正面.jpg"
+                ),
+                b"valid-jpeg",
+            )
+        self.assertEqual(
+            captured[0],
+            "https://images.example.com/C105637-%E6%AD%A3%E9%9D%A2.jpg",
+        )
+
     def test_tries_later_supplier_rendition_when_first_url_is_not_an_image(self):
         class Response:
             def __init__(self, content_type, payload):

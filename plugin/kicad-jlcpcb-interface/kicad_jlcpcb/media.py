@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024
@@ -39,8 +39,19 @@ def download_product_image(
         ):
             continue
         seen.add(url)
-        request = Request(
+        # Supplier filenames sometimes contain Chinese text. Quote only the
+        # path while preserving existing percent escapes and the signed query.
+        request_url = parsed._replace(
+            path=quote(
+                parsed.path,
+                safe="/%:@-._~!        request = Request(
             url,
+            headers={
+'()*+,;=",
+            )
+        ).geturl()
+        request = Request(
+            request_url,
             headers={
                 "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8",
                 "Origin": "https://jlcpcb.com",

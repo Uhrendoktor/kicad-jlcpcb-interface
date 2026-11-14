@@ -841,9 +841,25 @@ class ComponentPopulator:
             child.destroy()
         self._proposal_value_labels.clear()
 
+    @staticmethod
+    def _proposal_display_value(name: str, value: str) -> str:
+        """Use readable summaries for long catalogue URLs without changing data."""
+        if name.strip().casefold() != "datasheet":
+            return value or "—"
+        parsed = urlparse(str(value or ""))
+        if parsed.scheme == "https" and parsed.hostname:
+            filename = Path(parsed.path).name
+            return f"{parsed.hostname} / {filename}" if filename else parsed.hostname
+        return value or "—"
+
     def _render_proposal_rows(self, fields: tuple[tuple[str, str], ...]) -> None:
         self._clear_proposal_rows()
-        for index, (name, value) in enumerate(fields):
+        visible_fields = tuple(
+            (name, value)
+            for name, value in fields
+            if name.strip().casefold() not in {"value", "footprint"}
+        )
+        for index, (name, value) in enumerate(visible_fields):
             row = self.ttk.Frame(self.proposal_rows)
             row.grid(row=index, column=0, columnspan=2, sticky="ew", pady=2)
             row.columnconfigure(1, weight=1)
@@ -856,13 +872,13 @@ class ComponentPopulator:
             ).grid(row=0, column=0, sticky="nw", padx=(0, 14))
             value_label = self.ttk.Label(
                 row,
-                text=value or "—",
+                text=self._proposal_display_value(name, value),
                 wraplength=max(280, self.content_canvas.winfo_width() - 190),
                 justify="left",
             )
             value_label.grid(row=0, column=1, sticky="ew")
             self._proposal_value_labels.append(value_label)
-        if fields:
+        if visible_fields:
             self.proposal_section.grid()
         else:
             self.proposal_section.grid_remove()
