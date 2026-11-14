@@ -179,8 +179,6 @@ def start_native_symbol_placement(
         send("getwindowgeometry", "--shell", chooser_id)
     )
     try:
-        chooser_x = chooser_geometry["X"]
-        chooser_y = chooser_geometry["Y"]
         chooser_width = chooser_geometry["WIDTH"]
         chooser_height = chooser_geometry["HEIGHT"]
     except KeyError as exc:
