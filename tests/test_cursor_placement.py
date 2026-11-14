@@ -14,6 +14,7 @@ from kicad_jlcpcb.cursor_placement import (  # noqa: E402
     capture_eeschema_window_id,
     set_symbol_chooser_filter_accessibly,
     start_native_symbol_placement,
+    type_symbol_name_with_wx_simulator,
 )
 
 
@@ -143,6 +144,40 @@ class FakeKiCad:
             raise RuntimeError("run_action unavailable")
 
 
+class WxSimulatorTests(unittest.TestCase):
+    def test_selects_existing_search_text_and_types_symbol(self):
+        class FakeSimulator:
+            def __init__(self):
+                self.calls = []
+
+            def Char(self, keycode, modifiers):
+                self.calls.append(("Char", keycode, modifiers))
+                return True
+
+            def Text(self, value):
+                self.calls.append(("Text", value))
+                return True
+
+        simulator = FakeSimulator()
+
+        class FakeWx:
+            MOD_CONTROL = 2
+
+            @staticmethod
+            def UIActionSimulator():
+                return simulator
+
+        self.assertTrue(
+            type_symbol_name_with_wx_simulator(
+                "R_C25744", wx_module=FakeWx
+            )
+        )
+        self.assertEqual(
+            simulator.calls,
+            [("Char", ord("A"), 2), ("Text", "R_C25744")],
+        )
+
+
 class CursorPlacementTests(unittest.TestCase):
     def test_captures_only_a_focused_eeschema_window(self):
         runner = FakeRunner()
@@ -229,12 +264,16 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     @patch(
+        "kicad_jlcpcb.cursor_placement.type_symbol_name_with_wx_simulator",
+        return_value=False,
+    )
+    @patch(
         "kicad_jlcpcb.cursor_placement.set_symbol_chooser_filter_accessibly",
         return_value=False,
     )
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
     def test_falls_back_to_clipboard_shortcut_when_atspi_cannot_edit_target(
-        self, _which, set_filter
+        self, _which, set_filter, wx_type
     ):
         runner = FakeRunner(["0x200", "0x100"])
         start_native_symbol_placement(
@@ -253,6 +292,7 @@ class CursorPlacementTests(unittest.TestCase):
         set_filter.assert_called_once_with(
             "R_C60489", x=120, y=366, clipboard_ready=True
         )
+        wx_type.assert_called_once_with("R_C60489")
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(self, _which):
@@ -379,12 +419,16 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     @patch(
+        "kicad_jlcpcb.cursor_placement.type_symbol_name_with_wx_simulator",
+        return_value=True,
+    )
+    @patch(
         "kicad_jlcpcb.cursor_placement.set_symbol_chooser_filter_accessibly",
         return_value=True,
     )
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
-    def test_prefers_atspi_point_target_before_clipboard_fallback(
-        self, _which, set_filter
+    def test_prefers_wx_simulator_after_atspi_focus(
+        self, _which, set_filter, wx_type
     ):
         runner = FakeRunner(["0x200", "0x100"])
         start_native_symbol_placement(
@@ -398,10 +442,11 @@ class CursorPlacementTests(unittest.TestCase):
         set_filter.assert_called_once_with(
             "R_C60489", x=120, y=366, clipboard_ready=True
         )
+        wx_type.assert_called_once_with("R_C60489")
         self.assertIn(
             ["xclip", "-selection", "clipboard", "-in"], runner.commands
         )
-        self.assertIn(
+        self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "ctrl+v"], runner.commands
         )
         self.assertNotIn(

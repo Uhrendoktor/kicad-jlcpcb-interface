@@ -223,6 +223,38 @@ def set_symbol_chooser_filter_accessibly(
     return False
 
 
+def type_symbol_name_with_wx_simulator(symbol_name: str, *, wx_module=None) -> bool:
+    """Type into the focused native chooser using wxWidgets' own event simulator."""
+    if wx_module is None:
+        try:
+            import wx as wx_module
+        except Exception as exc:
+            print(
+                f"chooser-wx-simulator=unavailable error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return False
+
+    try:
+        simulator = wx_module.UIActionSimulator()
+        control_modifier = getattr(wx_module, "MOD_CONTROL", 2)
+        # Select any stale filter contents before entering the exact symbol id.
+        simulator.Char(ord("A"), control_modifier)
+        typed = bool(simulator.Text(symbol_name))
+        print(
+            f"chooser-wx-simulator=typed result={typed} symbol={symbol_name!r}",
+            flush=True,
+        )
+        return typed
+    except Exception as exc:
+        print(
+            "chooser-wx-simulator=failed "
+            f"error={type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return False
+
+
 def start_native_symbol_placement(
     editor_window_id: str | None,
     symbol_name: str,
@@ -484,10 +516,10 @@ def start_native_symbol_placement(
     )
     if filter_set_accessibly:
         print("chooser-input=atspi-focus", flush=True)
-    if clipboard_ready:
-        # Always send a real clipboard paste after AT-SPI focus. The GTK/wx
-        # bridge can report updated EditableText while the visible control
-        # remains unchanged; Ctrl+V exercises the focused widget itself.
+    wx_typed = type_symbol_name_with_wx_simulator(symbol_name)
+    if wx_typed:
+        print("chooser-input=wx-simulator", flush=True)
+    elif clipboard_ready:
         send("key", "--clearmodifiers", "ctrl+v")
         print("chooser-input=ctrl-v", flush=True)
     else:
