@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -194,6 +195,25 @@ class CursorPlacementTests(unittest.TestCase):
                 "R_C60489",
             ],
             runner.commands,
+        )
+
+    def test_falls_back_to_direct_focus_without_an_ewmh_window_manager(self):
+        runner = FakeRunner(["0x200", "0x100"])
+
+        def command_runner(arguments, **kwargs):
+            if arguments[1] == "windowactivate" and arguments[-1] == "0x200":
+                raise subprocess.CalledProcessError(1, arguments)
+            return runner(arguments, **kwargs)
+
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            xdotool="xdotool",
+            command_runner=command_runner,
+            pause=lambda _seconds: None,
+        )
+        self.assertIn(
+            ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
 
     def test_accepts_focus_return_to_another_eeschema_child_window(self):
