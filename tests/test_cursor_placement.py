@@ -185,36 +185,26 @@ class CursorPlacementTests(unittest.TestCase):
     def test_uses_libatspi_string_synthesis_for_focused_search(self):
         generated_events = []
 
-        class KeySynthType:
-            STRING = 4
+        def generate_keyboard_event(keyval, keystring, synth_type):
+            generated_events.append((keyval, keystring, synth_type))
+            return True
 
-        class FakeAtspi:
-            KeySynthType = KeySynthType
-
-            @staticmethod
-            def generate_keyboard_event(keyval, keystring, synth_type):
-                generated_events.append((keyval, keystring, synth_type))
-                return True
-
-        self.assertTrue(
-            send_text_to_focused_search("c60489", atspi_module=FakeAtspi)
+        atspi = SimpleNamespace(
+            KeySynthType=SimpleNamespace(STRING=4),
+            generate_keyboard_event=generate_keyboard_event,
         )
+        self.assertTrue(send_text_to_focused_search("c60489", atspi_module=atspi))
         self.assertEqual(generated_events, [(0, "c60489", 4)])
 
     def test_libatspi_string_synthesis_failure_returns_false(self):
-        class KeySynthType:
-            STRING = 4
+        def generate_keyboard_event(_keyval, _keystring, _synth_type):
+            raise NotImplementedError("legacy backend unavailable")
 
-        class FakeAtspi:
-            KeySynthType = KeySynthType
-
-            @staticmethod
-            def generate_keyboard_event(_keyval, _keystring, _synth_type):
-                raise NotImplementedError("legacy backend unavailable")
-
-        self.assertFalse(
-            send_text_to_focused_search("c60489", atspi_module=FakeAtspi)
+        atspi = SimpleNamespace(
+            KeySynthType=SimpleNamespace(STRING=4),
+            generate_keyboard_event=generate_keyboard_event,
         )
+        self.assertFalse(send_text_to_focused_search("c60489", atspi_module=atspi))
 
     def test_sends_atspi_key_events_to_nested_search_entry(self):
         search_entry = FakeAccessible("")
