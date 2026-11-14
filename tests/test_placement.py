@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
-from kicad_jlcpcb.placement import next_component_reference  # noqa: E402
 from kicad_jlcpcb.draft import ComponentDraft  # noqa: E402
+from kicad_jlcpcb.placement import next_component_reference  # noqa: E402
 
 
 def draft(kind: str, prefix: str) -> ComponentDraft:
@@ -57,7 +57,11 @@ class ReferenceAllocationTests(unittest.TestCase):
         schematic = SimpleNamespace(
             iter_sheets=lambda: ("root", "child"),
             for_sheet=lambda sheet: SimpleNamespace(
-                get_symbols=lambda: symbols if sheet == "root" else [SimpleNamespace(reference="R3")]
+                get_symbols=lambda: (
+                    symbols
+                    if sheet == "root"
+                    else [SimpleNamespace(reference="R3")]
+                )
             ),
         )
         self.assertEqual(next_component_reference(schematic, draft("resistor", "R")), "R4")
