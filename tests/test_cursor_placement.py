@@ -85,6 +85,7 @@ class FakeAccessible:
         self.point_target = None
         self.hit_test_calls = []
         self.focused = False
+        self.focus_calls = 0
         self.text = ""
         self.insert_calls = []
         self.extents = (525, 424, 398, 34)
@@ -110,6 +111,7 @@ class FakeAccessible:
         return self.extents
 
     def grabFocus(self):
+        self.focus_calls += 1
         self.focused = True
         return True
 
@@ -214,7 +216,8 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertEqual(chooser.hit_test_calls, [(601, 449, 0)])
         self.assertFalse(search_wrapper.focused)
-        self.assertTrue(search_entry.focused)
+        self.assertFalse(search_entry.focused)
+        self.assertEqual(search_entry.focus_calls, 0)
         self.assertEqual(search_entry.insert_calls, [])
         self.assertEqual(search_entry.text, "c60489")
         self.assertEqual(
