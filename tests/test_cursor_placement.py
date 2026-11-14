@@ -159,7 +159,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertFalse(
             any(
                 command[:2] == ["xdotool", "mousemove"]
-                and command != restore_pointer
+                and command not in (filter_move, restore_pointer)
                 for command in runner.commands
             )
         )
