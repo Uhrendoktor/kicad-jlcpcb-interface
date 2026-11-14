@@ -122,24 +122,40 @@ def start_native_symbol_placement(
         pause(0.1)
         send("key", "--clearmodifiers", "a")
 
-    chooser_id = ""
-    focused_id = ""
-    focused_pid = ""
-    for _ in range(50):
-        focused_id = send("getwindowfocus")
-        if focused_id and focused_id != str(editor_window_id):
-            focused_pid = send("getwindowpid", focused_id)
-            focused_title = send("getwindowname", focused_id).casefold()
-            same_process = bool(editor_pid and focused_pid == editor_pid)
-            is_chooser = "choose symbol" in focused_title or "select symbol" in focused_title
-            if same_process or is_chooser:
-                chooser_id = focused_id
-                break
+    def wait_for_chooser() -> tuple[str, str, str, str]:
+        """Return the chooser XID and current focus details, if it opened."""
+        current_id = ""
+        current_pid = ""
+        current_title = ""
+        for _ in range(50):
+            current_id = send("getwindowfocus")
+            if current_id and current_id != str(editor_window_id):
+                current_pid = send("getwindowpid", current_id)
+                current_title = send("getwindowname", current_id).casefold()
+                same_process = bool(editor_pid and current_pid == editor_pid)
+                is_chooser = (
+                    "choose symbol" in current_title
+                    or "select symbol" in current_title
+                )
+                if same_process or is_chooser:
+                    return current_id, current_pid, current_title, current_id
+            pause(0.1)
+        return "", current_id, current_pid, current_title
+
+    chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
+    if not chooser_id and action_started:
+        # Some KiCad builds accept run_action but do not start the interactive
+        # tool unless the editor is the active X11 window. Retry through the
+        # standard Add Symbol hotkey rather than failing after a no-op IPC call.
+        try:
+            send("windowactivate", "--sync", str(editor_window_id))
+        except subprocess.SubprocessError:
+            send("windowfocus", "--sync", str(editor_window_id))
         pause(0.1)
+        send("key", "--clearmodifiers", "a")
+        chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
 
     if not chooser_id:
-        focused_pid = send("getwindowpid", focused_id) if focused_id else ""
-        focused_title = send("getwindowname", focused_id) if focused_id else ""
         if focused_pid == editor_pid:
             try:
                 send("key", "--clearmodifiers", "Escape")
