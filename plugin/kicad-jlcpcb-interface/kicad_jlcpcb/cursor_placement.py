@@ -498,13 +498,40 @@ def start_native_symbol_placement(
     send("click", "--clearmodifiers", "1")
     pause(0.1)
 
-    # The physical click above has already focused the Search text editor.
-    # Do not call AT-SPI grabFocus() on wxSearchCtrl: in wxGTK it can focus the
-    # wrapper while leaving the embedded text editor without keyboard focus.
-    # Send XTest text directly to the currently focused Search entry.
+    # The physical click gives the embedded Search editor focus. Prefer
+    # AT-SPI key events sent to the hit-tested Search widget; this avoids
+    # EditableText cache-only updates. Use XTest/clipboard as fallbacks only.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
-    send("key", "--clearmodifiers", "ctrl+a")
-    send("type", "--clearmodifiers", "--delay", "35", filter_text)
+    filter_set_accessibly = focus_symbol_chooser_search_at_point(
+        filter_x, filter_y, text=filter_text
+    )
+    if filter_set_accessibly:
+        print("chooser-input=atspi-key-events", flush=True)
+    else:
+        send("key", "--clearmodifiers", "ctrl+a")
+        xclip = shutil.which("xclip")
+        if xclip:
+            try:
+                command_runner(
+                    [xclip, "-selection", "clipboard", "-in", "-loops", "10"],
+                    input=filter_text,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    check=True,
+                    timeout=5,
+                )
+                send("key", "--clearmodifiers", "ctrl+v")
+                print("chooser-input=clipboard-ctrl-v", flush=True)
+            except (OSError, subprocess.SubprocessError) as exc:
+                print(
+                    f"chooser-input=clipboard-failed error={type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                send("type", "--clearmodifiers", "--delay", "35", filter_text)
+        else:
+            send("type", "--clearmodifiers", "--delay", "35", filter_text)
+            print("chooser-input=xtest-type", flush=True)
     pause(0.15)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
