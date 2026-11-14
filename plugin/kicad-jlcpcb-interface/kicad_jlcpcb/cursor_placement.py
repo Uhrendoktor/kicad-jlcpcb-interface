@@ -154,9 +154,9 @@ def start_native_symbol_placement(
     # KiCad debounces symbol-search updates for 200 ms.
     pause(0.4)
     # Select the first visible symbol result, then accept it.
-    send("key", "--window", chooser_id, "--clearmodifiers", "Down")
+    send("key", "--clearmodifiers", "Down")
     pause(0.1)
-    send("key", "--window", chooser_id, "--clearmodifiers", "Return")
+    send("key", "--clearmodifiers", "Return")
 
     last_focus: tuple[str, str, str, str] = ("", "", "", "")
     for _ in range(30):
