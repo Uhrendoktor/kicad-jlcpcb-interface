@@ -1553,7 +1553,7 @@ def _capture_passive_component_workflows(
         cursor_completion=True,
     )
     print(
-        "live-add-mode-ui=passed reference=R4 "
+        "live-add-mode-ui=passed cursor_attached=true "
         "library_id=JLCPCB_Generated:R_C105637",
         flush=True,
     )
