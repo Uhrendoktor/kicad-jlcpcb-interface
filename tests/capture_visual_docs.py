@@ -1688,8 +1688,39 @@ def _capture_passive_component_workflows(
                 check=False,
                 timeout=10,
             ).stdout.strip() if focused else ""
-            window_tree = subprocess.run(
-                ["xwininfo", "-id", focused, "-tree"],
+            chooser_search = subprocess.run(
+                [
+                    "xdotool", "search", "--onlyvisible", "--name", "Choose Symbol"
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+            window_details = []
+            for window_id in chooser_search.stdout.splitlines():
+                window_id = window_id.strip()
+                if not window_id:
+                    continue
+                details = []
+                for command in (
+                    ["xdotool", "getwindowname", window_id],
+                    ["xdotool", "getwindowpid", window_id],
+                    ["xdotool", "getwindowgeometry", "--shell", window_id],
+                ):
+                    result = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        timeout=10,
+                    )
+                    details.append(result.stdout.strip())
+                window_details.append(
+                    f"window={window_id}\\n" + "\\n".join(details)
+                )
+            focused_geometry = subprocess.run(
+                ["xdotool", "getwindowgeometry", "--shell", focused],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -1699,7 +1730,9 @@ def _capture_passive_component_workflows(
                 f"exception={type(exc).__name__}: {exc}\n"
                 f"focused_window={focused!r}\n"
                 f"focused_title={title!r}\n"
-                f"window_tree={getattr(window_tree, 'stdout', '')}\n",
+                f"focused_geometry={getattr(focused_geometry, 'stdout', '')}\n"
+                f"chooser_search_rc={chooser_search.returncode}\n"
+                f"chooser_windows\\n" + "\\n---\\n".join(window_details) + "\\n",
                 encoding="utf-8",
             )
             raise
