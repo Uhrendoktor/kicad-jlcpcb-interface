@@ -40,6 +40,41 @@ PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 MAX_CATALOGUE_IMAGE_BYTES = 5 * 1024 * 1024
 
 
+# Tk interpreters are thread-affine. The worker functions below only handle
+# HTTP/provider data, but automatic cyclic GC can run during those allocations
+# and finalize an otherwise-unreachable Tk wrapper on the worker thread.
+# Disable automatic GC while any populator has active workers, then collect
+# on the UI thread after all worker pools have joined.
+_TK_GC_LOCK = threading.RLock()
+_TK_GC_LEASES = 0
+_TK_GC_WAS_ENABLED = False
+
+
+def _acquire_tk_gc_lease() -> None:
+    global _TK_GC_LEASES, _TK_GC_WAS_ENABLED
+    with _TK_GC_LOCK:
+        if _TK_GC_LEASES == 0:
+            _TK_GC_WAS_ENABLED = gc.isenabled()
+            if _TK_GC_WAS_ENABLED:
+                gc.disable()
+        _TK_GC_LEASES += 1
+
+
+def _release_tk_gc_lease() -> None:
+    global _TK_GC_LEASES, _TK_GC_WAS_ENABLED
+    with _TK_GC_LOCK:
+        if _TK_GC_LEASES <= 0:
+            return
+        _TK_GC_LEASES -= 1
+        if _TK_GC_LEASES == 0:
+            # This function is called by ComponentPopulator.close on its UI
+            # thread, after both executors have joined and Tcl has been destroyed.
+            gc.collect()
+            if _TK_GC_WAS_ENABLED:
+                gc.enable()
+            _TK_GC_WAS_ENABLED = False
+
+
 def _download_catalogue_image(url: str) -> bytes | None:
     """Fetch a bounded HTTPS catalogue image without blocking the Tk event loop."""
     parsed = urlparse(str(url or ""))
@@ -118,6 +153,7 @@ class ComponentPopulator:
         self.selected_details = None
         self.candidate_rows: dict[str, tuple[Any, ComponentDraft]] = {}
         self.closed = False
+        self._gc_lease = False
         self.generated_library_symbol = None
         self.cursor_placement_started = False
 
@@ -532,6 +568,9 @@ class ComponentPopulator:
             else f"Fetching {request_value} from JLCPCB catalogue…"
         )
         self.lookup_button.configure(state="disabled")
+        if not self._gc_lease:
+            _acquire_tk_gc_lease()
+            self._gc_lease = True
         results_queue = self.results
         if mode in {"value", "keyword"}:
             future = self.executor.submit(
@@ -783,6 +822,9 @@ class ComponentPopulator:
         if not details.image_url:
             self.catalogue_status_var.set("No supplier image on this record.")
             return
+        if not self._gc_lease:
+            _acquire_tk_gc_lease()
+            self._gc_lease = True
         results_queue = self.results
         future = self.image_executor.submit(
             _download_catalogue_image, details.image_url
@@ -1161,6 +1203,7 @@ class ComponentPopulator:
         generated_symbol = state.get("generated_library_symbol")
         cursor_started = bool(state.get("cursor_placement_started"))
         messagebox = state.get("messagebox")
+        gc_lease = bool(state.get("_gc_lease"))
         state.clear()
         self.closed = True
         # Keep the destroyed root reachable through the caller's UI-thread
@@ -1173,7 +1216,12 @@ class ComponentPopulator:
             self.create_mode = True
             self.generated_library_symbol = generated_symbol
             self.cursor_placement_started = cursor_started
-        root.destroy()
+        try:
+            root.destroy()
+        finally:
+            if gc_lease:
+                self._gc_lease = False
+                _release_tk_gc_lease()
 
     def run(self) -> None:
         self.root.mainloop()
