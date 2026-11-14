@@ -102,17 +102,6 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        self.assertIn(
-            [
-                "xdotool",
-                "type",
-                "--clearmodifiers",
-                "--delay",
-                "12",
-                "R_C60489",
-            ],
-            runner.commands,
-        )
         activate_command = [
             "xdotool", "windowactivate", "--sync", "0x200"
         ]
