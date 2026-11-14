@@ -17,51 +17,22 @@ def capture_eeschema_window_id(
 ) -> str | None:
     """Return the focused Eeschema X11 window, or None when it is unavailable."""
     executable = xdotool or shutil.which("xdotool")
-    if not executable:
-        return None
-
-    def read(*arguments: str) -> str:
-        result = command_runner(
-            [executable, *arguments],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=3,
-        )
-        if getattr(result, "returncode", 1) != 0:
-            return ""
-        return str(getattr(result, "stdout", "") or "").strip()
-
-    window_id = read("getwindowfocus")
-    if not window_id:
-        return None
-    window_class = read("getwindowclassname", window_id).casefold()
-    window_title = read("getwindowname", window_id).casefold()
-    if "eeschema" not in window_class and "schematic editor" not in window_title:
-        return None
-    return window_id
-
-
-def start_native_symbol_placement(
-    editor_window_id: str | None,
-    symbol_name: str,
-    *,
-    kicad=None,
-    xdotool: str | None = None,
-    command_runner: Callable = subprocess.run,
-    pause: Callable[[float], None] = time.sleep,
-) -> None:
-    """Choose a generated library symbol in Eeschema and leave it on the cursor."""
-    executable = xdotool or shutil.which("xdotool")
-    if not editor_window_id:
-        raise RuntimeError(
-            "Could not identify the active Eeschema window. Launch this action "
-            "from the Schematic Editor to enable cursor placement."
-        )
-    if not symbol_name or any(char.isspace() for char in symbol_name):
-        raise ValueError("The generated KiCad symbol name is invalid.")
+    run_action = getattr(kicad, "run_action", None)
+    action_started = False
+    if callable(run_action):
+        try:
+            run_action("eeschema.InteractiveDrawing.placeSymbol")
+            action_started = True
+        except Exception:
+            # Older KiCad IPC builds may not expose this tool action; use the
+            # standard Eeschema Add Symbol hotkey as a compatibility fallback.
+            action_started = False
 
     if not executable:
+        if action_started:
+            # The native chooser is open. Let the user choose the generated
+            # symbol manually if automatic X11 filtering is unavailable.
+            return
         raise RuntimeError(
             "Cursor placement requires xdotool on the supported Linux/X11 desktop. "
             "Install it with sudo apt install xdotool, then reopen the action."
@@ -101,19 +72,15 @@ def start_native_symbol_placement(
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
 
-    # Use Eeschema's Add Symbol hotkey rather than the IPC action.
-    # The hotkey opens the native chooser with its Filter field focused;
-    # the IPC tool action opens the same dialog without that focus setup.
+    # Activate Eeschema through the window manager before invoking the IPC
+    # action. A hotkey is used only when the KiCad action is unavailable.
     try:
-        # Ask the window manager to activate Eeschema. windowfocus only changes
-        # X input focus and may leave Openbox's active-window state unchanged.
         send("windowactivate", "--sync", str(editor_window_id))
     except subprocess.SubprocessError:
-        # Bare Xvfb and minimal X11 sessions may not provide an EWMH window
-        # manager; retain the direct focus fallback for those environments.
         send("windowfocus", "--sync", str(editor_window_id))
-    pause(0.1)
-    send("key", "--clearmodifiers", "a")
+    if not action_started:
+        pause(0.1)
+        send("key", "--clearmodifiers", "a")
 
     chooser_id = ""
     focused_id = ""

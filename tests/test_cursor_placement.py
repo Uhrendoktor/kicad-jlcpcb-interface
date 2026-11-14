@@ -119,7 +119,9 @@ class CursorPlacementTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(kicad.actions, [])
+        self.assertEqual(
+            kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
+        )
         editor_activate = ["xdotool", "windowactivate", "--sync", "0x100"]
         add_symbol_hotkey = ["xdotool", "key", "--clearmodifiers", "a"]
         title_command = ["xdotool", "getwindowname", "0x200"]
@@ -134,12 +136,12 @@ class CursorPlacementTests(unittest.TestCase):
             if command == title_command
         ]
         self.assertIn(editor_activate, runner.commands)
-        self.assertIn(add_symbol_hotkey, runner.commands)
+        self.assertNotIn(add_symbol_hotkey, runner.commands)
         self.assertLess(
             runner.commands.index(editor_activate),
             runner.commands.index(add_symbol_hotkey),
         )
-        self.assertLess(runner.commands.index(add_symbol_hotkey), title_checks[0])
+        self.assertLess(runner.commands.index(editor_activate), title_checks[0])
         self.assertEqual(len(title_checks), 2)
         self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
@@ -170,7 +172,9 @@ class CursorPlacementTests(unittest.TestCase):
             command_runner=runner,
             pause=lambda _seconds: None,
         )
-        self.assertEqual(kicad.actions, [])
+        self.assertEqual(
+            kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
+        )
         self.assertIn(
             ["xdotool", "windowactivate", "--sync", "0x100"], runner.commands
         )
