@@ -151,7 +151,10 @@ def start_native_symbol_placement(
     send("windowfocus", "--sync", chooser_id)
     pause(0.1)
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
-    pause(0.15)
+    # KiCad debounces symbol-search updates for 200 ms. Wait longer than that
+    # before Enter so the newly generated symbol is actually selected in the
+    # refreshed result tree rather than the stale pre-filter selection.
+    pause(0.4)
     send("key", "--clearmodifiers", "Return")
 
     last_focus: tuple[str, str, str, str] = ("", "", "", "")
