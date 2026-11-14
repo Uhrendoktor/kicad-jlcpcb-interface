@@ -141,7 +141,9 @@ class CursorPlacementTests(unittest.TestCase):
             if command == title_command
         ]
         geometry_command = ["xdotool", "getwindowgeometry", "--shell", "0x200"]
-        filter_move = ["xdotool", "mousemove", "--sync", "130", "400"]
+        filter_move = [
+            "xdotool", "mousemove", "--sync", "--window", "0x200", "100", "24"
+        ]
         filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         type_index = runner.commands.index(type_command)
