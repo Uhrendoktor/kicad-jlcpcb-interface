@@ -198,7 +198,13 @@ class CursorPlacementTests(unittest.TestCase):
                     return SimpleNamespace(stdout="eeschema", returncode=0)
                 if command == "getwindowname":
                     self.commands.append(arguments)
-                    return SimpleNamespace(stdout="Schematic Editor", returncode=0)
+                    window_id = arguments[2] if len(arguments) > 2 else ""
+                    title = (
+                        "Choose Symbol (22935 items loaded)"
+                        if window_id == "0x200"
+                        else "Schematic Editor"
+                    )
+                    return SimpleNamespace(stdout=title, returncode=0)
                 return super().__call__(arguments, **kwargs)
 
         runner = ChildWindowRunner(["0x200", "0x101"])
