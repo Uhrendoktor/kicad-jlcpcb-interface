@@ -554,11 +554,10 @@ def start_native_symbol_placement(
 
     # Filter on the lowercase LCSC suffix to avoid shifted punctuation.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
-    # The click above has put the actual wxSearchCtrl under the pointer. Prefer
-    # wx.UIActionSimulator for the text entry; it uses the wxWidgets-native
-    # input path. AT-SPI keysyms and clipboard/XTest remain compatibility
-    # fallbacks for environments where the simulator is unavailable.
-    focus_symbol_chooser_search_at_point(filter_x, filter_y)
+    # The real mouse click above gives the native Search entry focus. Do not
+    # call AT-SPI grabFocus() on its wrapper before typing: in wxGTK that can
+    # steal focus from the embedded text editor while still returning True.
+    # Prefer wx.UIActionSimulator, then use AT-SPI and clipboard/XTest fallback.
     wx_text_sent = type_focused_widget_with_wx(filter_text)
     filter_set_accessibly = wx_text_sent
     if wx_text_sent:
