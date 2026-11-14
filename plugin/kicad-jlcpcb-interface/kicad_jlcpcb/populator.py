@@ -597,8 +597,8 @@ class ComponentPopulator:
                     self._on_candidate_selected()
                     self.status_var.set(
                         (
-                            f"Found {len(matches)} exact-value part(s) for {query}; "
-                            "Basic listings are ranked first."
+                            f"Showing {len(matches)} exact-value match(es) for {query} "
+                            "(maximum five); Basic listings are ranked first."
                             if mode == "value"
                             else f"Found {len(matches)} catalogue candidate(s) for {query}."
                         )
@@ -969,18 +969,26 @@ class ComponentPopulator:
             compatible
             and bool(draft.proposed_fields)
             and (not self.create_mode or complete_for_placement)
+            and (not self.create_mode or self.cursor_placement_available)
         )
-        self.status_var.set(
-            (
-                "Review the proposed properties. Nothing is placed until you confirm."
+        if self.create_mode and not self.cursor_placement_available:
+            status = (
+                "Native cursor placement is unavailable in this Eeschema session. "
+                "Use KiCad's Place Symbol IPC action or X11 with xdotool; coordinates "
+                "are not supported."
+            )
+        elif can_apply:
+            status = (
+                "Review the proposed properties. Confirm to generate the part and "
+                "hand it to KiCad's cursor."
                 if self.create_mode
                 else "Review the proposed properties. Nothing is written until you apply them."
             )
-            if can_apply
-            else (
+        else:
+            status = (
                 "This proposal is incomplete or incompatible; automatic write-back is disabled."
             )
-        )
+        self.status_var.set(status)
         self.apply_button.configure(state="normal" if can_apply else "disabled")
 
     def _refresh_readiness(self, _event=None) -> None:
@@ -995,11 +1003,13 @@ class ComponentPopulator:
             )
             and bool(self.draft.proposed_fields)
             and (not self.create_mode or ":" in hint)
+            and (not self.create_mode or self.cursor_placement_available)
         )
         self.apply_button.configure(state="normal" if ready else "disabled")
         if not ready:
             self.status_var.set(
-                "Enter a KiCad Library:Symbol and a component value before placing the part."
+                "Enter a KiCad Library:Symbol and component value before generation, "
+                "and launch from a session that supports native cursor placement."
             )
 
     def apply(self) -> None:
