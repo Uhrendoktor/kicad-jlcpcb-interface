@@ -123,36 +123,24 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(
             kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
         )
-        chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
-        filter_move = ["xdotool", "mousemove", "--sync", "110", "371"]
-        filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
-        filter_child_focus = ["xdotool", "windowfocus", "--sync", "0x300"]
+        chooser_activate = ["xdotool", "windowactivate", "--sync", "0x200"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
-        self.assertIn(chooser_focus, runner.commands)
-        self.assertIn(filter_move, runner.commands)
-        self.assertIn(filter_click, runner.commands)
-        self.assertIn(filter_child_focus, runner.commands)
+        self.assertIn(chooser_activate, runner.commands)
+        self.assertNotIn(
+            ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
+        )
+        self.assertNotIn(
+            ["xdotool", "click", "--clearmodifiers", "1"], runner.commands
+        )
         self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
         self.assertLess(
-            runner.commands.index(chooser_focus),
-            runner.commands.index(filter_move),
-        )
-        self.assertLess(
-            runner.commands.index(filter_move),
-            runner.commands.index(filter_click),
-        )
-        self.assertLess(
-            runner.commands.index(filter_click),
-            runner.commands.index(filter_child_focus),
-        )
-        self.assertLess(
-            runner.commands.index(filter_child_focus),
+            runner.commands.index(chooser_activate),
             runner.commands.index(type_command),
         )
         self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
@@ -161,44 +149,6 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(restore_pointer),
         )
         self.assertIn(0.15, pauses)
-
-    def test_refuses_canvas_focus_click_when_pointer_lands_on_root_window(self):
-        runner = FakeRunner(
-            ["0x200", "0x100"],
-            ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
-            pointer_window="0",
-        )
-        with self.assertRaisesRegex(RuntimeError, "did not land inside Eeschema"):
-            start_native_symbol_placement(
-                "0x100",
-                "R_C60489",
-                kicad=FakeKiCad(raises=True),
-                xdotool="xdotool",
-                command_runner=runner,
-                pause=lambda _seconds: None,
-            )
-        self.assertNotIn(
-            ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
-        )
-
-    def test_rejects_filter_child_that_does_not_receive_keyboard_focus(self):
-        runner = FakeRunner(
-            ["0x200", "0x999"],
-            ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
-        )
-        with self.assertRaisesRegex(RuntimeError, "did not receive keyboard focus"):
-            start_native_symbol_placement(
-                "0x100",
-                "R_C60489",
-                kicad=FakeKiCad(),
-                xdotool="xdotool",
-                command_runner=runner,
-                pause=lambda _seconds: None,
-            )
-        self.assertIn(
-            ["xdotool", "windowfocus", "--sync", "0x300"],
-            runner.commands,
-        )
 
     def test_falls_back_to_add_hotkey_when_ipc_action_is_unavailable(self):
         runner = FakeRunner(
@@ -219,13 +169,13 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "windowactivate", "--sync", "0x100"], runner.commands
         )
         self.assertIn(
-            ["xdotool", "mousemove", "--sync", "490", "122"], runner.commands
-        )
-        self.assertIn(
-            ["xdotool", "click", "--clearmodifiers", "1"], runner.commands
+            ["xdotool", "windowactivate", "--sync", "0x200"], runner.commands
         )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        )
+        self.assertNotIn(
+            ["xdotool", "click", "--clearmodifiers", "1"], runner.commands
         )
 
 

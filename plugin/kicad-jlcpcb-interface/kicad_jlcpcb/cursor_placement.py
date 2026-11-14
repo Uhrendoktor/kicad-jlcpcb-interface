@@ -241,77 +241,16 @@ def start_native_symbol_placement(
             f"within 15 seconds: {chooser_title!r}."
         )
 
-    # The chooser frame can be focused while its Filter child is not. Click
-    # inside the visible text entry using screen coordinates derived from the
-    # chooser's X11 geometry, then verify that the click landed within the dialog.
-    send("windowfocus", "--sync", chooser_id)
-    chooser_geometry = shell_geometry(
-        send("getwindowgeometry", "--shell", chooser_id)
-    )
+    # Activate the chooser through the window manager instead of setting X
+    # input focus directly. KiCad's DIALOG_SHIM::OnActivate() restores its
+    # configured initial focus target (the Filter field) when the dialog is
+    # activated without a wx child holding focus.
     try:
-        chooser_x = chooser_geometry["X"]
-        chooser_y = chooser_geometry["Y"]
-        chooser_width = chooser_geometry["WIDTH"]
-        chooser_height = chooser_geometry["HEIGHT"]
-    except KeyError as exc:
-        raise RuntimeError(
-            "Could not locate the native symbol chooser Filter field."
-        ) from exc
-    filter_x = chooser_x + min(80, max(40, chooser_width // 8))
-    filter_y = chooser_y + min(12, max(8, chooser_height // 60))
-    send("mousemove", "--sync", str(filter_x), str(filter_y))
-    send("click", "--clearmodifiers", "1")
+        send("windowactivate", "--sync", chooser_id)
+    except subprocess.SubprocessError:
+        # Retain compatibility with X11 sessions without EWMH activation.
+        send("windowfocus", "--sync", chooser_id)
     pause(0.1)
-    filter_pointer = shell_geometry(send("getmouselocation", "--shell"))
-    pointer_window = filter_pointer.get("WINDOW", 0)
-    pointer_x = filter_pointer.get("X", -1)
-    pointer_y = filter_pointer.get("Y", -1)
-    pointer_inside_chooser = (
-        pointer_window != 0
-        and chooser_x <= pointer_x < chooser_x + chooser_width
-        and chooser_y <= pointer_y < chooser_y + chooser_height
-    )
-    print(
-        "cursor-placement-filter-focus="
-        f"target=({filter_x},{filter_y}) window=0x{pointer_window:x} "
-        f"pointer=({pointer_x},{pointer_y}) "
-        f"chooser_bounds=({chooser_x},{chooser_y},{chooser_width},{chooser_height})",
-        flush=True,
-    )
-    if not pointer_inside_chooser:
-        raise RuntimeError(
-            "The Add Symbol Filter click did not land inside the native chooser: "
-            f"target=({filter_x},{filter_y}), pointer={filter_pointer!r}, "
-            f"chooser={chooser_geometry!r}."
-        )
-
-    # The pointer identifies the actual X11 child under the Filter field.
-    # Focusing the chooser frame alone leaves keyboard focus on that frame,
-    # even though the text caret is visible in the child control.
-    filter_window_id = f"0x{pointer_window:x}"
-    send("windowfocus", "--sync", filter_window_id)
-    focused_filter_window = send("getwindowfocus")
-    try:
-        focused_filter_id = (
-            int(focused_filter_window, 0)
-            if focused_filter_window.lower().startswith("0x")
-            else int(focused_filter_window)
-        )
-    except ValueError as exc:
-        raise RuntimeError(
-            "Could not verify keyboard focus in KiCad's native Filter field: "
-            f"reported window={focused_filter_window!r}."
-        ) from exc
-    if focused_filter_id != pointer_window:
-        raise RuntimeError(
-            "KiCad's native Filter child did not receive keyboard focus: "
-            f"target=0x{pointer_window:x}, actual={focused_filter_window!r}."
-        )
-    print(
-        "cursor-placement-filter-keyboard-focus="
-        f"window=0x{pointer_window:x} focus={focused_filter_window!r}",
-        flush=True,
-    )
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         try:
