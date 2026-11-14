@@ -49,6 +49,7 @@ class CursorPlacementTests(unittest.TestCase):
                 ["xdotool", "getwindowfocus"],
                 ["xdotool", "getwindowclassname", "0x100"],
                 ["xdotool", "getwindowname", "0x100"],
+                ["xdotool", "getwindowpid", "0x100"],
             ],
         )
 
