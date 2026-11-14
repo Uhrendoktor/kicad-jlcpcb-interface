@@ -214,19 +214,25 @@ def focus_symbol_chooser_search_at_point(
                 generate_key_event = getattr(
                     registry, "generateKeyboardEvent", None
                 )
-                key_string = getattr(atspi_module, "KEY_STRING", 4)
+                key_sym = getattr(atspi_module, "KEY_SYM", 3)
                 if not callable(generate_key_event):
                     raise RuntimeError(
                         "AT-SPI keyboard event synthesis is unavailable."
                     )
+                if not text.isascii():
+                    raise RuntimeError(
+                        "The chooser filter fallback supports ASCII text only."
+                    )
 
-                # Send actual keyboard events to the focused Search widget.
-                # EditableText.insertText/setTextContents can update the
-                # accessibility representation without updating wxGTK itself.
-                # PyAT-SPI's Registry wrapper returns None even though the
-                # underlying C API returns a boolean. Treat a non-raising call
-                # as dispatched; the visual fixture verifies the rendered UI.
-                generate_key_event(None, text, key_string)
+                # PyGObject requires an integer keyval and a string argument.
+                # KEY_SYM sends one keysym at a time; using KEY_STRING with a
+                # null or dummy keycode is not accepted consistently by the
+                # installed AT-SPI bindings. This filter is a lowercase
+                # alphanumeric supplier suffix, so ASCII keyvals are exact.
+                for character in text:
+                    generate_key_event(ord(character), "", key_sym)
+                    time.sleep(0.025)
+
                 time.sleep(0.1)
                 text_result = str(candidate.queryText().getText(0, -1))
                 candidate_details.append(
@@ -235,14 +241,15 @@ def focus_symbol_chooser_search_at_point(
                         role,
                         name,
                         bounds,
-                        f"keyboard-string=dispatched cached_text={text_result!r}",
+                        f"keysyms-dispatched count={len(text)} "
+                        f"cached_text={text_result!r}",
                     )
                 )
                 print(
-                    "chooser-atspi=keyboard-string-dispatched "
+                    "chooser-atspi=keysyms-dispatched "
                     f"focused={focused} depth={depth} role={role!r} "
                     f"name={name!r} bounds={bounds!r} "
-                    f"key_type={key_string!r} "
+                    f"key_type={key_sym!r} "
                     f"cached_text={text_result!r} "
                     f"candidates={candidate_details[:20]!r}",
                     flush=True,

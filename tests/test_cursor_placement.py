@@ -193,14 +193,14 @@ class CursorPlacementTests(unittest.TestCase):
                 return desktop
 
             @staticmethod
-            def generateKeyboardEvent(keycode, keystring, kind):
-                generated_events.append((keycode, keystring, kind))
-                # pyatspi.Registry.generateKeyboardEvent returns None.
+            def generateKeyboardEvent(keyval, keystring, kind):
+                generated_events.append((keyval, keystring, kind))
+                search_entry.text += chr(keyval)
 
         atspi = SimpleNamespace(
             Registry=Registry,
             DESKTOP_COORDS=0,
-            KEY_STRING=4,
+            KEY_SYM=3,
         )
 
         self.assertTrue(
@@ -211,8 +211,11 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(chooser.hit_test_calls, [(601, 439, 0)])
         self.assertFalse(search_wrapper.focused)
         self.assertTrue(search_entry.focused)
-        self.assertEqual(search_entry.text, "")
-        self.assertEqual(generated_events, [(None, "c60489", 4)])
+        self.assertEqual(search_entry.text, "c60489")
+        self.assertEqual(
+            generated_events,
+            [(ord(character), "", 3) for character in "c60489"],
+        )
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
