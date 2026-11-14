@@ -113,6 +113,16 @@ def start_native_symbol_placement(
         except Exception:
             action_started = False
 
+    if not action_started:
+        # Older KiCad versions may not expose the IPC tool action. Start the
+        # native chooser with Eeschema's standard Add Symbol hotkey instead.
+        try:
+            send("windowactivate", "--sync", str(editor_window_id))
+        except subprocess.SubprocessError:
+            send("windowfocus", "--sync", str(editor_window_id))
+        pause(0.1)
+        send("key", "--clearmodifiers", "a")
+
     def wait_for_chooser() -> tuple[str, str, str, str]:
         current_id = ""
         current_pid = ""
@@ -128,7 +138,10 @@ def start_native_symbol_placement(
                     or "select symbol" in current_title
                 )
                 if same_process or is_chooser:
-                    return current_id, current_pid, current_title, current_id
+                    return current_id, current_id, current_pid, current_title
+            elif current_id == str(editor_window_id):
+                current_pid = editor_pid
+                current_title = send("getwindowname", current_id).casefold()
             pause(0.1)
         return "", current_id, current_pid, current_title
 
