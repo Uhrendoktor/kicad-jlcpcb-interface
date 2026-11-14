@@ -90,7 +90,10 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(self):
-        runner = FakeRunner(["0x200", "0x100"], ["Choose Symbol"])
+        runner = FakeRunner(
+            ["0x200", "0x100"],
+            ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
+        )
         pauses = []
         kicad = FakeKiCad()
 
@@ -116,8 +119,14 @@ class CursorPlacementTests(unittest.TestCase):
             "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
+        chooser_title_command = ["xdotool", "getwindowname", "0x200"]
+        self.assertLess(
+            runner.commands.index(chooser_title_command),
+            runner.commands.index(type_command),
+        )
         self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
         self.assertIn(0.15, pauses)
+        self.assertIn(0.1, pauses)
 
     def test_falls_back_to_add_hotkey_when_ipc_action_is_unavailable(self):
         runner = FakeRunner(["0x200", "0x100"])

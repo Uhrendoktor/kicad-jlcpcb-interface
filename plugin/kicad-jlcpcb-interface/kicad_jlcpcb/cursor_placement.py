@@ -130,9 +130,23 @@ def start_native_symbol_placement(
             "then retry."
         )
 
-    # KiCad's IPC action opens the native modal with its Filter control focused.
-    # Do not refocus the top-level frame: doing so steals focus from wxSearchCtrl
-    # and typed characters are ignored on wxGTK.
+    # KiCad's chooser calls ForceFocus(Filter) during its first paint. Wait
+    # until the catalogue title confirms that setup/painting has completed,
+    # but do not refocus the top-level frame: that steals child focus on wxGTK.
+    chooser_title = ""
+    chooser_ready = False
+    for _ in range(150):
+        chooser_title = send("getwindowname", chooser_id)
+        if "items loaded" in chooser_title.casefold():
+            chooser_ready = True
+            break
+        pause(0.1)
+    if not chooser_ready:
+        raise RuntimeError(
+            "KiCad's native symbol chooser did not finish loading its catalog "
+            f"within 15 seconds: {chooser_title!r}."
+        )
+    print("native-symbol-placement-trigger=ipc" if action_started else "native-symbol-placement-trigger=hotkey", flush=True)
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
