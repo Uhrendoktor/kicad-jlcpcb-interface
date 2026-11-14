@@ -204,7 +204,17 @@ def start_native_symbol_placement(
     # Focus the native chooser's Search field with a real pointer click. This
     # is UI navigation only; KiCad still owns symbol selection and cursor
     # placement. Do not synthesize an X/Y placement point.
-    send("windowfocus", "--sync", chooser_id)
+    # Activate the modal chooser through the window manager, not only
+    # XSetInputFocus. Some wxGTK dialogs ignore keystrokes unless EWMH's active
+    # window is updated as well.
+    try:
+        send("windowactivate", "--sync", chooser_id)
+    except subprocess.SubprocessError:
+        send("windowfocus", "--sync", chooser_id)
+    pause(0.1)
+    active_window = send("getactivewindow")
+    if active_window != chooser_id:
+        send("windowfocus", "--sync", chooser_id)
     chooser_geometry = shell_geometry(
         send("getwindowgeometry", "--shell", chooser_id)
     )

@@ -126,7 +126,8 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(
             kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
         )
-        chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
+        chooser_focus = ["xdotool", "windowactivate", "--sync", "0x200"]
+        chooser_focus_fallback = ["xdotool", "windowfocus", "--sync", "0x200"]
         filter_move = ["xdotool", "mousemove", "--sync", "601", "439"]
         filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
         clipboard_command = [
@@ -138,6 +139,7 @@ class CursorPlacementTests(unittest.TestCase):
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         self.assertIn(chooser_focus, runner.commands)
+        self.assertIn(["xdotool", "getactivewindow"], runner.commands)
         self.assertIn(filter_move, runner.commands)
         self.assertIn(filter_click, runner.commands)
         self.assertIn(clipboard_command, runner.commands)
@@ -168,9 +170,7 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(return_command),
             runner.commands.index(restore_pointer),
         )
-        self.assertNotIn(
-            ["xdotool", "windowactivate", "--sync", "0x200"], runner.commands
-        )
+        self.assertNotIn(chooser_focus_fallback, runner.commands)
         self.assertFalse(
             any(
                 command[:2] == ["xdotool", "mousemove"]
