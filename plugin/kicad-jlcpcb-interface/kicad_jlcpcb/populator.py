@@ -941,7 +941,7 @@ class ComponentPopulator:
             self.schematic,
             draft,
             library_id=generated.library_id,
-            reference_prefix=draft.reference_prefix,
+            reference_prefix=generated.reference_prefix or draft.reference_prefix,
         )
 
     def apply(self) -> None:
