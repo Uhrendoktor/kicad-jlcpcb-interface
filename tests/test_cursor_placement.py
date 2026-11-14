@@ -113,28 +113,43 @@ class CursorPlacementTests(unittest.TestCase):
             ],
             runner.commands,
         )
-        type_index = runner.commands.index(
-            [
-                "xdotool",
-                "type",
-                "--clearmodifiers",
-                "--delay",
-                "12",
-                "R_C60489",
-            ]
-        )
+        activate_command = [
+            "xdotool", "windowactivate", "--sync", "0x200"
+        ]
+        move_command = ["xdotool", "mousemove", "--sync", "170", "280"]
+        click_command = ["xdotool", "click", "1"]
+        clear_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
+        backspace_command = ["xdotool", "key", "--clearmodifiers", "BackSpace"]
+        type_command = [
+            "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
+        ]
         down_command = ["xdotool", "key", "--clearmodifiers", "Down"]
         enter_command = ["xdotool", "key", "--clearmodifiers", "Return"]
-        self.assertIn(down_command, runner.commands)
-        self.assertIn(enter_command, runner.commands)
-        self.assertLess(type_index, runner.commands.index(down_command))
-        self.assertLess(
-            runner.commands.index(down_command),
-            runner.commands.index(enter_command),
-        )
+        for command in (
+            activate_command,
+            move_command,
+            click_command,
+            clear_command,
+            backspace_command,
+            type_command,
+            down_command,
+            enter_command,
+        ):
+            self.assertIn(command, runner.commands)
+        positions = [runner.commands.index(command) for command in (
+            activate_command,
+            move_command,
+            click_command,
+            clear_command,
+            backspace_command,
+            type_command,
+            down_command,
+            enter_command,
+        )]
+        self.assertEqual(positions, sorted(positions))
         self.assertFalse(
             any("--window" in command for command in runner.commands),
-            "Chooser keystrokes must go to KiCad's natively focused search control.",
+            "Keyboard events must reach the active chooser search control.",
         )
 
     def test_prefers_kicad_native_place_symbol_ipc_action(self):
