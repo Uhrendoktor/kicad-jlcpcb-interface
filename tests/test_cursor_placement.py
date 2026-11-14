@@ -447,6 +447,17 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "windowfocus", "--sync", "0x201"], runner.commands
         )
+        self.assertIn(
+            ["xdotool", "key", "--window", "0x201", "--clearmodifiers", "ctrl+a"],
+            runner.commands,
+        )
+        self.assertIn(
+            [
+                "xdotool", "type", "--window", "0x201", "--clearmodifiers",
+                "--delay", "35", "c60489",
+            ],
+            runner.commands,
+        )
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     @patch(
