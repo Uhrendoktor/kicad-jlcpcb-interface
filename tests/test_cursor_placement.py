@@ -167,7 +167,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        self.assertIn(
+        self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
         self.assertIn(
