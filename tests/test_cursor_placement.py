@@ -127,7 +127,7 @@ class CursorPlacementTests(unittest.TestCase):
             kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
         )
         chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
-        filter_move = ["xdotool", "mousemove", "--sync", "631", "445"]
+        filter_move = ["xdotool", "mousemove", "--sync", "601", "445"]
         filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
         clipboard_command = [
             "xclip", "-selection", "primary", "-in", "-loops", "1"
