@@ -202,7 +202,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertFalse(search_wrapper.focused)
         self.assertTrue(search_entry.focused)
         self.assertEqual(search_entry.text, "c60489")
-        self.assertEqual(search.text, "c60489")
+        self.assertEqual(search_entry.text, "c60489")
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
