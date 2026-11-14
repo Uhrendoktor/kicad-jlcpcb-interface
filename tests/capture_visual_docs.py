@@ -1726,8 +1726,16 @@ def _capture_passive_component_workflows(
                 check=False,
                 timeout=10,
             ) if focused else None
+            mouse_location = subprocess.run(
+                ["xdotool", "getmouselocation", "--shell"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
             (output_dir / "add-component-chooser-failure.txt").write_text(
                 f"exception={type(exc).__name__}: {exc}\n"
+                f"mouse_location={getattr(mouse_location, 'stdout', '')}\n"
                 f"focused_window={focused!r}\n"
                 f"focused_title={title!r}\n"
                 f"focused_geometry={getattr(focused_geometry, 'stdout', '')}\n"
