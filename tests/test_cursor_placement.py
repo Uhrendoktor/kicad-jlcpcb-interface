@@ -23,6 +23,7 @@ class FakeRunner:
         self.commands = []
         self.command_kwargs = []
         self.mouse_reads = 0
+        self.active_window = "0x100"
 
     def __call__(self, arguments, **kwargs):
         self.commands.append(arguments)
@@ -44,8 +45,14 @@ class FakeRunner:
         command = arguments[1]
         if command == "getwindowpid":
             return SimpleNamespace(stdout="4242", returncode=0)
+        if command == "windowactivate":
+            self.active_window = arguments[-1]
+            return SimpleNamespace(stdout="", returncode=0)
         if command == "getactivewindow":
-            return SimpleNamespace(stdout="0x200", returncode=0)
+            return SimpleNamespace(
+                stdout=self.active_window,
+                returncode=0,
+            )
         if command == "getwindowfocus":
             value = self.focus_ids.pop(0) if self.focus_ids else "0x100"
             return SimpleNamespace(stdout=value, returncode=0)
