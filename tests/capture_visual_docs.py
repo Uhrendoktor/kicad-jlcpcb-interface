@@ -1696,10 +1696,10 @@ def _capture_passive_component_workflows(
                 timeout=10,
             ) if focused else None
             (output_dir / "add-component-chooser-failure.txt").write_text(
-                f"exception={type(exc).__name__}: {exc}\\n"
-                f"focused_window={focused!r}\\n"
-                f"focused_title={title!r}\\n"
-                f"window_tree={getattr(window_tree, 'stdout', '')}\\n",
+                f"exception={type(exc).__name__}: {exc}\n"
+                f"focused_window={focused!r}\n"
+                f"focused_title={title!r}\n"
+                f"window_tree={getattr(window_tree, 'stdout', '')}\n",
                 encoding="utf-8",
             )
             raise
@@ -1709,22 +1709,22 @@ def _capture_passive_component_workflows(
         _drive_populator_form(
             create,
             output_dir,
-        proposal_asset="add-component-proposed.png",
-        light_asset="add-component-light.png",
-        dark_asset="add-component-dark.png",
-        confirmation_asset="add-component-confirmation.png",
-        completed_asset="add-component-cursor.png",
-        confirmation_title="Confirm new schematic component",
-        required_confirmation_text=(
-            "selected stock symbol's pin numbers, electrical types, units and graphics "
-            "are copied as-is"
-        ),
-        expected_lcsc=None,
-        expected_value="10k",
-        expected_footprint=None,
-        validate_result=validate_create_result,
-        assert_basic_shortlist=True,
-        avoid_lcsc="C60489",
+            proposal_asset="add-component-proposed.png",
+            light_asset="add-component-light.png",
+            dark_asset="add-component-dark.png",
+            confirmation_asset="add-component-confirmation.png",
+            completed_asset="add-component-cursor.png",
+            confirmation_title="Confirm new schematic component",
+            required_confirmation_text=(
+                "selected stock symbol's pin numbers, electrical types, units and graphics "
+                "are copied as-is"
+            ),
+            expected_lcsc=None,
+            expected_value="10k",
+            expected_footprint=None,
+            validate_result=validate_create_result,
+            assert_basic_shortlist=True,
+            avoid_lcsc="C60489",
             capture_cursor=True,
         )
     finally:
