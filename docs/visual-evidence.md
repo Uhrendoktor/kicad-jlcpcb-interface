@@ -66,7 +66,7 @@ The paired captures show the same production windows in both palettes. GitHub se
 
 ### Add or Update Component
 
-There is one Eeschema command and one review-dialog class. The action selects its mode from the current schematic selection: exactly one editable symbol opens update mode; an empty selection opens add mode. The images below are two context states of that same action, not screenshots of separate tools. These live examples use resistor records for deterministic supplier data; non-passive behavior is covered by the unit-test suite described below.
+There is one Eeschema command and one review-dialog class. The action selects its mode from the current schematic selection: exactly one editable symbol opens update mode; an empty selection opens add mode. Both modes now share the same window dimensions, catalogue-photo card, supplier metadata, match table, proposed-field review and footer. Only the KiCad symbol and placement inputs differ by context. The live examples use resistor records for deterministic supplier data; non-passive behavior is covered by the unit-test suite described below.
 
 <table>
   <tr>
@@ -130,8 +130,8 @@ The visual capture runs the production application windows, not separately drawn
 | Component Overview | Captures unfiltered, filtered and selected-row states. Verifies live JLCPCB detail source, product image, MPN alternatives and the completed cost/stock summary. |
 | Component Properties | Opens the focused properties window from a selected linked Eeschema symbol and captures its loaded catalogue view. |
 | Properties controls | Calls Select in schematic and Select same part on sheet; verifies the Eeschema selection; copies the LCSC ID and verifies the clipboard; invokes LCSC search, supplier product, datasheet and MPN-result actions and checks that each opens an HTTPS URL. |
-| Add or Update Component — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, captures the proposal and the native confirmation messagebox, checks the confirmation wording, accepts the action and reads updated Value, Footprint, LCSC and MPN fields back from the schematic hierarchy. Captures the post-action state. |
-| Add or Update Component — add mode | Clears the Eeschema selection, drives the actual lookup/review window with X/Y placement values, captures the proposal and native confirmation messagebox, checks the confirmation wording, accepts generation and placement, then verifies the resulting reference, project-local library ID, value, footprint and linked custom fields through IPC. Captures the completion state. |
+| Add or Update Component — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, verifies the shared match list and catalogue preview, waits for the asynchronous supplier image when present, captures the proposal and native confirmation, applies the reviewed update and reads the resulting fields back through IPC. |
+| Add or Update Component — add mode | Clears the Eeschema selection, drives the same lookup/review layout with X/Y placement values, verifies the match list and catalogue preview, waits for the supplier image when present, captures the proposal and native confirmation, generates and places the project-local symbol, then verifies its reference, library ID and linked metadata through IPC. |
 | Theme pairs | Captures the overview, properties and both Add or Update Component modes in both light and dark palettes, reusing each live widget tree. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 
