@@ -428,7 +428,7 @@ class CursorPlacementTests(unittest.TestCase):
         "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
         return_value=True,
     )
-    def test_refocuses_raw_x11_child_when_chooser_frame_is_only_ancestor(
+    def test_uses_global_xtest_after_refocusing_raw_x11_child(
         self, _focus_search, _paste
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
@@ -448,10 +448,16 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "windowfocus", "--sync", "0x201"], runner.commands
         )
         self.assertIn(
-            ["xdotool", "key", "--window", "0x201", "--clearmodifiers", "ctrl+a"],
+            ["xdotool", "key", "--clearmodifiers", "ctrl+a"],
             runner.commands,
         )
         self.assertIn(
+            [
+                "xdotool", "type", "--clearmodifiers", "--delay", "50", "c60489"
+            ],
+            runner.commands,
+        )
+        self.assertNotIn(
             [
                 "xdotool", "type", "--window", "0x201", "--clearmodifiers",
                 "--delay", "35", "c60489",
