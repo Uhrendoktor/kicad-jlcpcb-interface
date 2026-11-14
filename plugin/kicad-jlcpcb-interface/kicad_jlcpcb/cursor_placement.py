@@ -203,9 +203,11 @@ def start_native_symbol_placement(
     # windowfocus targets the existing chooser without a second EWMH activation
     # that can leave the wxWidgets filter control in an inactive state.
     try:
-        send("windowfocus", "--sync", chooser_id)
-    except subprocess.SubprocessError:
+        # Activate through Openbox/EWMH first so wxWidgets restores the
+        # dialog's focused child control when the native modal chooser returns.
         send("windowactivate", "--sync", chooser_id)
+    except subprocess.SubprocessError:
+        send("windowfocus", "--sync", chooser_id)
 
     # The chooser's top-level window can have X11 focus while its wxWidgets
     # filter entry still has no keyboard focus. Click inside that native search
