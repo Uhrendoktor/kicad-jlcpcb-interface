@@ -160,15 +160,22 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertLess(
             runner.commands.index(filter_click),
-            runner.commands.index(restore_pointer),
-        )
-        self.assertLess(
-            runner.commands.index(restore_pointer),
             runner.commands.index(type_command),
         )
         self.assertLess(
             runner.commands.index(type_command),
             runner.commands.index(return_command),
+        )
+        focus_checks = [
+            index for index, command in enumerate(runner.commands)
+            if command == ["xdotool", "getwindowfocus"]
+        ]
+        self.assertGreaterEqual(len(focus_checks), 2)
+        self.assertLess(
+            runner.commands.index(return_command), focus_checks[-1]
+        )
+        self.assertLess(
+            focus_checks[-1], runner.commands.index(restore_pointer)
         )
         self.assertIn(0.1, pauses)
         self.assertIn(0.15, pauses)

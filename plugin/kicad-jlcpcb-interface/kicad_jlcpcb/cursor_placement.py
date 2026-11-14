@@ -181,10 +181,6 @@ def start_native_symbol_placement(
     send("mousemove", "--sync", str(filter_x), str(filter_y))
     send("click", "--clearmodifiers", "1")
     pause(0.1)
-    send(
-        "mousemove", "--sync",
-        str(original_pointer["X"]), str(original_pointer["Y"]),
-    )
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
@@ -207,14 +203,25 @@ def start_native_symbol_placement(
             )
     send("key", "--clearmodifiers", "Return")
 
+    def restore_placement_pointer() -> None:
+        # The chooser click only focuses its text input. Restore the user's
+        # original cursor after KiCad has attached the symbol to the pointer.
+        send(
+            "mousemove", "--sync",
+            str(original_pointer["X"]), str(original_pointer["Y"]),
+        )
+        pause(0.1)
+
     for _ in range(30):
         focused_id = send("getwindowfocus")
         if focused_id == str(editor_window_id):
+            restore_placement_pointer()
             return
         focused_pid = send("getwindowpid", focused_id) if focused_id else ""
         if chooser_pid and focused_pid == chooser_pid:
             focused_title = send("getwindowname", focused_id).casefold()
             if "choose symbol" not in focused_title and "select symbol" not in focused_title:
+                restore_placement_pointer()
                 return
         pause(0.1)
 
