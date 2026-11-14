@@ -13,6 +13,7 @@ sys.path.insert(0, str(PLUGIN))
 from kicad_jlcpcb.cursor_placement import (  # noqa: E402
     capture_eeschema_window_id,
     focus_symbol_chooser_search_at_point,
+    send_text_to_focused_search,
     start_native_symbol_placement,
 )
 
@@ -181,6 +182,40 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
+    def test_uses_libatspi_string_synthesis_for_focused_search(self):
+        generated_events = []
+
+        class KeySynthType:
+            STRING = 4
+
+        class FakeAtspi:
+            KeySynthType = KeySynthType
+
+            @staticmethod
+            def generate_keyboard_event(keyval, keystring, synth_type):
+                generated_events.append((keyval, keystring, synth_type))
+                return True
+
+        self.assertTrue(
+            send_text_to_focused_search("c60489", atspi_module=FakeAtspi)
+        )
+        self.assertEqual(generated_events, [(0, "c60489", 4)])
+
+    def test_libatspi_string_synthesis_failure_returns_false(self):
+        class KeySynthType:
+            STRING = 4
+
+        class FakeAtspi:
+            KeySynthType = KeySynthType
+
+            @staticmethod
+            def generate_keyboard_event(_keyval, _keystring, _synth_type):
+                raise NotImplementedError("legacy backend unavailable")
+
+        self.assertFalse(
+            send_text_to_focused_search("c60489", atspi_module=FakeAtspi)
+        )
+
     def test_sends_atspi_key_events_to_nested_search_entry(self):
         search_entry = FakeAccessible("")
         search_entry.extents = (545, 424, 378, 34)
@@ -228,8 +263,12 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
+    @patch(
+        "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
+        return_value=False,
+    )
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
-        self, _which
+        self, _send_text, _which
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
         kicad = FakeKiCad()
@@ -261,6 +300,7 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "click", "--clearmodifiers", "1"], runner.commands
         )
         self.assertIn(["xdotool", "getactivewindow"], runner.commands)
+        _send_text.assert_called_once_with("c60489")
         self.assertIn(type_command, runner.commands)
         self.assertIn(return_command, runner.commands)
         self.assertIn(restore_pointer, runner.commands)
@@ -273,7 +313,13 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(restore_pointer),
         )
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
-    def test_uses_add_hotkey_when_ipc_action_is_unavailable(self, _which):
+    @patch(
+        "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
+        return_value=False,
+    )
+    def test_uses_add_hotkey_when_ipc_action_is_unavailable(
+        self, _send_text, _which
+    ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
         kicad = FakeKiCad(raises=True)
         start_native_symbol_placement(
@@ -312,7 +358,13 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
 
-    def test_uses_native_place_menu_when_add_hotkey_does_not_open_chooser(self):
+    @patch(
+        "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
+        return_value=False,
+    )
+    def test_uses_native_place_menu_when_add_hotkey_does_not_open_chooser(
+        self, _send_text
+    ):
         runner = FakeRunner(
             ["0x100"] * 50 + ["0x200", "0x200", "0x100"]
         )
@@ -339,7 +391,13 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
 
-    def test_accepts_focus_return_to_another_eeschema_child_window(self):
+    @patch(
+        "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
+        return_value=False,
+    )
+    def test_accepts_focus_return_to_another_eeschema_child_window(
+        self, _send_text
+    ):
         runner = FakeRunner(
             ["0x200", "0x200", "0x300"],
             {"0x300": "Symbol Editor Properties"},
