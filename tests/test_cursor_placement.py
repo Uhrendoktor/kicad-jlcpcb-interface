@@ -136,19 +136,20 @@ class CursorPlacementTests(unittest.TestCase):
             index for index, command in enumerate(runner.commands)
             if command == title_command
         ]
-        type_index = runner.commands.index(type_command)
-        ready_pause = ["pause", 0.15]
-        pause_index = runner.commands.index(ready_pause)
-        self.assertEqual(len(title_checks), 2)
-        self.assertLess(title_checks[-1], pause_index)
-        self.assertLess(pause_index, type_index)
-        self.assertLess(
-            type_index, runner.commands.index(return_command)
-        )
         geometry_command = ["xdotool", "getwindowgeometry", "--shell", "0x200"]
         filter_move = ["xdotool", "mousemove", "--sync", "130", "376"]
         filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
+        type_index = runner.commands.index(type_command)
+        return_index = runner.commands.index(return_command)
+        focus_pause_index = runner.commands.index(["pause", 0.1])
+        self.assertEqual(len(title_checks), 2)
+        self.assertLess(title_checks[-1], runner.commands.index(geometry_command))
+        self.assertLess(
+            runner.commands.index(filter_click), focus_pause_index
+        )
+        self.assertLess(focus_pause_index, type_index)
+        self.assertLess(type_index, return_index)
         self.assertIn(geometry_command, runner.commands)
         self.assertLess(
             runner.commands.index(geometry_command),
