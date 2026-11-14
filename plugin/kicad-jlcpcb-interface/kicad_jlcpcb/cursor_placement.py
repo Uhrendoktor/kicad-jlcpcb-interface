@@ -290,6 +290,7 @@ def focus_symbol_chooser_search_at_point(
 
                 time.sleep(0.1)
                 text_result = str(candidate.queryText().getText(0, -1))
+                matched = text_result == text
                 candidate_details.append(
                     (
                         depth,
@@ -297,7 +298,7 @@ def focus_symbol_chooser_search_at_point(
                         name,
                         bounds,
                         f"keysyms-dispatched count={len(text)} "
-                        f"cached_text={text_result!r}",
+                        f"cached_text={text_result!r} matched={matched}",
                     )
                 )
                 print(
@@ -305,14 +306,14 @@ def focus_symbol_chooser_search_at_point(
                     f"focused={focused} depth={depth} role={role!r} "
                     f"name={name!r} bounds={bounds!r} "
                     f"key_type={key_sym!r} "
-                    f"cached_text={text_result!r} "
+                    f"cached_text={text_result!r} matched={matched} "
                     f"candidates={candidate_details[:20]!r}",
                     flush=True,
                 )
-                # The accessible Text interface can lag behind wxGTK's
-                # rendered control. The visual fixture captures the Search
-                # field immediately after the keyboard event.
-                return True
+                if matched:
+                    return True
+                # Don't claim success merely because key events were accepted
+                # by AT-SPI; continue to the next candidate or input fallback.
             except Exception as exc:
                 candidate_details.append(
                     (depth, role, name, bounds, f"keyboard:{type(exc).__name__}:{exc}")
@@ -554,18 +555,20 @@ def start_native_symbol_placement(
 
     # Filter on the lowercase LCSC suffix to avoid shifted punctuation.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
-    # The real mouse click above gives the native Search entry focus. Do not
-    # call AT-SPI grabFocus() on its wrapper before typing: in wxGTK that can
-    # steal focus from the embedded text editor while still returning True.
-    # Prefer wx.UIActionSimulator, then use AT-SPI and clipboard/XTest fallback.
-    wx_text_sent = type_focused_widget_with_wx(filter_text)
-    filter_set_accessibly = wx_text_sent
-    if wx_text_sent:
-        print("chooser-input=wx-ui-action-simulator", flush=True)
+    # Use AT-SPI to target the nested text-entry child of the Search widget.
+    # A successful UIActionSimulator.Char() only means an event was queued; it
+    # does not prove wxGTK in another process received it. Use the simulator
+    # only when AT-SPI cannot focus and populate the exact Search child.
+    filter_set_accessibly = focus_symbol_chooser_search_at_point(
+        filter_x, filter_y, text=filter_text
+    )
+    if filter_set_accessibly:
+        print("chooser-input=atspi-search-entry", flush=True)
     else:
-        filter_set_accessibly = focus_symbol_chooser_search_at_point(
-            filter_x, filter_y, text=filter_text
-        )
+        wx_text_sent = type_focused_widget_with_wx(filter_text)
+        filter_set_accessibly = wx_text_sent
+        if wx_text_sent:
+            print("chooser-input=wx-ui-action-simulator", flush=True)
     xclip = shutil.which("xclip")
     primary_pasted = False
     if not filter_set_accessibly and xclip:
