@@ -274,7 +274,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     def test_uses_add_hotkey_when_ipc_action_is_unavailable(self, _which):
-        runner = FakeRunner(["0x200", "0x100"])
+        runner = FakeRunner(["0x200", "0x200", "0x100"])
         kicad = FakeKiCad(raises=True)
         start_native_symbol_placement(
             "0x100",
