@@ -149,6 +149,32 @@ def start_native_symbol_placement(
     trigger = "ipc" if action_started else "hotkey"
     print(f"native-symbol-placement-trigger={trigger}", flush=True)
 
+    if os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip():
+        try:
+            window_ids = [
+                item.strip()
+                for item in send("search", "--onlyvisible", "--pid", editor_pid).splitlines()
+                if item.strip()
+            ]
+            window_debug = []
+            for window_id in window_ids:
+                try:
+                    window_debug.append(
+                        {
+                            "id": window_id,
+                            "name": send("getwindowname", window_id),
+                            "geometry": send("getwindowgeometry", "--shell", window_id),
+                        }
+                    )
+                except subprocess.SubprocessError:
+                    continue
+            print(f"chooser-x11-windows={window_debug!r}", flush=True)
+        except Exception as exc:
+            print(
+                f"chooser-x11-windows=failed error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+
     # The chooser is a separate X11 top-level window owned by Eeschema.
     # Its Filter control is at the upper-left of that window; move relative to
     # the chooser XID and use a real XTest click so the wxSearchCtrl receives
