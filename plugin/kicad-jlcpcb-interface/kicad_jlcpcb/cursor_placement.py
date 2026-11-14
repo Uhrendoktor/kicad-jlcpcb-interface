@@ -101,44 +101,53 @@ def start_native_symbol_placement(
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
 
-    # Use Eeschema's Add Symbol hotkey rather than the IPC action.
-    # The hotkey opens the native chooser with its Filter field focused;
-    # the IPC tool action opens the same dialog without that focus setup.
-    try:
-        # Ask the window manager to activate Eeschema. windowfocus only changes
-        # X input focus and may leave Openbox's active-window state unchanged.
-        send("windowactivate", "--sync", str(editor_window_id))
-    except subprocess.SubprocessError:
-        # Bare Xvfb and minimal X11 sessions may not provide an EWMH window
-        # manager; retain the direct focus fallback for those environments.
-        send("windowfocus", "--sync", str(editor_window_id))
-    pause(0.1)
-    send("key", "--clearmodifiers", "a")
+    # Match kicad-blocks: ask KiCad's interactive tool API to open its native
+    # chooser first. The native action establishes the correct chooser/filter
+    # focus; the X11 hotkey is only a compatibility fallback for older builds.
+    run_action = getattr(kicad, "run_action", None)
+    action_started = False
+    if callable(run_action):
+        try:
+            run_action("eeschema.InteractiveDrawing.placeSymbol")
+            action_started = True
+        except Exception:
+            action_started = False
 
-    chooser_id = ""
-    focused_id = ""
-    for _ in range(50):
-        focused_id = send("getwindowfocus")
-        if focused_id and focused_id != str(editor_window_id):
-            focused_pid = send("getwindowpid", focused_id)
-            focused_title = send("getwindowname", focused_id).casefold()
-            same_process = bool(editor_pid and focused_pid == editor_pid)
-            is_chooser = (
-                "choose symbol" in focused_title
-                or "select symbol" in focused_title
-            )
-            if same_process or is_chooser:
-                chooser_id = focused_id
-                break
+    def wait_for_chooser() -> tuple[str, str, str, str]:
+        current_id = ""
+        current_pid = ""
+        current_title = ""
+        for _ in range(50):
+            current_id = send("getwindowfocus")
+            if current_id and current_id != str(editor_window_id):
+                current_pid = send("getwindowpid", current_id)
+                current_title = send("getwindowname", current_id).casefold()
+                same_process = bool(editor_pid and current_pid == editor_pid)
+                is_chooser = (
+                    "choose symbol" in current_title
+                    or "select symbol" in current_title
+                )
+                if same_process or is_chooser:
+                    return current_id, current_pid, current_title, current_id
+            pause(0.1)
+        return "", current_id, current_pid, current_title
+
+    chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
+
+    if not chooser_id and action_started:
+        # Some KiCad builds expose the IPC action but do not start it until
+        # Eeschema is active. Retry through the standard Add Symbol hotkey.
+        try:
+            send("windowactivate", "--sync", str(editor_window_id))
+        except subprocess.SubprocessError:
+            send("windowfocus", "--sync", str(editor_window_id))
         pause(0.1)
+        send("key", "--clearmodifiers", "a")
+        chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
 
     if not chooser_id:
-        # Some KiCad builds or customized hotkey profiles do not bind A to
-        # Add Symbol. Fall back to the visible Place menu instead of requiring
-        # the user to edit preferences. This still invokes KiCad's native
-        # chooser; it does not place a symbol at an automation-supplied point.
-        focused_pid = send("getwindowpid", focused_id) if focused_id else ""
-        focused_title = send("getwindowname", focused_id) if focused_id else ""
+        # Some customized hotkey profiles do not bind A. Use the native
+        # Place menu as a final fallback; no placement coordinate is supplied.
         if focused_pid == editor_pid:
             try:
                 send("key", "--clearmodifiers", "Escape")
@@ -148,28 +157,15 @@ def start_native_symbol_placement(
                 send("key", "--clearmodifiers", "Return")
             except subprocess.SubprocessError:
                 pass
-            for _ in range(50):
-                focused_id = send("getwindowfocus")
-                if focused_id and focused_id != str(editor_window_id):
-                    focused_pid = send("getwindowpid", focused_id)
-                    focused_title = send("getwindowname", focused_id).casefold()
-                    same_process = bool(editor_pid and focused_pid == editor_pid)
-                    is_chooser = (
-                        "choose symbol" in focused_title
-                        or "select symbol" in focused_title
-                    )
-                    if same_process or is_chooser:
-                        chooser_id = focused_id
-                        break
-                pause(0.1)
-        if not chooser_id:
-            raise RuntimeError(
+            chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
+
+    if not chooser_id:
+        raise RuntimeError(
             "KiCad's native symbol chooser did not open. "
             f"Editor={editor_window_id!r}/{editor_pid!r}; "
             f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
-            "Check Eeschema Preferences → Hotkeys and bind Add Symbol to A, "
-                "then retry."
-            )
+            "Check the Eeschema Place menu → Add Symbol and retry."
+        )
 
     # Wait for KiCad to finish populating the library tree before sending
     # search keystrokes; early XTest input can be dropped while wx builds the
@@ -190,14 +186,13 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
-    # Activate the native chooser after its catalogue is ready. This raises
-    # it above the review window and restores its Filter control as the input
-    # target. Minimal X11 sessions without an EWMH window manager fall back to
-    # direct focus, as in kicad-blocks.
+    # Give the native dialog direct X11 focus, matching kicad-blocks.
+    # windowfocus targets the existing chooser without a second EWMH activation
+    # that can leave the wxWidgets filter control in an inactive state.
     try:
-        send("windowactivate", "--sync", chooser_id)
-    except subprocess.SubprocessError:
         send("windowfocus", "--sync", chooser_id)
+    except subprocess.SubprocessError:
+        send("windowactivate", "--sync", chooser_id)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         xwininfo = shutil.which("xwininfo")
