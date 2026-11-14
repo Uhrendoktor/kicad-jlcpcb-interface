@@ -664,6 +664,20 @@ class ComponentPopulator:
         if not self.closed:
             self._poll_id = self.root.after(100, self._poll_results)
 
+    def _on_candidate_selected(self, _event=None) -> None:
+        """Show the catalogue preview and proposal for the selected match."""
+        selection = self.candidate_tree.selection()
+        if not selection:
+            return
+        selected = self.candidate_rows.get(selection[0])
+        if selected is None:
+            return
+        self.selected_details, self.draft = selected
+        self._render_draft(
+            self.draft,
+            self.selected_details.is_cached or self.selected_details.stale,
+        )
+
     def _insert_candidate(self, index: int, details: Any, draft: ComponentDraft) -> None:
         iid = f"candidate-{index}"
         library_class = (
