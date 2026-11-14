@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -109,6 +110,60 @@ class CursorPlacementTests(unittest.TestCase):
                 xdotool="xdotool",
                 command_runner=FakeRunner(),
             )
+    
+    def test_uses_the_native_place_symbol_ipc_action_when_available(self):
+        runner = FakeRunner(["0x200", "0x100"])
+        actions = []
+
+        class FakeKiCad:
+            def run_action(self, action):
+                actions.append(action)
+
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            kicad=FakeKiCad(),
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+
+        self.assertEqual(actions, ["eeschema.InteractiveDrawing.placeSymbol"])
+        self.assertNotIn(
+            ["xdotool", "key", "--clearmodifiers", "a"],
+            runner.commands,
+        )
+
+    def test_leaves_native_chooser_open_for_manual_selection_without_xdotool(self):
+        actions = []
+
+        class FakeKiCad:
+            def run_action(self, action):
+                actions.append(action)
+
+        with patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None):
+            start_native_symbol_placement(
+                None,
+                "C_C1591",
+                kicad=FakeKiCad(),
+                xdotool=None,
+            )
+
+        self.assertEqual(actions, ["eeschema.InteractiveDrawing.placeSymbol"])
+
+    def test_reports_unavailable_native_and_x11_placement(self):
+        class FakeKiCad:
+            def run_action(self, _action):
+                raise RuntimeError("not available")
+
+        with patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "xdotool is unavailable"):
+                start_native_symbol_placement(
+                    None,
+                    "R_C60489",
+                    kicad=FakeKiCad(),
+                )
+
 
 
 if __name__ == "__main__":
