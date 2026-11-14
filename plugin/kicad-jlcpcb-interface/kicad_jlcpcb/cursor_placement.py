@@ -220,7 +220,7 @@ def start_native_symbol_placement(
     if not {"X", "Y", "WIDTH", "HEIGHT"}.issubset(chooser_geometry):
         raise RuntimeError("Could not locate the native symbol chooser filter field.")
     filter_x = chooser_geometry["X"] + 90
-    filter_y = chooser_geometry["Y"] + 6
+    filter_y = chooser_geometry["Y"] + 30
     send("mousemove", "--sync", str(filter_x), str(filter_y))
     pointer = shell_geometry(send("getmouselocation", "--shell"))
     if (pointer.get("X"), pointer.get("Y")) != (filter_x, filter_y):
