@@ -27,10 +27,11 @@ class FakeRunner:
         if command == "getwindowpid":
             return SimpleNamespace(stdout="4242", returncode=0)
         if command == "getwindowgeometry":
-            return SimpleNamespace(
-                stdout="WINDOW=0x200\nX=30\nY=360\nWIDTH=880\nHEIGHT=680\nSCREEN=0",
-                returncode=0,
-            )
+            if arguments[-1] == "0x100":
+                geometry = "WINDOW=0x100\nX=10\nY=20\nWIDTH=960\nHEIGHT=1024\nSCREEN=0"
+            else:
+                geometry = "WINDOW=0x200\nX=30\nY=360\nWIDTH=880\nHEIGHT=680\nSCREEN=0"
+            return SimpleNamespace(stdout=geometry, returncode=0)
         if command == "getwindowfocus":
             value = self.outputs.pop(0) if self.outputs else "0x100"
             return SimpleNamespace(stdout=value, returncode=0)
@@ -115,6 +116,12 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
+        geometry_command = [
+            "xdotool", "getwindowgeometry", "--shell", "0x100"
+        ]
+        move_command = ["xdotool", "mousemove", "--sync", "210", "400"]
+        click_command = ["xdotool", "click", "1"]
+        clear_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
@@ -122,8 +129,15 @@ class CursorPlacementTests(unittest.TestCase):
         chooser_title_command = ["xdotool", "getwindowname", "0x200"]
         self.assertLess(
             runner.commands.index(chooser_title_command),
-            runner.commands.index(type_command),
+            runner.commands.index(geometry_command),
         )
+        self.assertLess(
+            runner.commands.index(geometry_command),
+            runner.commands.index(move_command),
+        )
+        self.assertLess(runner.commands.index(move_command), runner.commands.index(click_command))
+        self.assertLess(runner.commands.index(click_command), runner.commands.index(clear_command))
+        self.assertLess(runner.commands.index(clear_command), runner.commands.index(type_command))
         self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
         self.assertIn(0.15, pauses)
         self.assertIn(0.1, pauses)

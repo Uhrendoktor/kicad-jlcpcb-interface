@@ -146,7 +146,55 @@ def start_native_symbol_placement(
             "KiCad's native symbol chooser did not finish loading its catalog "
             f"within 15 seconds: {chooser_title!r}."
         )
-    print("native-symbol-placement-trigger=ipc" if action_started else "native-symbol-placement-trigger=hotkey", flush=True)
+    print(
+        "native-symbol-placement-trigger=ipc" if action_started else "native-symbol-placement-trigger=hotkey",
+        flush=True,
+    )
+
+    # In the native chooser the search control is a wx child widget inside the
+    # Eeschema frame, not a distinct X11 child window. Explicitly click inside
+    # its Filter text area. Coordinates are relative to the Eeschema top-level
+    # window so normal desktop window placement is supported.
+    geometry = send("getwindowgeometry", "--shell", str(editor_window_id))
+    dimensions = {
+        key: value
+        for item in geometry.split()
+        if "=" in item
+        for key, value in [item.split("=", 1)]
+    }
+    try:
+        editor_x = int(dimensions["X"])
+        editor_y = int(dimensions["Y"])
+    except (KeyError, ValueError) as exc:
+        raise RuntimeError(
+            f"Could not read the Eeschema window position: {geometry!r}."
+        ) from exc
+
+    filter_x = editor_x + 200
+    filter_y = editor_y + 380
+    send("mousemove", "--sync", str(filter_x), str(filter_y))
+    send("click", "1")
+    pause(0.05)
+
+    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
+    if debug_capture:
+        try:
+            from PIL import ImageGrab
+
+            clicked_capture = debug_capture.replace(".png", "-clicked.png")
+            ImageGrab.grab().save(clicked_capture)
+            print(
+                f"chooser-filter-click=pointer={send('getmouselocation', '--shell')!r} "
+                f"focus={send('getwindowfocus')!r} screenshot={clicked_capture!r}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"chooser-filter-click=failed error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+
+    send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
