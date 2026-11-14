@@ -1229,12 +1229,16 @@ def _drive_populator_form(
                     "The shared catalogue preview does not match the selected part: "
                     f"{populator.catalogue_vars['lcsc'].get()!r} != {expected_lcsc!r}"
                 )
-            if (
-                populator.selected_details is not None
-                and populator.selected_details.image_url
-                and populator._image_ref is None
-            ):
-                raise RuntimeError("The product photo was not rendered in the shared preview card.")
+            image_name = str(populator.image_label.cget("image") or "")
+            image_placeholder = str(populator.image_label.cget("text") or "")
+            if not image_name and image_placeholder not in {
+                "No catalogue image",
+                "Image unavailable",
+            }:
+                raise RuntimeError(
+                    "The shared preview has neither a supplier photo nor an explicit "
+                    f"image fallback: {image_placeholder!r}"
+                )
             if (
                 draft.lcsc != expected_lcsc
                 or draft.kind != "resistor"
