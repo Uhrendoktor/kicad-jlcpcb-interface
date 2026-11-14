@@ -39,7 +39,7 @@ class FakeRunner:
             output = (
                 "X=500\nY=150\nSCREEN=0\nWINDOW=0x100"
                 if self.mouse_reads == 1
-                else f"X=300\nY=256\nSCREEN=0\nWINDOW={self.pointer_window}"
+                else f"X=300\nY=390\nSCREEN=0\nWINDOW={self.pointer_window}"
             )
             return SimpleNamespace(stdout=output, returncode=0)
         if command == "getwindowfocus":
@@ -137,9 +137,18 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_move))
-        self.assertLess(runner.commands.index(filter_move), runner.commands.index(filter_click))
-        self.assertLess(runner.commands.index(filter_click), runner.commands.index(type_command))
+        self.assertLess(
+            runner.commands.index(chooser_focus),
+            runner.commands.index(filter_move),
+        )
+        self.assertLess(
+            runner.commands.index(filter_move),
+            runner.commands.index(filter_click),
+        )
+        self.assertLess(
+            runner.commands.index(filter_click),
+            runner.commands.index(type_command),
+        )
         self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
         self.assertLess(
             runner.commands.index(return_command),
