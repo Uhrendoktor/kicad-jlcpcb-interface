@@ -113,6 +113,11 @@ def focus_symbol_chooser_search_at_point(
             )
             return False
 
+    coord_type = getattr(
+        atspi_module,
+        "DESKTOP_COORDS",
+        getattr(atspi_module, "XY_SCREEN", 0),
+    )
     try:
         desktop = atspi_module.Registry.getDesktop(0)
     except Exception as exc:
@@ -296,6 +301,8 @@ def focus_symbol_chooser_search_at_point(
 def paste_search_text_via_context_menu(
     text: str,
     *,
+    x: int,
+    y: int,
     send: Callable,
     command_runner: Callable = subprocess.run,
     pause: Callable[[float], None] = time.sleep,
@@ -331,6 +338,27 @@ def paste_search_text_via_context_menu(
     try:
         send("click", "3")
         pause(0.2)
+        debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
+        if debug_capture:
+            try:
+                from PIL import ImageGrab
+
+                menu_capture = debug_capture.replace(
+                    ".png", "-context-menu.png"
+                )
+                ImageGrab.grab().save(menu_capture)
+                print(
+                    "chooser-paste=context-menu-captured "
+                    f"focus={send('getwindowfocus')!r} "
+                    f"screenshot={menu_capture!r}",
+                    flush=True,
+                )
+            except Exception as capture_exc:
+                print(
+                    "chooser-paste=context-menu-capture-failed "
+                    f"error={type(capture_exc).__name__}:{capture_exc}",
+                    flush=True,
+                )
     except Exception as exc:
         print(
             f"chooser-paste=context-menu-failed error={type(exc).__name__}:{exc}",
@@ -360,6 +388,7 @@ def paste_search_text_via_context_menu(
     stack = [desktop]
     inspected = 0
     menu_candidates = []
+    rejected_candidates = []
     while stack and inspected < 1500:
         node = stack.pop()
         inspected += 1
@@ -372,7 +401,27 @@ def paste_search_text_via_context_menu(
         except Exception:
             role = ""
         if name.casefold() == "paste" and "menu" in role.casefold():
-            menu_candidates.append(node)
+            try:
+                bounds = node.queryComponent().getExtents(coord_type)
+            except Exception:
+                bounds = None
+            if bounds is not None:
+                left, top, width, height = bounds
+                near_search = (
+                    left >= x - 100
+                    and left <= x + 260
+                    and top >= y - 20
+                    and top <= y + 240
+                    and width > 0
+                    and height > 0
+                )
+            else:
+                near_search = False
+            candidate_detail = (name, role, bounds, near_search)
+            if near_search:
+                menu_candidates.append((node, candidate_detail))
+            else:
+                rejected_candidates.append(candidate_detail)
         try:
             child_count = min(int(node.childCount), 100)
         except Exception:
@@ -383,7 +432,15 @@ def paste_search_text_via_context_menu(
             except Exception:
                 continue
 
-    for item in menu_candidates:
+    # Prefer the Paste command in the popup adjacent to the Search entry;
+    # ignore similarly named actions in Eeschema's global menu bar.
+    menu_candidates.sort(
+        key=lambda pair: (
+            abs(pair[1][2][1] - y) if pair[1][2] else float("inf"),
+            abs(pair[1][2][0] - x) if pair[1][2] else float("inf"),
+        )
+    )
+    for item, candidate_detail in menu_candidates:
         try:
             actions = item.queryAction()
             action_count = int(actions.nActions)
@@ -397,14 +454,18 @@ def paste_search_text_via_context_menu(
                     pause(0.2)
                     print(
                         "chooser-paste=native-menu-action "
-                        f"action={action_name!r}",
+                        f"action={action_name!r} target={candidate_detail!r}",
                         flush=True,
                     )
                     return True
             if action_count:
                 actions.doAction(0)
                 pause(0.2)
-                print("chooser-paste=native-menu-action action_index=0", flush=True)
+                print(
+                    "chooser-paste=native-menu-action "
+                    f"action_index=0 target={candidate_detail!r}",
+                    flush=True,
+                )
                 return True
         except Exception as exc:
             print(
@@ -414,7 +475,9 @@ def paste_search_text_via_context_menu(
 
     print(
         "chooser-paste=paste-menu-item-not-found "
-        f"inspected={inspected} candidates={len(menu_candidates)}",
+        f"point=({x},{y}) inspected={inspected} "
+        f"nearby={ [detail for _node,detail in menu_candidates]!r} "
+        f"rejected={rejected_candidates[:12]!r}",
         flush=True,
     )
     return False
@@ -648,6 +711,8 @@ def start_native_symbol_placement(
     )
     pasted = paste_search_text_via_context_menu(
         filter_text,
+        x=filter_x,
+        y=filter_y,
         send=send,
         command_runner=command_runner,
         pause=pause,

@@ -162,6 +162,7 @@ class CursorPlacementTests(unittest.TestCase):
                 self.role = role
                 self.children = list(children)
                 self.action = action
+                self.extents = (620, 460, 80, 24)
 
             @property
             def childCount(self):
@@ -175,6 +176,12 @@ class CursorPlacementTests(unittest.TestCase):
 
             def queryAction(self):
                 return self.action
+
+            def queryComponent(self):
+                return self
+
+            def getExtents(self, _coord_type):
+                return self.extents
 
         pasted = []
         class FakeAction:
@@ -214,6 +221,8 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertTrue(
             paste_search_text_via_context_menu(
                 "c60489",
+                x=601,
+                y=449,
                 send=send,
                 command_runner=runner,
                 pause=pauses.append,
