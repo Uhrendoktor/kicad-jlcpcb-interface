@@ -1096,7 +1096,6 @@ class ComponentPopulator:
             ):
                 return
 
-            withdrawn = False
             try:
                 if self.kicad is None:
                     raise RuntimeError("The KiCad project connection is unavailable.")
@@ -1105,32 +1104,39 @@ class ComponentPopulator:
                     project, draft, kicad=self.kicad
                 )
                 reload_project_symbol_library(self.kicad, generated)
-                self.generated_library_symbol = generated
-                # Release any modal Tk grab before handing input back to Eeschema.
-                try:
-                    current_grab = self.root.grab_current()
-                    if current_grab is not None:
-                        current_grab.grab_release()
-                except self.tk.TclError:
-                    pass
-                # Withdraw rather than iconify: Xvfb may not have a window
-                # manager to honor iconify, leaving the review window mapped.
-                self.root.withdraw()
-                withdrawn = True
-                start_native_symbol_placement(
-                    self.editor_window_id, generated.symbol_name
-                )
-                self.cursor_placement_started = True
-                self.close()
-                return
             except Exception as exc:
-                if withdrawn and not self.closed:
-                    self.root.deiconify()
                 self.status_var.set(f"Project library generation failed: {exc}")
                 self.messagebox.showerror(
                     "Component library generation failed", str(exc), parent=self.root
                 )
                 return
+
+            self.generated_library_symbol = generated
+            editor_window_id = self.editor_window_id
+            # Destroy the complete review UI and join both workers before
+            # returning input ownership to Eeschema. Merely withdrawing the Tk
+            # root left the hidden modal client alive during the native chooser
+            # interaction in the Xvfb integration run.
+            self.close()
+            try:
+                start_native_symbol_placement(
+                    editor_window_id, generated.symbol_name
+                )
+            except Exception as exc:
+                error_root = self.tk.Tk()
+                error_root.withdraw()
+                try:
+                    self.messagebox.showerror(
+                        "Component library generation failed",
+                        str(exc),
+                        parent=error_root,
+                    )
+                finally:
+                    error_root.destroy()
+                return
+
+            self.cursor_placement_started = True
+            return
         if draft is None or not draft.proposed_fields:
             return
         draft = replace(
