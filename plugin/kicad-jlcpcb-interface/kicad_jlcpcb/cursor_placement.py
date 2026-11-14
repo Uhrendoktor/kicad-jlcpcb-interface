@@ -44,6 +44,124 @@ def capture_eeschema_window_id(
 
 
 
+def focus_symbol_chooser_search_at_point(
+    x: int,
+    y: int,
+    *,
+    atspi_module=None,
+) -> bool:
+    """Give keyboard focus to the actual native Search widget under an X11 point."""
+    if atspi_module is None:
+        try:
+            import pyatspi as atspi_module
+        except Exception as exc:
+            print(
+                f"chooser-atspi=unavailable error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return False
+
+    try:
+        desktop = atspi_module.Registry.getDesktop(0)
+    except Exception as exc:
+        print(
+            f"chooser-atspi=desktop-unavailable error={type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return False
+
+    coord_type = getattr(
+        atspi_module,
+        "DESKTOP_COORDS",
+        getattr(atspi_module, "XY_SCREEN", 0),
+    )
+
+    stack = [desktop]
+    chooser = None
+    visited = 0
+    while stack and visited < 1200:
+        node = stack.pop()
+        visited += 1
+        try:
+            name = str(getattr(node, "name", "") or "")
+        except Exception:
+            name = ""
+        if "choose symbol" in name.casefold():
+            chooser = node
+            break
+        try:
+            count = min(int(node.childCount), 100)
+        except Exception:
+            count = 0
+        for index in range(count):
+            try:
+                stack.append(node.getChildAtIndex(index))
+            except Exception:
+                continue
+
+    if chooser is None:
+        print(
+            f"chooser-atspi=dialog-not-found inspected={visited}",
+            flush=True,
+        )
+        return False
+
+    # Resolve the widget under the search-field point through the actual
+    # accessibility hierarchy. The chooser contains other text controls;
+    # focusing the top-level dialog or a generic text node is insufficient.
+    target = chooser
+    path = []
+    for _ in range(8):
+        try:
+            child = target.queryComponent().getAccessibleAtPoint(
+                int(x), int(y), coord_type
+            )
+        except Exception as exc:
+            print(
+                "chooser-atspi=hit-test-failed "
+                f"error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            return False
+        if child is None or child is target:
+            break
+        target = child
+        try:
+            role = str(target.getRoleName())
+        except Exception:
+            role = ""
+        try:
+            name = str(getattr(target, "name", "") or "")
+        except Exception:
+            name = ""
+        try:
+            extents = target.queryComponent().getExtents(coord_type)
+        except Exception:
+            extents = None
+        path.append((role, name, extents))
+
+    try:
+        component = target.queryComponent()
+        focused = bool(component.grabFocus())
+        role = str(target.getRoleName())
+        name = str(getattr(target, "name", "") or "")
+    except Exception as exc:
+        print(
+            "chooser-atspi=focus-failed "
+            f"error={type(exc).__name__}: {exc} path={path!r}",
+            flush=True,
+        )
+        return False
+
+    print(
+        "chooser-atspi=focus-target "
+        f"focused={focused} x={x} y={y} role={role!r} "
+        f"name={name!r} path={path!r}",
+        flush=True,
+    )
+    return focused
+
+
 def start_native_symbol_placement(
     editor_window_id: str | None,
     symbol_name: str,
@@ -231,6 +349,7 @@ def start_native_symbol_placement(
     send("mousemove", "--sync", str(filter_x), str(filter_y))
     send("click", "--clearmodifiers", "1")
     pause(0.1)
+    focus_symbol_chooser_search_at_point(filter_x, filter_y)
 
     # Filter on the lowercase LCSC suffix to avoid shifted punctuation.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()

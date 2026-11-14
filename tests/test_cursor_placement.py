@@ -12,6 +12,7 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.cursor_placement import (  # noqa: E402
     capture_eeschema_window_id,
+    focus_symbol_chooser_search_at_point,
     start_native_symbol_placement,
 )
 
@@ -75,6 +76,39 @@ class FakeRunner:
         return SimpleNamespace(stdout="", returncode=0)
 
 
+class FakeAccessible:
+    def __init__(self, name="", children=()):
+        self.name = name
+        self.children = list(children)
+        self.point_target = None
+        self.hit_test_calls = []
+        self.focused = False
+
+    @property
+    def childCount(self):
+        return len(self.children)
+
+    def getChildAtIndex(self, index):
+        return self.children[index]
+
+    def getRoleName(self):
+        return "text" if self.name == "Search" else "dialog"
+
+    def queryComponent(self):
+        return self
+
+    def getAccessibleAtPoint(self, x, y, coord_type):
+        self.hit_test_calls.append((x, y, coord_type))
+        return self.point_target
+
+    def getExtents(self, coord_type):
+        return (525, 424, 398, 34)
+
+    def grabFocus(self):
+        self.focused = True
+        return True
+
+
 class FakeKiCad:
     def __init__(self, raises=False):
         self.actions = []
@@ -117,6 +151,32 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
+    def test_atspi_grabs_keyboard_focus_on_search_widget_under_pointer(self):
+        search = FakeAccessible("Search")
+        chooser = FakeAccessible(
+            "Choose Symbol (22936 items loaded)",
+            children=[search],
+        )
+        chooser.point_target = search
+        desktop = FakeAccessible(children=[chooser])
+
+        class Registry:
+            @staticmethod
+            def getDesktop(_index):
+                return desktop
+
+        class ATspi:
+            Registry = Registry
+            DESKTOP_COORDS = 0
+
+        self.assertTrue(
+            focus_symbol_chooser_search_at_point(
+                601, 439, atspi_module=ATspi
+            )
+        )
+        self.assertEqual(chooser.hit_test_calls, [(601, 439, 0)])
+        self.assertTrue(search.focused)
+
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
         self, _which
     ):
