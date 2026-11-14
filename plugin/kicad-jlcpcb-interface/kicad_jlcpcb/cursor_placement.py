@@ -218,7 +218,7 @@ def focus_symbol_chooser_search_at_point(
                 inserted = editable.insertText(0, text, len(text))
                 text_result = str(text_iface.getText(0, -1))
                 if text_result != text:
-                    replaced = editable.setTextContents(text)
+                    editable.setTextContents(text)
                     text_result = str(text_iface.getText(0, -1))
                 candidate_details.append(
                     (depth, role, name, bounds, text_result)
