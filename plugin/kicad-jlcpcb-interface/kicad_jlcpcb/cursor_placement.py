@@ -160,22 +160,26 @@ def start_native_symbol_placement(
 
         pointer = shell_geometry(send("getmouselocation", "--shell"))
         pointer_window = pointer.get("WINDOW", 0)
-        pointer_pid = (
-            send("getwindowpid", f"0x{pointer_window:x}")
-            if pointer_window
-            else ""
+        pointer_x = pointer.get("X", -1)
+        pointer_y = pointer.get("Y", -1)
+        pointer_inside_editor = (
+            pointer_window != 0
+            and window_x <= pointer_x < window_x + window_width
+            and window_y <= pointer_y < window_y + window_height
         )
         print(
             "cursor-placement-canvas-focus="
             f"target=({target_x},{target_y}) window=0x{pointer_window:x} "
-            f"pid={pointer_pid!r} editor_pid={editor_pid!r}",
+            f"pointer=({pointer_x},{pointer_y}) "
+            f"editor_bounds=({window_x},{window_y},{window_width},{window_height})",
             flush=True,
         )
-        if pointer_pid != editor_pid:
+        if not pointer_inside_editor:
             raise RuntimeError(
-                "The Add Symbol focus click did not land in Eeschema's window: "
+                "The Add Symbol focus click did not land inside Eeschema's "
+                "window bounds: "
                 f"target=({target_x},{target_y}), pointer={pointer!r}, "
-                f"editor={editor_window_id!r}/{editor_pid!r}."
+                f"editor={editor_window_id!r}/{editor_geometry!r}."
             )
         send("key", "--clearmodifiers", "a")
 

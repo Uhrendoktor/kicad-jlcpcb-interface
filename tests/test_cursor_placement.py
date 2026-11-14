@@ -141,6 +141,25 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertIn(0.15, pauses)
 
+    def test_refuses_canvas_focus_click_when_pointer_lands_on_root_window(self):
+        runner = FakeRunner(
+            ["0x200", "0x100"],
+            ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
+            pointer_window="0",
+        )
+        with self.assertRaisesRegex(RuntimeError, "did not land inside Eeschema"):
+            start_native_symbol_placement(
+                "0x100",
+                "R_C60489",
+                kicad=FakeKiCad(raises=True),
+                xdotool="xdotool",
+                command_runner=runner,
+                pause=lambda _seconds: None,
+            )
+        self.assertNotIn(
+            ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        )
+
     def test_falls_back_to_add_hotkey_when_ipc_action_is_unavailable(self):
         runner = FakeRunner(
             ["0x200", "0x100"],
