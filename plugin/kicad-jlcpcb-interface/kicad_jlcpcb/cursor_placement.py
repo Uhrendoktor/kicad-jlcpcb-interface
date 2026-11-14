@@ -170,6 +170,47 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
+    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
+    if debug_capture:
+        xwininfo = shutil.which("xwininfo")
+        if xwininfo:
+            for label, arguments in (
+                ("chooser", ["-id", str(chooser_id), "-tree"]),
+                ("root", ["-root", "-tree"]),
+            ):
+                result = command_runner(
+                    [xwininfo, *arguments],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=5,
+                )
+                output = str(getattr(result, "stdout", "") or "").strip()
+                print(
+                    f"chooser-xwininfo-{label}=\\n{output[:12000]}",
+                    flush=True,
+                )
+        result = command_runner(
+            [executable, "search", "--onlyvisible", "--pid", str(editor_pid)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        visible_windows = []
+        for window_id in str(getattr(result, "stdout", "") or "").split()[:60]:
+            try:
+                visible_windows.append(
+                    (
+                        window_id,
+                        send("getwindowname", window_id),
+                        send("getwindowclassname", window_id),
+                        send("getwindowgeometry", "--shell", window_id),
+                    )
+                )
+            except subprocess.SubprocessError:
+                continue
+        print(f"chooser-x11-visible-windows={visible_windows!r}", flush=True)
     # The chooser title is updated when the catalogue finishes loading, but
     # its wxSearchCtrl does not reliably retain keyboard focus after the modal
     # handoff in some X11 sessions. Click the actual Filter control, then put
@@ -195,7 +236,6 @@ def start_native_symbol_placement(
     send("click", "--clearmodifiers", "--window", str(chooser_id), "1")
     pause(0.1)
     mouse_after_click = shell_geometry(send("getmouselocation", "--shell"))
-    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         try:
             from PIL import ImageGrab
