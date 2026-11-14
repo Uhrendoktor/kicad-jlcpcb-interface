@@ -123,7 +123,10 @@ def start_native_symbol_placement(
             focused_pid = send("getwindowpid", focused_id)
             focused_title = send("getwindowname", focused_id).casefold()
             same_process = bool(editor_pid and focused_pid == editor_pid)
-            is_chooser = "choose symbol" in focused_title or "select symbol" in focused_title
+            is_chooser = (
+                "choose symbol" in focused_title
+                or "select symbol" in focused_title
+            )
             if same_process or is_chooser:
                 chooser_id = focused_id
                 break
@@ -151,7 +154,10 @@ def start_native_symbol_placement(
                     focused_pid = send("getwindowpid", focused_id)
                     focused_title = send("getwindowname", focused_id).casefold()
                     same_process = bool(editor_pid and focused_pid == editor_pid)
-                    is_chooser = "choose symbol" in focused_title or "select symbol" in focused_title
+                    is_chooser = (
+                        "choose symbol" in focused_title
+                        or "select symbol" in focused_title
+                    )
                     if same_process or is_chooser:
                         chooser_id = focused_id
                         break
