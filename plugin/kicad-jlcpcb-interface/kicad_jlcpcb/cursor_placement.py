@@ -150,6 +150,30 @@ def start_native_symbol_placement(
     # generated symbol name to the plugin window or another application.
     send("windowfocus", "--sync", chooser_id)
     pause(0.1)
+    # Focusing the top-level chooser does not always focus its search control
+    # on wxGTK. Click the search field explicitly before sending text.
+    geometry = send("getwindowgeometry", "--shell", chooser_id)
+    geometry_values = {
+        key: value
+        for line in geometry.splitlines()
+        if "=" in line
+        for key, value in (line.split("=", 1),)
+    }
+    try:
+        chooser_width = int(geometry_values.get("WIDTH", "0"))
+    except ValueError:
+        chooser_width = 0
+    search_x = max(100, min(250, chooser_width // 4)) if chooser_width else 150
+    send(
+        "mousemove",
+        "--sync",
+        "--window",
+        chooser_id,
+        str(search_x),
+        "20",
+    )
+    send("click", "1")
+    pause(0.1)
     # KiCad remembers the last symbol search between sessions. Replace it
     # instead of appending to stale filter text from the user's previous use.
     send("key", "--clearmodifiers", "ctrl+a")
