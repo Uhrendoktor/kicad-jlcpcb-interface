@@ -191,20 +191,21 @@ def start_native_symbol_placement(
                     flush=True,
                 )
         result = command_runner(
-            [executable, "search", "--onlyvisible", "--pid", str(editor_pid)],
+            [executable, "search", "--onlyvisible", "--name", ".*"],
             capture_output=True,
             text=True,
             check=False,
             timeout=5,
         )
         visible_windows = []
-        for window_id in str(getattr(result, "stdout", "") or "").split()[:60]:
+        for window_id in str(getattr(result, "stdout", "") or "").split()[:100]:
             try:
                 visible_windows.append(
                     (
                         window_id,
                         send("getwindowname", window_id),
                         send("getwindowclassname", window_id),
+                        send("getwindowpid", window_id),
                         send("getwindowgeometry", "--shell", window_id),
                     )
                 )
