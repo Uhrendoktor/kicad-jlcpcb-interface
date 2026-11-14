@@ -1,4 +1,4 @@
-"""KiCad's native Add Symbol chooser and cursor-placement handoff."""
+"""Hand a generated KiCad symbol to the native Eeschema cursor tool."""
 
 from __future__ import annotations
 
@@ -44,70 +44,132 @@ def start_native_symbol_placement(
     editor_window_id: str | None,
     symbol_name: str,
     *,
+    kicad=None,
     xdotool: str | None = None,
     command_runner: Callable = subprocess.run,
     pause: Callable[[float], None] = time.sleep,
 ) -> None:
-    """Choose a generated library symbol in Eeschema and leave it on the cursor."""
-    executable = xdotool or shutil.which("xdotool")
-    if not executable:
-        raise RuntimeError(
-            "Cursor placement requires xdotool on the supported Linux/X11 desktop. "
-            "Install it with sudo apt install xdotool, then reopen the action."
-        )
-    if not editor_window_id:
-        raise RuntimeError(
-            "Could not identify the active Eeschema window. Launch this action "
-            "from the Schematic Editor to enable cursor placement."
-        )
+    """Open KiCad's native Add Symbol chooser and leave the part on the cursor.
+
+    Prefer KiCad's IPC action. Older IPC builds fall back to the Eeschema Add
+    Symbol hotkey. xdotool only automates choosing the already-generated symbol;
+    when it is unavailable, the native chooser remains open for manual selection.
+    """
     if not symbol_name or any(char.isspace() for char in symbol_name):
         raise ValueError("The generated KiCad symbol name is invalid.")
 
-    def send(*arguments: str) -> str:
+    executable = xdotool or shutil.which("xdotool")
+    run_action = getattr(kicad, "run_action", None)
+    action_started = False
+    if callable(run_action):
+        try:
+            run_action("eeschema.InteractiveDrawing.placeSymbol")
+            action_started = True
+        except Exception:
+            # Older KiCad IPC builds do not expose this tool action.
+            action_started = False
+
+    if action_started and not executable:
+        # The user can select the generated library symbol in the native chooser.
+        return
+    if not executable:
+        raise RuntimeError(
+            "KiCad's native Place Symbol IPC action is unavailable and xdotool "
+            "is not installed. Launch on an X11 desktop with xdotool installed."
+        )
+
+    def send(*arguments: str, check: bool = True) -> str:
         result = command_runner(
             [executable, *arguments],
             capture_output=True,
             text=True,
-            check=True,
+            check=check,
             timeout=5,
         )
+        if check and getattr(result, "returncode", 0) != 0:
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                [executable, *arguments],
+                output=getattr(result, "stdout", None),
+                stderr=getattr(result, "stderr", None),
+            )
         return str(getattr(result, "stdout", "") or "").strip()
 
-    editor_pid = send("getwindowpid", str(editor_window_id))
-    if not editor_pid:
-        raise RuntimeError("Could not determine the active Eeschema process.")
-    send("windowfocus", "--sync", str(editor_window_id))
-    pause(0.1)
-    send("key", "--clearmodifiers", "a")
+    if not editor_window_id and not action_started:
+        editor_window_id = capture_eeschema_window_id(
+            xdotool=executable, command_runner=command_runner
+        )
+    if not action_started:
+        if not editor_window_id:
+            raise RuntimeError(
+                "Could not identify the active Eeschema window. Launch this action "
+                "from the Schematic Editor to enable cursor placement."
+            )
+        editor_pid = send("getwindowpid", str(editor_window_id))
+        if not editor_pid:
+            raise RuntimeError("Could not determine the active Eeschema process.")
+        send("windowfocus", "--sync", str(editor_window_id))
+        pause(0.1)
+        send("key", "--clearmodifiers", "a")
+    else:
+        editor_pid = ""
+        if editor_window_id:
+            editor_pid = send(
+                "getwindowpid", str(editor_window_id), check=False
+            )
 
     chooser_id = ""
+    chooser_pid = editor_pid
+    focused_id = ""
     for _ in range(50):
         focused_id = send("getwindowfocus")
-        if focused_id and focused_id != str(editor_window_id):
-            if send("getwindowpid", focused_id) == editor_pid:
+        if focused_id and focused_id != str(editor_window_id or ""):
+            focused_pid = send("getwindowpid", focused_id, check=False)
+            focused_title = send("getwindowname", focused_id, check=False).casefold()
+            same_process = bool(editor_pid and focused_pid == editor_pid)
+            chooser_title = (
+                "choose symbol" in focused_title
+                or "select symbol" in focused_title
+            )
+            if same_process or chooser_title:
                 chooser_id = focused_id
+                chooser_pid = focused_pid or editor_pid
                 break
         pause(0.1)
 
     if not chooser_id:
-        if send("getwindowfocus") == str(editor_window_id):
-            try:
-                send("key", "--clearmodifiers", "Escape")
-            except subprocess.SubprocessError:
-                pass
+        if not action_started and editor_window_id:
+            if send("getwindowfocus", check=False) == str(editor_window_id):
+                send("key", "--clearmodifiers", "Escape", check=False)
         raise RuntimeError(
-            "KiCad's native symbol chooser did not open. Check Eeschema "
-            "Preferences → Hotkeys and bind Add Symbol to A, then retry."
+            "KiCad did not open its native Add Symbol chooser. Keep Eeschema active "
+            "and check that Add Symbol is available in Preferences → Hotkeys."
         )
 
+    # KiCad's chooser owns focus after opening; targeting it avoids sending the
+    # generated symbol name to the plugin window or another application.
+    send("windowfocus", "--sync", chooser_id)
+    pause(0.1)
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
     send("key", "--clearmodifiers", "Return")
+
     for _ in range(30):
-        if send("getwindowfocus") == str(editor_window_id):
+        focused_id = send("getwindowfocus", check=False)
+        if editor_window_id and focused_id == str(editor_window_id):
             return
+        if focused_id and chooser_pid:
+            focused_pid = send("getwindowpid", focused_id, check=False)
+            focused_title = send("getwindowname", focused_id, check=False).casefold()
+            still_chooser = (
+                "choose symbol" in focused_title
+                or "select symbol" in focused_title
+            )
+            if focused_pid == chooser_pid and not still_chooser:
+                return
         pause(0.1)
+
     raise RuntimeError(
-        "KiCad accepted the symbol chooser selection but did not return focus "
-        "to Eeschema. Check the native chooser and retry placement."
+        "KiCad accepted the generated symbol selection but did not return to "
+        "Eeschema with the part on the cursor. Check the native chooser and retry."
     )
