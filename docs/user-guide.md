@@ -233,7 +233,7 @@ The existing generated symbol is detected and reused; placement can continue whe
 
 #### Placement and electrical checks
 
-Cursor placement uses the native Eeschema Add Symbol hotkey A through xdotool. It requires the action to have been launched while the Eeschema window was focused on an X11 desktop. Check Eeschema Preferences → Hotkeys if the native chooser does not open. X/Y placement remains available when cursor handoff cannot be used.
+Add mode is cursor-only. It opens KiCad's native Add Symbol chooser through the Eeschema IPC action when available, with the Add Symbol hotkey as a compatibility fallback. Automatic filtering requires `xdotool` on an X11 desktop and the action must be launched from the focused Eeschema window. If cursor handoff is unavailable, Add is disabled with an explanation; there is no X/Y coordinate fallback. Check Eeschema Preferences → Hotkeys if the compatibility hotkey does not open the chooser.
 
 The optional Footprint field is a KiCad footprint-library reference, not a footprint generator. A symbol can be created without a footprint, but it will need a suitable footprint before PCB layout. Always inspect the symbol/footprint pair and verify pin numbers, electrical types, package dimensions and ratings against the manufacturer datasheet.
 
