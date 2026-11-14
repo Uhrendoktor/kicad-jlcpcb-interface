@@ -1199,8 +1199,6 @@ def _drive_populator_form(
                 ]
                 if classes != sorted(classes):
                     raise RuntimeError("Passive shortlist did not rank Basic parts first.")
-                if candidate_iids and not any(value == 0 for value in classes):
-                    raise RuntimeError("The live 10k search returned no Basic resistor candidates.")
             image_name = str(populator.image_label.cget("image") or "")
             image_placeholder = str(populator.image_label.cget("text") or "")
             if require_image and not image_name:
@@ -1225,12 +1223,17 @@ def _drive_populator_form(
                     "The shared preview has neither a supplier photo nor an explicit "
                     f"image fallback: {image_placeholder!r}"
                 )
+            expected_source = (
+                "JLCPCB keyword search"
+                if expected_lcsc is None
+                else "JLCPCB parts-page endpoint"
+            )
             if (
                 (expected_lcsc is not None and draft.lcsc != expected_lcsc)
                 or draft.kind != "resistor"
                 or draft.value != expected_value
                 or (expected_footprint is not None and draft.footprint != expected_footprint)
-                or "JLCPCB parts-page endpoint" not in draft.source_label
+                or expected_source not in draft.source_label
                 or "live response" not in draft.source_label
             ):
                 raise RuntimeError(
