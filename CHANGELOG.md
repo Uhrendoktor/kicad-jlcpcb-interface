@@ -2,13 +2,13 @@
 
 ## Unreleased
 
-- Merge Properties, Add and Update around a shared component workspace and catalogue preview. The Add/Update page uses a scrollable content area, a persistent action footer, concise property rows, conditional candidate results and mode-specific KiCad/placement inputs. Use low-contrast surfaces and clear supplier links rather than nested bordered cards.
+- Merge Properties, Add and Update around a shared component workspace and catalogue preview. The Add/Update page uses a scrollable content area, a persistent action footer, concise property rows, conditional candidate results and mode-specific KiCad inputs; Add mode is cursor-only with no coordinate controls or direct-coordinate insertion. Use low-contrast surfaces and clear supplier links rather than nested bordered cards.
 - Share image retrieval and catalogue preview widgets across Properties and Add/Update. Try multiple supplier image renditions with bounded HTTPS requests, validate redirects and content types, and show an explicit unavailable state only after all candidates fail.
 - Generalize the unified workflow as **JLCPCB Add or Update Component**. Updating accepts any single editable selected schematic symbol and preserves its library identity, graphics, pins, units and electrical pin types; add mode creates/reuses a project-local symbol copy. Multiple selections and non-symbol selections are rejected.
-- Add catalogue search by LCSC code, manufacturer part number and free-text keyword while retaining exact-value filtering for supported resistor/capacitor value queries. Common R/C/L, diode, LED, fuse and crystal categories receive cautious symbol suggestions; ambiguous parts require a manual KiCad `Library:Symbol` choice.
+- Add catalogue search by LCSC code, manufacturer part number and free-text keyword. Exact resistor/capacitor value searches show a five-item Basic-first shortlist and automatically configure the stock symbol, reference prefix, mapped footprint and supplier fields for the selected passive.
 - Generalize project-local symbol generation to copy standalone stock KiCad symbol definitions with their original pin numbers, electrical types, units and graphics. IC pin maps are never inferred from catalogue text. Footprints are optional and can be selected/edited manually when no reviewed mapping exists.
 - Make Value and Footprint editable during both update and add review. Preserve uncertain/unknown fields rather than fabricating symbol identities, footprints or pin assignments. Add tests for non-passive classification, arbitrary symbol metadata updates, and multi-pin IC symbol copies.
-- Retain Eeschema cursor placement through KiCad's native Add Symbol chooser, with explicit X/Y placement as a fallback.
+- Use KiCad's native Place Symbol IPC action for Add-mode cursor handoff, with the Eeschema Add Symbol hotkey/xdotool compatibility path. Remove explicit X/Y placement and direct-coordinate insertion.
 - Scan LCSC-linked symbols across the complete schematic hierarchy.
 - Navigate to a symbol's sheet, zoom to it and select it through KiCad's `FocusOnItems` IPC command.
 - Use the configured cache TTL to distinguish recent offline cache results from stale catalogue data.
