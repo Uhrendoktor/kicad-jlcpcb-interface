@@ -61,22 +61,7 @@ def start_native_symbol_placement(
     if not symbol_name or any(char.isspace() for char in symbol_name):
         raise ValueError("The generated KiCad symbol name is invalid.")
 
-    run_action = getattr(kicad, "run_action", None)
-    action_started = False
-    if callable(run_action):
-        try:
-            run_action("eeschema.InteractiveDrawing.placeSymbol")
-            action_started = True
-        except Exception:
-            # Older KiCad IPC builds do not expose tool actions. The X11
-            # hotkey remains a compatible fallback for those versions.
-            action_started = False
-
     if not executable:
-        if action_started:
-            # The native chooser is already open; let the user select the
-            # symbol manually when automatic X11 filtering is unavailable.
-            return
         raise RuntimeError(
             "Cursor placement requires xdotool on the supported Linux/X11 desktop. "
             "Install it with sudo apt install xdotool, then reopen the action."
@@ -116,10 +101,12 @@ def start_native_symbol_placement(
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
 
-    if not action_started:
-        send("windowfocus", "--sync", str(editor_window_id))
-        pause(0.1)
-        send("key", "--clearmodifiers", "a")
+    # Use Eeschema's Add Symbol hotkey rather than the IPC action.
+    # The hotkey opens the native chooser with its Filter field focused;
+    # the IPC tool action opens the same dialog without that focus setup.
+    send("windowfocus", "--sync", str(editor_window_id))
+    pause(0.1)
+    send("key", "--clearmodifiers", "a")
 
     chooser_id = ""
     focused_id = ""
@@ -138,7 +125,7 @@ def start_native_symbol_placement(
     if not chooser_id:
         focused_pid = send("getwindowpid", focused_id) if focused_id else ""
         focused_title = send("getwindowname", focused_id) if focused_id else ""
-        if not action_started and focused_pid == editor_pid:
+        if focused_pid == editor_pid:
             try:
                 send("key", "--clearmodifiers", "Escape")
             except subprocess.SubprocessError:
@@ -170,13 +157,8 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
-    # The Filter widget is a GTK child control, not a separate X11 window.
-    # Re-activate the dialog, then use wx/GTK tab traversal to move keyboard
-    # focus from the frame into its first control (the Filter field).
-    send("windowfocus", "--sync", str(chooser_id))
-    pause(0.1)
-    send("key", "--clearmodifiers", "Tab")
-    pause(0.1)
+    # The Add Symbol hotkey leaves keyboard focus in the native Filter field.
+    # Do not refocus the chooser frame: that would discard the child focus.
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         xwininfo = shutil.which("xwininfo")
@@ -241,8 +223,8 @@ def start_native_symbol_placement(
     send("key", "--clearmodifiers", "Return")
 
     def restore_placement_pointer() -> None:
-        # The chooser click only focuses its text input. Restore the user's
-        # original cursor after KiCad has attached the symbol to the pointer.
+        # Restore the user's original cursor after KiCad has attached the
+        # selected symbol to the pointer.
         send(
             "mousemove", "--sync",
             str(original_pointer["X"]), str(original_pointer["Y"]),
