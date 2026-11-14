@@ -238,14 +238,34 @@ def type_symbol_name_with_wx_simulator(symbol_name: str, *, wx_module=None) -> b
     try:
         simulator = wx_module.UIActionSimulator()
         control_modifier = getattr(wx_module, "MOD_CONTROL", 2)
-        # Select any stale filter contents before entering the exact symbol id.
-        simulator.Char(ord("A"), control_modifier)
-        typed = bool(simulator.Text(symbol_name))
+        shift_modifier = getattr(wx_module, "MOD_SHIFT", 1)
+        # Select stale filter contents, then press individual keys through
+        # wxWidgets. The installed wxGTK binding exposes Text() as an integer
+        # key-code overload, so Char() is used for the full ASCII symbol id.
+        if not simulator.Char(ord("A"), control_modifier):
+            return False
+        sent = 0
+        for character in symbol_name:
+            if character == "_":
+                keycode, modifiers = ord("-"), shift_modifier
+            elif character.isalpha() and character.isupper():
+                keycode, modifiers = ord(character), shift_modifier
+            else:
+                keycode, modifiers = ord(character), 0
+            if not simulator.Char(keycode, modifiers):
+                print(
+                    "chooser-wx-simulator=key-failed "
+                    f"character={character!r} keycode={keycode} modifiers={modifiers}",
+                    flush=True,
+                )
+                return False
+            sent += 1
         print(
-            f"chooser-wx-simulator=typed result={typed} symbol={symbol_name!r}",
+            f"chooser-wx-simulator=typed result=True chars={sent} "
+            f"symbol={symbol_name!r}",
             flush=True,
         )
-        return typed
+        return sent == len(symbol_name)
     except Exception as exc:
         print(
             "chooser-wx-simulator=failed "

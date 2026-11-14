@@ -154,14 +154,11 @@ class WxSimulatorTests(unittest.TestCase):
                 self.calls.append(("Char", keycode, modifiers))
                 return True
 
-            def Text(self, value):
-                self.calls.append(("Text", value))
-                return True
-
         simulator = FakeSimulator()
 
         class FakeWx:
             MOD_CONTROL = 2
+            MOD_SHIFT = 1
 
             @staticmethod
             def UIActionSimulator():
@@ -174,7 +171,17 @@ class WxSimulatorTests(unittest.TestCase):
         )
         self.assertEqual(
             simulator.calls,
-            [("Char", ord("A"), 2), ("Text", "R_C25744")],
+            [
+                ("Char", ord("A"), 2),
+                ("Char", ord("R"), 1),
+                ("Char", ord("-"), 1),
+                ("Char", ord("C"), 1),
+                ("Char", ord("2"), 0),
+                ("Char", ord("5"), 0),
+                ("Char", ord("7"), 0),
+                ("Char", ord("4"), 0),
+                ("Char", ord("4"), 0),
+            ],
         )
 
 
