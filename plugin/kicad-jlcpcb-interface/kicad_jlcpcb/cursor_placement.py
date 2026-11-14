@@ -110,40 +110,15 @@ def start_native_symbol_placement(
             "then retry."
         )
 
-    # Do not refocus or raise the modal frame after it appears. On first paint,
-    # SYMBOL_CHOOSER_FRAME calls ForceFocus(GetFocusTarget()), and the panel's
-    # focus target is the native Filter control. Refocusing the top-level frame
-    # here steals focus from that control and makes the subsequent type a no-op.
-    # Wait for the catalog index to finish without disturbing this first-paint
-    # focus, reflected in the title's loaded-item count.
-    chooser_ready = False
-    chooser_title = ""
-    for _ in range(150):
-        chooser_title = send("getwindowname", chooser_id)
-        if "(" in chooser_title and any(char.isdigit() for char in chooser_title):
-            chooser_ready = True
-            break
-        pause(0.1)
-    if not chooser_ready:
-        raise RuntimeError(
-            "KiCad's native symbol chooser did not finish loading its catalog "
-            f"within 15 seconds: {chooser_title!r}."
-        )
-    # Set X input focus to the loaded native chooser. KiCad's first-paint
-    # handler focuses the Filter wxSearchCtrl, but under bare Xvfb the server
-    # focus can still be held by the Eeschema parent frame. Reassert the
-    # chooser's top-level focus after loading so XTest keyboard events are
-    # dispatched to its current child focus target.
+    # Follow the tested KiCad Blocks native placement flow: focus the modal
+    # chooser as soon as it appears, type the symbol into its first-paint Filter
+    # target, accept it, then verify focus returned to the Eeschema editor.
+    # Waiting for the catalogue title before typing can race later tree setup
+    # and lose the search control's focus on wxGTK/Xvfb.
     send("windowfocus", "--sync", chooser_id)
-    pause(0.1)
+    send("type", "--clearmodifiers", "--delay", "12", symbol_name)
+    pause(0.15)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
-    if debug_capture:
-        print(
-            "chooser-window-focus="
-            f"chooser={chooser_id!r} focus={send('getwindowfocus')!r}",
-            flush=True,
-        )
-    send("type", "--clearmodifiers", "--delay", "15", symbol_name)
     if debug_capture:
         try:
             from PIL import ImageGrab
@@ -160,17 +135,24 @@ def start_native_symbol_placement(
                 flush=True,
             )
     send("key", "--clearmodifiers", "Return")
-    pause(0.6)
-    focused_id = send("getwindowfocus")
-    if focused_id != str(editor_window_id):
+    for _ in range(30):
+        focused_id = send("getwindowfocus")
+        if focused_id == str(editor_window_id):
+            return
         focused_pid = send("getwindowpid", focused_id) if focused_id else ""
-        focused_title = send("getwindowname", focused_id) if focused_id else ""
-        chooser_title = send("getwindowname", chooser_id)
-        raise RuntimeError(
-            "KiCad accepted the symbol chooser selection but did not return focus "
-            f"to Eeschema. Editor={editor_window_id!r}/{editor_pid!r}; "
-            f"chooser={chooser_id!r} ({chooser_title!r}); "
-            f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
-            "Check the native chooser and retry placement."
-        )
-    return
+        if focused_pid == editor_pid:
+            focused_title = send("getwindowname", focused_id).casefold()
+            if "choose symbol" not in focused_title and "select symbol" not in focused_title:
+                return
+        pause(0.1)
+
+    focused_id = send("getwindowfocus")
+    focused_pid = send("getwindowpid", focused_id) if focused_id else ""
+    focused_title = send("getwindowname", focused_id) if focused_id else ""
+    raise RuntimeError(
+        "KiCad accepted the symbol chooser selection but did not return focus "
+        f"to Eeschema. Editor={editor_window_id!r}/{editor_pid!r}; "
+        f"chooser={chooser_id!r} ({send('getwindowname', chooser_id)!r}); "
+        f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
+        "Check the native chooser and retry placement."
+    )

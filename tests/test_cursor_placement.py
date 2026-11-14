@@ -102,24 +102,17 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(editor_focus),
             runner.commands.index(add_hotkey),
         )
-        chooser_title_command = ["xdotool", "getwindowname", "0x200"]
+        chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
         type_command = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "15", "R_C60489"
+            "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
-        loaded_index = runner.commands.index(type_command)
-        title_index = runner.commands.index(chooser_title_command)
-        chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
-        self.assertLess(title_index, runner.commands.index(chooser_focus))
-        self.assertLess(runner.commands.index(chooser_focus), loaded_index)
-        self.assertLess(title_index, loaded_index)
-        self.assertGreaterEqual(
-            sum(command == chooser_title_command for command in runner.commands[:loaded_index]),
-            2,
-        )
+        self.assertIn(chooser_focus, runner.commands)
+        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(type_command))
         self.assertLess(
             runner.commands.index(type_command), runner.commands.index(return_command)
         )
+        self.assertIn(0.15, pauses)
         self.assertIn(0.6, pauses)
         self.assertNotIn(
             ["xdotool", "windowactivate", "--sync", "0x200"],
