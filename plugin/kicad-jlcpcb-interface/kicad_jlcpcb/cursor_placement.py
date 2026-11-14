@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -13,7 +14,7 @@ def capture_eeschema_window_id(
     xdotool: str | None = None,
     command_runner: Callable = subprocess.run,
 ) -> str | None:
-    """Return the focused Eeschema X11 window, or None when it is unavailable."""
+    """Find the visible Eeschema main window, even when a plugin dialog has focus."""
     executable = xdotool or shutil.which("xdotool")
     if not executable:
         return None
@@ -30,14 +31,59 @@ def capture_eeschema_window_id(
             return ""
         return str(getattr(result, "stdout", "") or "").strip()
 
-    window_id = read("getwindowfocus")
-    if not window_id:
-        return None
+    candidates: list[str] = []
+    focused = read("getwindowfocus")
+    if focused:
+        candidates.append(focused)
+
+    if not candidates or not _is_eeschema_window(
+        executable, candidates[0], read
+    ):
+        for arguments in (
+            ("search", "--onlyvisible", "--class", "eeschema"),
+            ("search", "--onlyvisible", "--name", "[Ss]chematic [Ee]ditor"),
+        ):
+            found = read(*arguments)
+            candidates.extend(
+                window_id for window_id in found.splitlines() if window_id
+            )
+
+    seen: set[str] = set()
+    plugin_pid = str(os.getpid())
+    for window_id in candidates:
+        if window_id in seen:
+            continue
+        seen.add(window_id)
+        if not _is_eeschema_window(executable, window_id, read):
+            continue
+        if read("getwindowpid", window_id) == plugin_pid:
+            # Plugin Tk windows share KiCad's WM_CLASS for taskbar grouping.
+            continue
+        return window_id
+    return None
+
+
+def _is_eeschema_window(
+    executable: str,
+    window_id: str,
+    read: Callable[[str, ...], str],
+) -> bool:
+    """Identify the actual editor rather than a plugin-owned Tk window."""
+    del executable
     window_class = read("getwindowclassname", window_id).casefold()
     window_title = read("getwindowname", window_id).casefold()
     if "eeschema" not in window_class and "schematic editor" not in window_title:
-        return None
-    return window_id
+        return False
+    return not any(
+        marker in window_title
+        for marker in (
+            "jlcpcb component",
+            "kicad jlcpcb",
+            "kicad blocks",
+            "functional block library",
+            "manage libraries",
+        )
+    )
 
 
 def start_native_symbol_placement(
@@ -54,6 +100,11 @@ def start_native_symbol_placement(
         raise ValueError("The generated KiCad symbol name is invalid.")
 
     executable = xdotool or shutil.which("xdotool")
+    if not editor_window_id and executable:
+        editor_window_id = capture_eeschema_window_id(
+            xdotool=executable,
+            command_runner=command_runner,
+        )
     run_action = getattr(kicad, "run_action", None)
     action_started = False
     if callable(run_action):
