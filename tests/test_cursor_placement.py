@@ -128,10 +128,22 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(canvas_move, runner.commands)
         self.assertIn(canvas_click, runner.commands)
         self.assertIn(add_symbol_hotkey, runner.commands)
-        self.assertLess(runner.commands.index(editor_activate), runner.commands.index(canvas_move))
-        self.assertLess(runner.commands.index(canvas_move), runner.commands.index(canvas_click))
-        self.assertLess(runner.commands.index(canvas_click), runner.commands.index(add_symbol_hotkey))
-        self.assertLess(runner.commands.index(add_symbol_hotkey), title_checks[0])
+        self.assertLess(
+            runner.commands.index(editor_activate),
+            runner.commands.index(canvas_move),
+        )
+        self.assertLess(
+            runner.commands.index(canvas_move),
+            runner.commands.index(canvas_click),
+        )
+        self.assertLess(
+            runner.commands.index(canvas_click),
+            runner.commands.index(add_symbol_hotkey),
+        )
+        self.assertLess(
+            runner.commands.index(add_symbol_hotkey),
+            title_checks[0],
+        )
         self.assertEqual(len(title_checks), 2)
         self.assertLess(
             runner.commands.index(type_command),
