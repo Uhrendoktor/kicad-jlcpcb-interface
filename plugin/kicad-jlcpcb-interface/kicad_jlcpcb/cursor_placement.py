@@ -170,6 +170,13 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
+    # The Filter widget is a GTK child control, not a separate X11 window.
+    # Re-activate the dialog, then use wx/GTK tab traversal to move keyboard
+    # focus from the frame into its first control (the Filter field).
+    send("windowfocus", "--sync", str(chooser_id))
+    pause(0.1)
+    send("key", "--clearmodifiers", "Tab")
+    pause(0.1)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         xwininfo = shutil.which("xwininfo")

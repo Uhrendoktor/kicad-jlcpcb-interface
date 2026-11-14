@@ -133,45 +133,20 @@ class CursorPlacementTests(unittest.TestCase):
             "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
-        self.assertNotIn(
-            ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
-        )
+        chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
+        tab_command = ["xdotool", "key", "--clearmodifiers", "Tab"]
+        restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
+        type_index = runner.commands.index(type_command)
         title_checks = [
             index for index, command in enumerate(runner.commands)
             if command == title_command
         ]
-        geometry_command = ["xdotool", "getwindowgeometry", "--shell", "0x200"]
-        filter_move = [
-            "xdotool", "mousemove", "--sync", "--window", "0x200", "100", "24"
-        ]
-        filter_click = ["xdotool", "click", "--clearmodifiers", "--window", "0x200", "1"]
-        restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
-        type_index = runner.commands.index(type_command)
-        return_index = runner.commands.index(return_command)
-        focus_pause_index = runner.commands.index(["pause", 0.1])
         self.assertEqual(len(title_checks), 2)
-        self.assertLess(title_checks[-1], runner.commands.index(geometry_command))
+        self.assertLess(title_checks[-1], runner.commands.index(chooser_focus))
+        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(tab_command))
+        self.assertLess(runner.commands.index(tab_command), type_index)
         self.assertLess(
-            runner.commands.index(filter_click), focus_pause_index
-        )
-        self.assertLess(focus_pause_index, type_index)
-        self.assertLess(type_index, return_index)
-        self.assertIn(geometry_command, runner.commands)
-        self.assertLess(
-            runner.commands.index(geometry_command),
-            runner.commands.index(filter_move),
-        )
-        self.assertLess(
-            runner.commands.index(filter_move),
-            runner.commands.index(filter_click),
-        )
-        self.assertLess(
-            runner.commands.index(filter_click),
-            runner.commands.index(type_command),
-        )
-        self.assertLess(
-            runner.commands.index(type_command),
-            runner.commands.index(return_command),
+            type_index, runner.commands.index(return_command)
         )
         focus_checks = [
             index for index, command in enumerate(runner.commands)
