@@ -520,8 +520,29 @@ def start_native_symbol_placement(
             "Could not locate the native symbol chooser Search field."
         ) from exc
     filter_x = chooser_x + min(80, max(40, chooser_width // 8))
-    filter_y = chooser_y
+    # The chooser's Search control begins slightly above the client-area
+    # origin reported by xdotool. Move inside the field rather than onto the
+    # Openbox frame boundary at the top edge.
+    filter_y = chooser_y + 10
     send("mousemove", "--sync", str(filter_x), str(filter_y))
+    pointer = shell_geometry(send("getmouselocation", "--shell"))
+    pointer_window = pointer.get("WINDOW")
+    pointer_pid = (
+        send("getwindowpid", str(pointer_window))
+        if pointer_window is not None else ""
+    )
+    print(
+        "chooser-pointer="
+        f"position=({pointer.get('X')},{pointer.get('Y')}) "
+        f"window={pointer_window!r} pid={pointer_pid!r} "
+        f"target={chooser_id!r}",
+        flush=True,
+    )
+    if pointer.get("X") != filter_x or pointer.get("Y") != filter_y:
+        raise RuntimeError(
+            "The pointer did not reach the native Search field: "
+            f"expected=({filter_x},{filter_y}) actual=({pointer.get('X')},{pointer.get('Y')})."
+        )
     send("click", "--clearmodifiers", "1")
     pause(0.1)
 

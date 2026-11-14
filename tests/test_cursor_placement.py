@@ -242,10 +242,10 @@ class CursorPlacementTests(unittest.TestCase):
 
         self.assertTrue(
             focus_symbol_chooser_search_at_point(
-                601, 439, text="c60489", atspi_module=atspi
+                601, 449, text="c60489", atspi_module=atspi
             )
         )
-        self.assertEqual(chooser.hit_test_calls, [(601, 439, 0)])
+        self.assertEqual(chooser.hit_test_calls, [(601, 449, 0)])
         self.assertFalse(search_wrapper.focused)
         self.assertTrue(search_entry.focused)
         self.assertEqual(search_entry.text, "c60489")
@@ -275,7 +275,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
         chooser_focus = ["xdotool", "windowactivate", "--sync", "0x200"]
         chooser_focus_fallback = ["xdotool", "windowfocus", "--sync", "0x200"]
-        filter_move = ["xdotool", "mousemove", "--sync", "601", "439"]
+        filter_move = ["xdotool", "mousemove", "--sync", "601", "449"]
         filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
         clipboard_command = [
             "xclip", "-selection", "clipboard", "-in", "-loops", "10"
