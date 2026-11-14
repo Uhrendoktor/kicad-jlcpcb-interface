@@ -218,7 +218,7 @@ def start_native_symbol_placement(
             "Could not locate the native symbol chooser Search field."
         ) from exc
     filter_x = chooser_x + min(80, max(40, chooser_width // 8))
-    filter_y = chooser_y + min(6, max(4, chooser_height // 100))
+    filter_y = chooser_y
     send("mousemove", "--sync", str(filter_x), str(filter_y))
     send("click", "--clearmodifiers", "1")
     pause(0.1)
