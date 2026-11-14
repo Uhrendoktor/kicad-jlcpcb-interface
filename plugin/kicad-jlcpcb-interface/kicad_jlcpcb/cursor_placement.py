@@ -293,6 +293,133 @@ def focus_symbol_chooser_search_at_point(
     return False
 
 
+def paste_search_text_via_context_menu(
+    text: str,
+    *,
+    send: Callable,
+    command_runner: Callable = subprocess.run,
+    pause: Callable[[float], None] = time.sleep,
+    atspi_module=None,
+) -> bool:
+    """Paste the query using the Search entry's native context-menu action."""
+    if not text:
+        return True
+    xclip = shutil.which("xclip")
+    if not xclip:
+        print("chooser-paste=xclip-unavailable", flush=True)
+        return False
+
+    try:
+        command_runner(
+            [xclip, "-selection", "clipboard", "-in"],
+            input=text,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(
+            f"chooser-paste=clipboard-failed error={type(exc).__name__}:{exc}",
+            flush=True,
+        )
+        return False
+
+    # The pointer is already inside the actual Search field. Its context menu
+    # exposes Paste as an accessibility action, avoiding synthetic key events.
+    try:
+        send("click", "3")
+        pause(0.2)
+    except Exception as exc:
+        print(
+            f"chooser-paste=context-menu-failed error={type(exc).__name__}:{exc}",
+            flush=True,
+        )
+        return False
+
+    if atspi_module is None:
+        try:
+            import pyatspi as atspi_module
+        except Exception as exc:
+            print(
+                f"chooser-paste=atspi-unavailable error={type(exc).__name__}:{exc}",
+                flush=True,
+            )
+            return False
+
+    try:
+        desktop = atspi_module.Registry.getDesktop(0)
+    except Exception as exc:
+        print(
+            f"chooser-paste=desktop-unavailable error={type(exc).__name__}:{exc}",
+            flush=True,
+        )
+        return False
+
+    stack = [desktop]
+    inspected = 0
+    menu_candidates = []
+    while stack and inspected < 1500:
+        node = stack.pop()
+        inspected += 1
+        try:
+            name = str(getattr(node, "name", "") or "")
+        except Exception:
+            name = ""
+        try:
+            role = str(node.getRoleName())
+        except Exception:
+            role = ""
+        if name.casefold() == "paste" and "menu" in role.casefold():
+            menu_candidates.append(node)
+        try:
+            child_count = min(int(node.childCount), 100)
+        except Exception:
+            child_count = 0
+        for index in range(child_count):
+            try:
+                stack.append(node.getChildAtIndex(index))
+            except Exception:
+                continue
+
+    for item in menu_candidates:
+        try:
+            actions = item.queryAction()
+            action_count = int(actions.nActions)
+            for index in range(action_count):
+                try:
+                    action_name = str(actions.getName(index) or "").casefold()
+                except Exception:
+                    action_name = ""
+                if action_name in {"click", "activate", "press"}:
+                    actions.doAction(index)
+                    pause(0.2)
+                    print(
+                        "chooser-paste=native-menu-action "
+                        f"action={action_name!r}",
+                        flush=True,
+                    )
+                    return True
+            if action_count:
+                actions.doAction(0)
+                pause(0.2)
+                print("chooser-paste=native-menu-action action_index=0", flush=True)
+                return True
+        except Exception as exc:
+            print(
+                f"chooser-paste=menu-action-failed error={type(exc).__name__}:{exc}",
+                flush=True,
+            )
+
+    print(
+        "chooser-paste=paste-menu-item-not-found "
+        f"inspected={inspected} candidates={len(menu_candidates)}",
+        flush=True,
+    )
+    return False
+
+
 def start_native_symbol_placement(
     editor_window_id: str | None,
     symbol_name: str,
@@ -519,15 +646,21 @@ def start_native_symbol_placement(
         f"focused={atspi_focused} text={filter_text!r}",
         flush=True,
     )
-    # Send text with XTest after focusing the Search widget. XTest targets the
-    # actual X11 keyboard focus; unlike xdotool --window it does not use
-    # XSendEvent, which GTK controls commonly ignore.
-    send("key", "--clearmodifiers", "ctrl+a")
-    send("type", "--clearmodifiers", "--delay", "35", filter_text)
-    print(
-        f"chooser-input=xtest text={filter_text!r}",
-        flush=True,
+    pasted = paste_search_text_via_context_menu(
+        filter_text,
+        send=send,
+        command_runner=command_runner,
+        pause=pause,
     )
+    if not pasted:
+        # Keyboard fallback for desktops whose Search control does not expose
+        # a native Paste action through accessibility.
+        send("key", "--clearmodifiers", "ctrl+a")
+        send("type", "--clearmodifiers", "--delay", "35", filter_text)
+        print(
+            f"chooser-input=xtest-fallback text={filter_text!r}",
+            flush=True,
+        )
     pause(0.35)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()

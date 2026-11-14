@@ -13,6 +13,7 @@ sys.path.insert(0, str(PLUGIN))
 from kicad_jlcpcb.cursor_placement import (  # noqa: E402
     capture_eeschema_window_id,
     focus_symbol_chooser_search_at_point,
+    paste_search_text_via_context_menu,
     send_text_to_focused_search,
     start_native_symbol_placement,
 )
@@ -153,6 +154,82 @@ class FakeKiCad:
 
 
 class CursorPlacementTests(unittest.TestCase):
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
+    def test_pastes_search_text_through_native_context_menu_action(self, _which):
+        class FakeNode:
+            def __init__(self, name, role, children=(), action=None):
+                self.name = name
+                self.role = role
+                self.children = list(children)
+                self.action = action
+
+            @property
+            def childCount(self):
+                return len(self.children)
+
+            def getChildAtIndex(self, index):
+                return self.children[index]
+
+            def getRoleName(self):
+                return self.role
+
+            def queryAction(self):
+                return self.action
+
+        pasted = []
+        class FakeAction:
+            nActions = 1
+            def getName(self, _index):
+                return "click"
+            def doAction(self, _index):
+                pasted.append("c60489")
+                return True
+
+        paste_item = FakeNode("Paste", "menu item", action=FakeAction())
+        chooser = FakeNode(
+            "Choose Symbol (22936 items loaded)",
+            "dialog",
+            children=[paste_item],
+        )
+        desktop = FakeNode("desktop", "desktop", children=[chooser])
+
+        class FakeRegistry:
+            @staticmethod
+            def getDesktop(_index):
+                return desktop
+
+        class FakeATspi:
+            Registry = FakeRegistry
+
+        commands = []
+        def runner(arguments, **kwargs):
+            commands.append((arguments, kwargs))
+            return SimpleNamespace(stdout="", returncode=0)
+
+        def send(*arguments):
+            commands.append((["xdotool", *arguments], {}))
+            return ""
+
+        pauses = []
+        self.assertTrue(
+            paste_search_text_via_context_menu(
+                "c60489",
+                send=send,
+                command_runner=runner,
+                pause=pauses.append,
+                atspi_module=FakeATspi,
+            )
+        )
+        clipboard_calls = [
+            (command, kwargs) for command, kwargs in commands
+            if command == ["xclip", "-selection", "clipboard", "-in"]
+        ]
+        self.assertEqual(len(clipboard_calls), 1)
+        self.assertEqual(clipboard_calls[0][1]["input"], "c60489")
+        self.assertIn((["xdotool", "click", "3"], {}), commands)
+        self.assertEqual(pasted, ["c60489"])
+        self.assertIn(0.2, pauses)
+
     def test_captures_only_a_focused_eeschema_window(self):
         runner = FakeRunner()
         self.assertEqual(
