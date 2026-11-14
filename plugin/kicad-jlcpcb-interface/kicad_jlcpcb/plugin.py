@@ -20,47 +20,11 @@ from .model import (
     search_components,
 )
 from .provider import JlcPartDetails, JlcSearchProvider
+from .selection import focus_schematic_items
 from .theme import apply_tk_theme
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 
-
-def focus_schematic_items(
-    schematic: Any,
-    symbols: list[Any],
-    focus_command_type: Any,
-    empty_response_type: Any,
-) -> Any:
-    """Navigate to the sheet holding these instances and focus their bounding box.
-
-    KiCad's selection command only selects instances on the currently displayed
-    sheet. FocusOnItems is the supported IPC command that changes to the target
-    sheet and zooms to the requested KIID set before selection is applied.
-    """
-    if not symbols:
-        return schematic
-    sheet_path = getattr(symbols[0], "path", None)
-    if sheet_path is None or not callable(getattr(schematic, "for_sheet", None)):
-        return schematic
-
-    target_schematic = schematic.for_sheet(sheet_path)
-    path_proto = getattr(sheet_path, "proto", None)
-    if path_proto is None:
-        raise RuntimeError(
-            "The KiCad Python binding did not expose the target sheet path "
-            "protobuf required by FocusOnItems."
-        )
-
-    command = focus_command_type()
-    command.document.CopyFrom(target_schematic.document)
-    command.document.sheet_path.CopyFrom(path_proto)
-    for symbol in symbols:
-        raw_id = getattr(symbol.id, "value", None)
-        if not raw_id:
-            raw_id = str(symbol.id)
-        command.items.add().value = str(raw_id)
-    target_schematic.client.send(command, empty_response_type)
-    return target_schematic
 
 def _calculate_project_summary(components, provider) -> dict[str, int | float]:
     """Estimate schematic cost and catalogue coverage grouped by LCSC part number."""

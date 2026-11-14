@@ -40,7 +40,10 @@ from kicad_jlcpcb.model import (  # noqa: E402
     find_selected_component,
     iter_schematic_symbols,
 )
-from kicad_jlcpcb.placement import place_component_from_draft  # noqa: E402
+from kicad_jlcpcb.placement import (  # noqa: E402
+    place_component_from_draft,
+    schematic_page_center_mm,
+)
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
     resolve_component_action_target,
@@ -59,7 +62,7 @@ ASSET_NAMES = (
     "populate-component-applied.png",
     "add-component-proposed.png",
     "add-component-confirmation.png",
-    "add-component-placed.png",
+    "add-component-placed-selected.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
     "schematic-properties-opened.png",
@@ -1199,11 +1202,8 @@ def _drive_populator_form(
     state = {"done": False, "deadline": time.monotonic() + 60.0}
 
     def close_populator() -> None:
-        # The result queue can be notified just before the executor's done
-        # callback returns. Join that short-lived worker before destroying Tk,
-        # so callback/future cleanup cannot release Tk objects on the worker.
-        populator.executor.shutdown(wait=True, cancel_futures=True)
-        populator.image_executor.shutdown(wait=True, cancel_futures=True)
+        # ComponentPopulator.close joins both workers and clears Tk-owned state
+        # on the GUI thread before destroying the Tcl interpreter.
         populator.close()
 
     def advance() -> None:
@@ -1415,12 +1415,30 @@ def _drive_populator_form(
                 populator.messagebox.showerror = original_showerror
 
             validate_result(populator)
-            root.update()
-            _capture_window(root, output_dir / completed_asset)
+            if populator.create_mode:
+                if not populator.placement_completed or populator.placed_symbol is None:
+                    raise RuntimeError(
+                        "Add mode did not place and select the generated symbol."
+                    )
+                _capture_desktop(output_dir / completed_asset)
+            else:
+                root.update()
+                _capture_window(root, output_dir / completed_asset)
             state["done"] = True
             close_populator()
         except BaseException as exc:
-            failures.append(f"{type(exc).__name__}: {exc}")
+            diagnostic = ""
+            if populator.create_mode:
+                screenshot = output_dir / "add-component-placement-failure.png"
+                try:
+                    _capture_desktop(screenshot)
+                    diagnostic = f"; placement screenshot: {screenshot.name}"
+                except BaseException as capture_error:
+                    diagnostic = (
+                        "; chooser screenshot failed: "
+                        f"{type(capture_error).__name__}: {capture_error}"
+                    )
+            failures.append(f"{type(exc).__name__}: {exc}{diagnostic}")
             try:
                 close_populator()
             except Exception:
@@ -1545,6 +1563,31 @@ def _capture_passive_component_workflows(
     if not create_mode or add_target is not None or add_library_id:
         raise RuntimeError("An empty selection did not resolve to add mode.")
 
+    # Capture and focus Eeschema before opening the shared Tk review workspace.
+    editor_windows = _visible_windows("xdotool")
+    editor_window_id = next(
+        (
+            window_id
+            for window_id, title, window_class in editor_windows
+            if "eeschema" in window_class.casefold()
+            or "schematic editor" in title.casefold()
+        ),
+        None,
+    )
+    if editor_window_id is None:
+        raise RuntimeError("The live Add mode fixture could not find Eeschema.")
+    focused = subprocess.run(
+        ["xdotool", "windowfocus", "--sync", editor_window_id],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    if focused.returncode:
+        raise RuntimeError(
+            "The live Add mode fixture could not focus Eeschema: "
+            + (focused.stderr.strip() or str(focused.returncode))
+        )
     create = ComponentPopulator(
         schematic,
         None,
@@ -1553,40 +1596,71 @@ def _capture_passive_component_workflows(
         kicad=kicad,
         theme="light",
     )
-    create.root.geometry("1024x768+780+30")
-    create.placement_mode_var.set("coordinates")
+    create.root.geometry("1120x860+780+30")
     create.lcsc_var.set("C105637")
-    create.x_var.set("205.0")
-    create.y_var.set("160.0")
     create.lookup()
 
     def validate_create_result(populator: ComponentPopulator) -> None:
-        added = populator.symbol
+        generated = populator.generated_library_symbol
         if (
-            added is None
-            or added.reference != "R4"
-            or symbol_library_id(added) != "JLCPCB_Generated:R_C105637"
-            or added.value != "1k"
-            or added.footprint_field.text.value
-            != "Resistor_SMD:R_0402_1005Metric"
+            generated is None
+            or not populator.placement_completed
+            or populator.placed_symbol is None
+            or generated.library_id != "JLCPCB_Generated:R_C105637"
+            or generated.symbol_name != "R_C105637"
+            or not generated.library_path.is_file()
         ):
             raise RuntimeError(
-                "The confirmed add-component UI action did not place R4 linked to the "
-                "project-local generated LCSC symbol."
+                "The Add mode UI did not generate, place and select the "
+                "project-local symbol through schematic IPC."
             )
-        linked = next(
-            (item for item in find_linked_components(schematic) if item.reference == "R4"),
-            None,
-        )
-        if (
-            linked is None
-            or linked.part_code != "C105637"
-            or linked.value != "1k"
-            or linked.manufacturer_part_number != "RC0402JR-071KL"
-        ):
+
+        placed = populator.placed_symbol
+        expected_x, expected_y = schematic_page_center_mm(schematic)
+        position = getattr(placed, "position", None)
+        if position is None:
+            raise RuntimeError("The generated schematic symbol has no IPC position.")
+        actual_x = float(position.x) / 1_000_000
+        actual_y = float(position.y) / 1_000_000
+        if abs(actual_x - expected_x) > 0.02 or abs(actual_y - expected_y) > 0.02:
             raise RuntimeError(
-                "The add-component UI action did not persist the LCSC metadata in the "
-                "schematic hierarchy."
+                "The generated schematic symbol is not at the page center: "
+                f"expected=({expected_x}, {expected_y}) mm; "
+                f"actual=({actual_x}, {actual_y}) mm."
+            )
+
+        placed_id = str(
+            getattr(getattr(placed, "id", None), "value", None)
+            or getattr(placed, "id", "")
+        )
+        selected_ids = {
+            str(
+                getattr(getattr(item, "id", None), "value", None)
+                or getattr(item, "id", "")
+            )
+            for item in schematic.get_selection()
+        }
+        if not placed_id or placed_id not in selected_ids:
+            raise RuntimeError(
+                "Eeschema did not report the newly placed symbol as selected."
+            )
+        library_root = parse_sexpr(
+            generated.library_path.read_text(encoding="utf-8")
+        )
+        library_symbol_names = {
+            str(getattr(symbol[1], "value", ""))
+            for symbol in library_root
+            if (
+                isinstance(symbol, list)
+                and len(symbol) > 1
+                and getattr(symbol[0], "value", "") == "symbol"
+            )
+        }
+        if generated.symbol_name not in library_symbol_names:
+            raise RuntimeError(
+                "The generated project library does not contain the selected symbol: "
+                f"expected={generated.symbol_name!r}; "
+                f"found={sorted(library_symbol_names)!r}."
             )
 
     _drive_populator_form(
@@ -1596,11 +1670,9 @@ def _capture_passive_component_workflows(
         light_asset="add-component-light.png",
         dark_asset="add-component-dark.png",
         confirmation_asset="add-component-confirmation.png",
-        completed_asset="add-component-placed.png",
+        completed_asset="add-component-placed-selected.png",
         confirmation_title="Confirm new schematic component",
-        required_confirmation_text=(
-            "original KiCad symbol pin numbers, pin types, units and graphics are retained"
-        ),
+        required_confirmation_text="JLCPCB_Generated project library",
         expected_lcsc="C105637",
         expected_value="1k",
         expected_footprint="Resistor_SMD:R_0402_1005Metric",
@@ -1608,7 +1680,7 @@ def _capture_passive_component_workflows(
         require_image=True,
     )
     print(
-        "live-add-mode-ui=passed reference=R4 "
+        "live-add-mode-ui=passed placement=page-center-and-selected "
         "library_id=JLCPCB_Generated:R_C105637",
         flush=True,
     )

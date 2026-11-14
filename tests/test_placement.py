@@ -15,7 +15,9 @@ sys.path.insert(0, str(PLUGIN))
 from kicad_jlcpcb.draft import build_component_draft, symbol_library_id  # noqa: E402
 from kicad_jlcpcb.placement import (  # noqa: E402
     next_component_reference,
+    place_and_select_component_from_draft,
     place_component_from_draft,
+    schematic_page_center_mm,
 )
 from kicad_jlcpcb.provider import JlcPartDetails  # noqa: E402
 
@@ -128,6 +130,79 @@ class PlacementTests(unittest.TestCase):
 
     def tearDown(self):
         self.modules.stop()
+
+    def test_page_center_uses_page_dimensions_orientation_and_50mil_grid(self):
+        landscape = SimpleNamespace(page_size=2, orientation=1)
+        schematic = SimpleNamespace(get_page_settings=lambda: landscape)
+        self.assertEqual(schematic_page_center_mm(schematic), (148.59, 105.41))
+
+        portrait = SimpleNamespace(page_size=2, orientation=2)
+        schematic = SimpleNamespace(get_page_settings=lambda: portrait)
+        self.assertEqual(schematic_page_center_mm(schematic), (105.41, 148.59))
+
+    def test_page_center_supports_custom_page_dimensions(self):
+        custom = SimpleNamespace(
+            page_size=16,
+            orientation=1,
+            user_page_size=SimpleNamespace(x=300_000_000, y=200_000_000),
+        )
+        schematic = SimpleNamespace(get_page_settings=lambda: custom)
+        self.assertEqual(schematic_page_center_mm(schematic), (149.86, 100.33))
+
+    def test_page_center_rejects_unknown_page_size(self):
+        schematic = SimpleNamespace(
+            get_page_settings=lambda: SimpleNamespace(page_size=99, orientation=1)
+        )
+        with self.assertRaisesRegex(RuntimeError, "Unsupported KiCad schematic page-size"):
+            schematic_page_center_mm(schematic)
+
+    def test_places_generated_symbol_at_page_center_focuses_and_selects_it(self):
+        symbol = FakeSymbol("R3", library_id="JLCPCB_Generated:R_C60489")
+
+        class Target:
+            def __init__(self):
+                self.cleared = False
+                self.selected = []
+            def clear_selection(self):
+                self.cleared = True
+            def add_to_selection(self, items):
+                self.selected.extend(items)
+            def get_selection(self):
+                return self.selected
+
+        target = Target()
+        schematic = SimpleNamespace(
+            get_page_settings=lambda: SimpleNamespace(page_size=2, orientation=1)
+        )
+        draft = resistor_draft()
+        with (
+            patch(
+                "kicad_jlcpcb.placement.place_component_from_draft",
+                return_value=symbol,
+            ) as place,
+            patch(
+                "kicad_jlcpcb.placement.focus_schematic_items_in_editor",
+                return_value=target,
+            ) as focus,
+        ):
+            result = place_and_select_component_from_draft(
+                schematic,
+                draft,
+                library_id="JLCPCB_Generated:R_C60489",
+            )
+
+        self.assertIs(result, symbol)
+        place.assert_called_once_with(
+            schematic,
+            draft,
+            148.59,
+            105.41,
+            library_id="JLCPCB_Generated:R_C60489",
+            reference_prefix="R",
+        )
+        focus.assert_called_once_with(schematic, [symbol])
+        self.assertTrue(target.cleared)
+        self.assertEqual(target.selected, [symbol])
 
     def test_next_reference_uses_first_unused_number_across_symbols(self):
         schematic = FakeSchematic(("R1", "R2", "R5", "C1", "U1", "R2A"))

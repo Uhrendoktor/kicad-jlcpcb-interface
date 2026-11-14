@@ -57,7 +57,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends software-properties-common
           sudo add-apt-repository --yes ppa:kicad/kicad-dev-nightly
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends kicad-nightly python3.12-venv python3-tk python3-pil python3-pil.imagetk kicad-nightly-symbols xvfb xauth xdotool
+          sudo apt-get install -y --no-install-recommends kicad-nightly python3.12-venv python3-tk python3-pil python3-pil.imagetk kicad-nightly-symbols xvfb xauth xdotool x11-utils openbox
           CLI="$(command -v kicad-cli-nightly || command -v kicad-cli || true)"
           if [[ -z "$CLI" ]]; then
             echo "::error::KiCad CLI was not installed"
@@ -81,15 +81,37 @@ jobs:
           set -euo pipefail
           rm -rf "$OUTPUT_DIR"
           mkdir -p "$OUTPUT_DIR"
-          xvfb-run -a -s "-screen 0 1920x1500x24" \
-            "${RUNNER_TEMP}/kicad-visual-venv/bin/python" tests/capture_visual_docs.py --output-dir "$OUTPUT_DIR"
+          xvfb-run -a -s "-screen 0 1920x1500x24" bash -euo pipefail -c '
+            openbox --sm-disable >/tmp/kicad-openbox.log 2>&1 &
+            openbox_pid=$!
+            trap "kill $openbox_pid 2>/dev/null || true" EXIT
+            wm_ready=0
+            for attempt in $(seq 1 100); do
+              if xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -Fq "_NET_SUPPORTING_WM_CHECK(WINDOW)"; then
+                wm_ready=1
+                break
+              fi
+              if ! kill -0 "$openbox_pid" 2>/dev/null; then
+                break
+              fi
+              sleep 0.1
+            done
+            if [[ "$wm_ready" != 1 ]]; then
+              echo "::error::Openbox did not register as the X11 window manager"
+              cat /tmp/kicad-openbox.log >&2 || true
+              exit 1
+            fi
+            xprop -root _NET_SUPPORTING_WM_CHECK
+            "$RUNNER_TEMP/kicad-visual-venv/bin/python" tests/capture_visual_docs.py --output-dir "$OUTPUT_DIR"
+          '
 
       - name: Upload generated visual documentation bundle
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: kicad-jlcpcb-visual-docs
           path: ${{ runner.temp }}/kicad-jlcpcb-visual-docs
-          if-no-files-found: error
+          if-no-files-found: ignore
           compression-level: 1
 
   publish-visual-docs:
