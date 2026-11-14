@@ -1260,7 +1260,9 @@ def _drive_populator_form(
                 raise RuntimeError("The fixed component action is not visible.")
             scroll_region = populator.content_canvas.bbox("all")
             if not scroll_region or scroll_region[3] <= populator.content_canvas.winfo_height():
-                raise RuntimeError("The component workspace did not create a scrollable content area.")
+                raise RuntimeError(
+                    "The component workspace did not create a scrollable content area."
+                )
 
             _capture_window(root, output_dir / proposal_asset)
             _capture_window(root, output_dir / light_asset)

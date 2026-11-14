@@ -14,8 +14,6 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from .catalogue_widgets import build_product_preview, display_product_image
-from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
-
 from .cursor_placement import capture_eeschema_window_id, start_native_symbol_placement
 from .draft import (
     SUPPORTED_PLACEHOLDERS,
@@ -27,6 +25,7 @@ from .draft import (
     update_schematic_symbol,
 )
 from .library import generate_project_library_symbol, reload_project_symbol_library
+from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
 from .placement import place_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
@@ -136,7 +135,9 @@ class ComponentPopulator:
                 else "Enter the LCSC part number to load its catalogue record."
             )
         )
-        self.catalogue_status_var = tk.StringVar(value="Select a part to preview its catalogue data.")
+        self.catalogue_status_var = tk.StringVar(
+            value="Select a part to preview its catalogue data."
+        )
         self.catalogue_vars = {
             "description": tk.StringVar(value="Select a part to view its catalogue details."),
             "manufacturer": tk.StringVar(value="—"),
