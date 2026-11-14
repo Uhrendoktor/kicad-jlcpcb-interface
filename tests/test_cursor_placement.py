@@ -80,7 +80,7 @@ class CursorPlacementTests(unittest.TestCase):
 
     def test_starts_native_chooser_and_returns_with_symbol_on_cursor(self):
         runner = FakeRunner(
-            ["0x100", "0x200", "0x100"],
+            ["0x200", "0x100"],
             ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
         )
         pauses = []
@@ -95,23 +95,20 @@ class CursorPlacementTests(unittest.TestCase):
             command_runner=runner,
             pause=pause,
         )
-        editor_activate = ["xdotool", "windowactivate", "--sync", "0x100"]
+        editor_focus = ["xdotool", "windowfocus", "--sync", "0x100"]
         add_hotkey = ["xdotool", "key", "--clearmodifiers", "a"]
-        self.assertIn(editor_activate, runner.commands)
+        self.assertIn(editor_focus, runner.commands)
         self.assertLess(
-            runner.commands.index(editor_activate),
+            runner.commands.index(editor_focus),
             runner.commands.index(add_hotkey),
         )
         chooser_title_command = ["xdotool", "getwindowname", "0x200"]
-        activate_command = ["xdotool", "windowactivate", "--sync", "0x200"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "15", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         loaded_index = runner.commands.index(type_command)
         title_index = runner.commands.index(chooser_title_command)
-        activate_index = runner.commands.index(activate_command)
-        self.assertLess(activate_index, title_index)
         self.assertLess(title_index, loaded_index)
         self.assertGreaterEqual(
             sum(command == chooser_title_command for command in runner.commands[:loaded_index]),
@@ -122,12 +119,20 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertIn(0.6, pauses)
         self.assertNotIn(
+            ["xdotool", "windowactivate", "--sync", "0x200"],
+            runner.commands,
+        )
+        self.assertNotIn(
+            ["xdotool", "windowfocus", "--sync", "0x200"],
+            runner.commands,
+        )
+        self.assertNotIn(
             ["xdotool", "windowmove", "--sync", "0x200", "0", "0"],
             runner.commands,
         )
 
     def test_rejects_focus_return_to_a_different_eeschema_child_window(self):
-        runner = FakeRunner(["0x100", "0x200", "0x300"])
+        runner = FakeRunner(["0x200", "0x300"])
         with self.assertRaisesRegex(RuntimeError, "did not return focus to Eeschema"):
             start_native_symbol_placement(
                 "0x100",

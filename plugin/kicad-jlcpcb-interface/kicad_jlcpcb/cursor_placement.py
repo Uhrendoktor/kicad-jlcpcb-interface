@@ -77,29 +77,15 @@ def start_native_symbol_placement(
     editor_pid = send("getwindowpid", str(editor_window_id))
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
-    # Activate Eeschema through EWMH when a window manager is present. A bare
-    # SetInputFocus request (windowfocus) is not sufficient under Openbox when
-    # another top-level window such as the withdrawn Tk review dialog was
-    # recently active. Retain the no-WM fallback for standalone X11 sessions.
-    try:
-        send("windowactivate", "--sync", str(editor_window_id))
-    except subprocess.CalledProcessError:
-        send("windowraise", str(editor_window_id))
-        send("windowfocus", "--sync", str(editor_window_id))
+    # Match the proven KiCad Blocks flow: focus the Eeschema window directly
+    # and send the default Add Symbol hotkey. The visual runner intentionally
+    # uses bare Xvfb here; no window manager is needed for this X11 handoff.
+    send("windowfocus", "--sync", str(editor_window_id))
     pause(0.1)
-    active_id = send("getwindowfocus")
-    active_pid = send("getwindowpid", active_id) if active_id else ""
-    if active_pid != editor_pid:
-        active_title = send("getwindowname", active_id) if active_id else ""
-        raise RuntimeError(
-            "Could not activate the Eeschema window for cursor placement. "
-            f"Editor={editor_window_id!r}/{editor_pid!r}; "
-            f"focused={active_id!r}/{active_pid!r} ({active_title!r})."
-        )
     send("key", "--clearmodifiers", "a")
 
     chooser_id = ""
-    focused_id = active_id
+    focused_id = ""
     for _ in range(50):
         focused_id = send("getwindowfocus")
         if focused_id and focused_id != str(editor_window_id):
@@ -124,18 +110,12 @@ def start_native_symbol_placement(
             "then retry."
         )
 
-    # Activate the modal chooser through the window manager as soon as it
-    # appears. KiCad's first-paint handler then focuses its native wxSearchCtrl.
-    # Under a minimal Xvfb server there may be no WM, so retain windowfocus as
-    # a fallback for local/headless sessions.
-    try:
-        send("windowactivate", "--sync", chooser_id)
-    except subprocess.CalledProcessError:
-        send("windowraise", chooser_id)
-        send("windowfocus", "--sync", chooser_id)
-
-    # The chooser is ready for search after its catalog is indexed, reflected
-    # in the title's loaded-item count.
+    # Do not refocus or raise the modal frame after it appears. On first paint,
+    # SYMBOL_CHOOSER_FRAME calls ForceFocus(GetFocusTarget()), and the panel's
+    # focus target is the native Filter control. Refocusing the top-level frame
+    # here steals focus from that control and makes the subsequent type a no-op.
+    # Wait for the catalog index to finish without disturbing this first-paint
+    # focus, reflected in the title's loaded-item count.
     chooser_ready = False
     chooser_title = ""
     for _ in range(150):
