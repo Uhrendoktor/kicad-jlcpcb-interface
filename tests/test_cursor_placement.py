@@ -231,7 +231,7 @@ class CursorPlacementTests(unittest.TestCase):
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
         self, _which
     ):
-        runner = FakeRunner(["0x200", "0x100"])
+        runner = FakeRunner(["0x200", "0x200", "0x100"])
         kicad = FakeKiCad()
 
         start_native_symbol_placement(
@@ -294,14 +294,14 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        self.assertIn(
+        self.assertNotIn(
             ["xdotool", "windowactivate", "--sync", "0x200"], runner.commands
         )
         self.assertIn(["xdotool", "getactivewindow"], runner.commands)
         self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
-        self.assertIn(
+        self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
         )
         self.assertIn(
@@ -314,7 +314,7 @@ class CursorPlacementTests(unittest.TestCase):
 
     def test_uses_native_place_menu_when_add_hotkey_does_not_open_chooser(self):
         runner = FakeRunner(
-            ["0x100"] * 50 + ["0x200", "0x100"]
+            ["0x100"] * 50 + ["0x200", "0x200", "0x100"]
         )
         kicad = FakeKiCad(raises=True)
         start_native_symbol_placement(
@@ -331,7 +331,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        self.assertIn(
+        self.assertNotIn(
             ["xdotool", "windowactivate", "--sync", "0x200"], runner.commands
         )
         self.assertIn(["xdotool", "getactivewindow"], runner.commands)
@@ -341,7 +341,7 @@ class CursorPlacementTests(unittest.TestCase):
 
     def test_accepts_focus_return_to_another_eeschema_child_window(self):
         runner = FakeRunner(
-            ["0x200", "0x300"],
+            ["0x200", "0x200", "0x300"],
             {"0x300": "Symbol Editor Properties"},
         )
         start_native_symbol_placement(
