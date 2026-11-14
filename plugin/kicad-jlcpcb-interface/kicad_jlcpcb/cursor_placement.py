@@ -129,15 +129,37 @@ def start_native_symbol_placement(
             "KiCad's native symbol chooser did not finish loading its catalog "
             f"within 15 seconds: {chooser_title!r}."
         )
-    # Explicitly focus KiCad's native Filter search control. X11 focus
-    # queries report the chooser's top-level frame, not the wxSearchCtrl child;
-    # the first-paint ForceFocus alone did not receive synthetic key events in
-    # the Xvfb integration run. The Filter field is the first row of this
-    # stable native chooser layout.
-    send("mousemove", "--sync", "--window", chooser_id, "145", "15")
+    # The chooser is a docked pane in Eeschema, not a separate small dialog.
+    # Resolve its absolute X11 origin and click the native Filter control near
+    # the pane's upper-left corner. Xdotool's window-relative move was landing
+    # in the editor toolbar because the focused X window spans the editor.
+    geometry_text = send("getwindowgeometry", "--shell", chooser_id)
+    geometry: dict[str, int] = {}
+    for line in geometry_text.splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key in {"X", "Y", "WIDTH", "HEIGHT"}:
+            try:
+                geometry[key] = int(value)
+            except ValueError:
+                pass
+    if not all(key in geometry for key in ("X", "Y", "WIDTH", "HEIGHT")):
+        raise RuntimeError(
+            "Could not determine the Eeschema symbol chooser geometry for its "
+            f"Filter control: {geometry_text!r}."
+        )
+    filter_x = geometry["X"] + int(geometry["WIDTH"] * 0.23)
+    filter_y = geometry["Y"] + 15
+    send("mousemove", "--sync", str(filter_x), str(filter_y))
     send("click", "1")
     pause(0.1)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
+    if debug_capture:
+        print(
+            "chooser-input-target="
+            f"geometry={geometry!r} click=({filter_x},{filter_y}) "
+            f"mouse={send('getmouselocation', '--shell')!r}",
+            flush=True,
+        )
     send("type", "--clearmodifiers", "--delay", "15", symbol_name)
     if debug_capture:
         try:

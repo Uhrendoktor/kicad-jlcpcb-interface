@@ -109,11 +109,15 @@ class CursorPlacementTests(unittest.TestCase):
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         loaded_index = runner.commands.index(type_command)
         title_index = runner.commands.index(chooser_title_command)
-        filter_move = [
-            "xdotool", "mousemove", "--sync", "--window", "0x200", "145", "15"
+        geometry_command = [
+            "xdotool", "getwindowgeometry", "--shell", "0x200"
         ]
+        filter_move = ["xdotool", "mousemove", "--sync", "232", "375"]
         filter_click = ["xdotool", "click", "1"]
-        self.assertLess(title_index, runner.commands.index(filter_move))
+        self.assertLess(title_index, runner.commands.index(geometry_command))
+        self.assertLess(
+            runner.commands.index(geometry_command), runner.commands.index(filter_move)
+        )
         self.assertLess(
             runner.commands.index(filter_move), runner.commands.index(filter_click)
         )
