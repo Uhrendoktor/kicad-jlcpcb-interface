@@ -46,6 +46,8 @@ class FakeRunner:
         command = arguments[1]
         if command == "getwindowpid":
             return SimpleNamespace(stdout="4242", returncode=0)
+        if command == "getactivewindow":
+            return SimpleNamespace(stdout="0x200", returncode=0)
         if command == "windowactivate":
             self.active_window = arguments[-1]
             return SimpleNamespace(stdout="", returncode=0)
