@@ -104,7 +104,14 @@ def start_native_symbol_placement(
     # Use Eeschema's Add Symbol hotkey rather than the IPC action.
     # The hotkey opens the native chooser with its Filter field focused;
     # the IPC tool action opens the same dialog without that focus setup.
-    send("windowfocus", "--sync", str(editor_window_id))
+    try:
+        # Ask the window manager to activate Eeschema. windowfocus only changes
+        # X input focus and may leave Openbox's active-window state unchanged.
+        send("windowactivate", "--sync", str(editor_window_id))
+    except subprocess.SubprocessError:
+        # Bare Xvfb and minimal X11 sessions may not provide an EWMH window
+        # manager; retain the direct focus fallback for those environments.
+        send("windowfocus", "--sync", str(editor_window_id))
     pause(0.1)
     send("key", "--clearmodifiers", "a")
 

@@ -120,7 +120,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
         self.assertEqual(kicad.actions, [])
-        editor_focus = ["xdotool", "windowfocus", "--sync", "0x100"]
+        editor_activate = ["xdotool", "windowactivate", "--sync", "0x100"]
         add_symbol_hotkey = ["xdotool", "key", "--clearmodifiers", "a"]
         title_command = ["xdotool", "getwindowname", "0x200"]
         type_command = [
@@ -133,10 +133,10 @@ class CursorPlacementTests(unittest.TestCase):
             index for index, command in enumerate(runner.commands)
             if command == title_command
         ]
-        self.assertIn(editor_focus, runner.commands)
+        self.assertIn(editor_activate, runner.commands)
         self.assertIn(add_symbol_hotkey, runner.commands)
         self.assertLess(
-            runner.commands.index(editor_focus),
+            runner.commands.index(editor_activate),
             runner.commands.index(add_symbol_hotkey),
         )
         self.assertLess(runner.commands.index(add_symbol_hotkey), title_checks[0])
@@ -172,7 +172,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertEqual(kicad.actions, [])
         self.assertIn(
-            ["xdotool", "windowfocus", "--sync", "0x100"], runner.commands
+            ["xdotool", "windowactivate", "--sync", "0x100"], runner.commands
         )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
