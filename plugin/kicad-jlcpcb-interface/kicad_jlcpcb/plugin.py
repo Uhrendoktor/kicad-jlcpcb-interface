@@ -475,7 +475,7 @@ class ComponentBrowser:
                 justify="left",
             ).grid(row=row, column=1, sticky="ew", pady=3)
 
-remove duplicated source status        actions = ttk.Frame(content)
+        actions = ttk.Frame(content)
         actions.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         ttk.Button(
             actions, text="Select in schematic", command=self.select_selected,

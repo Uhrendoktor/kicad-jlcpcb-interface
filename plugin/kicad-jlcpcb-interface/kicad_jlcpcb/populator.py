@@ -136,20 +136,9 @@ class ComponentPopulator:
                 else "Enter the LCSC part number to load its catalogue record."
             )
         )
-        symbol_summary = (
-            "New project-local component · active sheet · placement in millimetres"
-            if self.create_mode
-            else (
-                f"Selected symbol: {reference}  ·  {self.library_id}  ·  "
-                f"Value: {getattr(symbol, 'value', '') or '—'}  ·  "
-                f"Footprint: {self._field_value(getattr(symbol, 'footprint_field', None)) or '—'}"
-            )
-        )
-        self.symbol_var = tk.StringVar(value=symbol_summary)
-        self.confidence_var = tk.StringVar(value="No proposal loaded.")
         self.catalogue_status_var = tk.StringVar(value="Select a part to preview its catalogue data.")
         self.catalogue_vars = {
-            "description": tk.StringVar(value="Search for a part to preview its catalogue record."),
+            "description": tk.StringVar(value="Select a part to view its catalogue details."),
             "manufacturer": tk.StringVar(value="—"),
             "mpn": tk.StringVar(value="—"),
             "lcsc": tk.StringVar(value="—"),
@@ -440,7 +429,7 @@ class ComponentPopulator:
         ).grid(row=0, column=0, sticky="w", pady=(0, 5))
         self.proposal_rows = ttk.Frame(proposal_section)
         self.proposal_rows.grid(row=1, column=0, sticky="ew")
-        self.proposal_rows.columnconfigure(1, weight=1)
+        self.proposal_rows.columnconfigure(0, weight=1)
         self._proposal_value_labels = []
         self.proposal_section = proposal_section
         proposal_section.grid_remove()
@@ -950,9 +939,6 @@ class ComponentPopulator:
                 "verify its freshness before applying."
             )
         self._set_notes(tuple(notes))
-        self.confidence_var.set(
-            f"{draft.kind.title()} · {draft.confidence.title()} confidence"
-        )
         can_apply = (
             compatible
             and bool(draft.proposed_fields)
@@ -1123,11 +1109,6 @@ class ComponentPopulator:
 
             self.symbol = created
             self.library_id = symbol_library_id(created)
-            self.symbol_var.set(
-                f"Added {created.reference} · {self.library_id} · "
-                f"Value: {created.value} · "
-                f"Footprint: {self._field_value(created.footprint_field)}"
-            )
             self.status_var.set(
                 f"Generated {generated.library_path.name}, loaded {generated.library_id}, "
                 f"and placed {created.reference} at X={x_position:g} mm, "
@@ -1175,11 +1156,6 @@ class ComponentPopulator:
                 parent=self.root,
             )
             return
-        self.symbol_var.set(
-            f"{reference} · {self.library_id} · "
-            f"Value: {getattr(self.symbol, 'value', '') or '—'} · "
-            f"Footprint: {self._field_value(getattr(self.symbol, 'footprint_field', None)) or '—'}"
-        )
         self.status_var.set(
             f"Updated and saved {reference}: {', '.join(changed)}. "
             "Review the part in KiCad before ordering."
@@ -1204,8 +1180,6 @@ class ComponentPopulator:
             "y_var",
             "placement_mode_var",
             "status_var",
-            "symbol_var",
-            "confidence_var",
             "symbol_hint_var",
             "value_var",
             "footprint_var",
