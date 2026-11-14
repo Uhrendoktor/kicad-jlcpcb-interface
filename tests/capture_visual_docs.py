@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import hashlib
 import json
 import os
@@ -1785,4 +1786,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # Tcl_AsyncDelete aborts do not produce a Python exception. Enable a
+    # process-wide thread dump so a wrong-thread finalizer can be traced to
+    # the executor or UI callback that still owns the Tcl reference.
+    faulthandler.enable()
     raise SystemExit(main())
