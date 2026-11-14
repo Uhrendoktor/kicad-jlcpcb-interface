@@ -226,7 +226,7 @@ def focus_symbol_chooser_search_at_point(
                 # PyAT-SPI's Registry wrapper returns None even though the
                 # underlying C API returns a boolean. Treat a non-raising call
                 # as dispatched; the visual fixture verifies the rendered UI.
-                generate_key_event(0, text, key_string)
+                generate_key_event(None, text, key_string)
                 time.sleep(0.1)
                 text_result = str(candidate.queryText().getText(0, -1))
                 candidate_details.append(
