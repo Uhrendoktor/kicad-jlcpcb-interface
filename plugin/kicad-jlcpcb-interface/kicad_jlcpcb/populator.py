@@ -579,7 +579,10 @@ class ComponentPopulator:
                     result = future.result()
                 except Exception as exc:
                     if mode == "image":
-                        if self.selected_details is not None and self.selected_details.lcsc == query:
+                        if (
+                            self.selected_details is not None
+                            and self.selected_details.lcsc == query
+                        ):
                             self._image_pending = False
                             self._show_product_image(None)
                             self.catalogue_status_var.set("Product image could not be loaded.")
@@ -807,6 +810,7 @@ class ComponentPopulator:
             return
         try:
             from io import BytesIO
+
             from PIL import Image, ImageTk
 
             with Image.open(BytesIO(image_data)) as source:
