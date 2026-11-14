@@ -7,11 +7,11 @@ import queue
 import shutil
 import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
-from urllib.parse import urlparse
-from urllib.request import Request, urlopen
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from .cursor_placement import capture_eeschema_window_id, start_native_symbol_placement
 from .draft import (
@@ -128,6 +128,7 @@ class ComponentPopulator:
         self._image_ref = None
         self._image_lcsc = ""
         self._image_pending = False
+        self._image_attempted = False
 
         current = component_from_symbol(symbol) if symbol is not None else None
         reference = str(getattr(symbol, "reference", "") or "selected symbol")
@@ -581,6 +582,7 @@ class ComponentPopulator:
                         if self.selected_details is not None and self.selected_details.lcsc == query:
                             self._image_pending = False
                             self._show_product_image(None)
+                            self.catalogue_status_var.set("Product image could not be loaded.")
                         continue
                     self.lookup_button.configure(state="normal")
                     self.status_var.set(f"Catalogue search failed: {exc}")
@@ -764,10 +766,11 @@ class ComponentPopulator:
 
     def _request_product_image(self, details: Any) -> None:
         if self._image_lcsc == details.lcsc and (
-            self._image_pending or self._image_ref is not None
+            self._image_pending or self._image_attempted
         ):
             return
         self._image_lcsc = details.lcsc
+        self._image_attempted = True
         self._image_ref = None
         self.image_label.configure(
             image="",
