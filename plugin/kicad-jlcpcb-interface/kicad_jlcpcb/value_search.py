@@ -122,7 +122,7 @@ def exact_passive_candidates(
     *,
     limit: int | None = None,
 ) -> list[tuple[JlcPartDetails, ComponentDraft]]:
-    """Filter exact-value SMD passives, rank Basic parts first, and optionally cap results."""
+    """Filter exact-value SMD passives, rank Basic first, and optionally limit results."""
     wanted_kind, wanted_value = parse_passive_value_query(query)
     matches: dict[str, tuple[JlcPartDetails, ComponentDraft]] = {}
     for details in results:
