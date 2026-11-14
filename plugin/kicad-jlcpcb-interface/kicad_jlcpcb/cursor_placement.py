@@ -47,7 +47,6 @@ def set_symbol_chooser_filter_accessibly(
     *,
     x: int | None = None,
     y: int | None = None,
-    clipboard_ready: bool = False,
     atspi_module=None,
 ) -> bool:
     """Set the text field directly under the native chooser filter point."""
@@ -158,55 +157,43 @@ def set_symbol_chooser_filter_accessibly(
         try:
             component = node.queryComponent()
             component.grabFocus()
-            editable = node.queryEditableText()
-            operations = []
-            if clipboard_ready:
-                pasted = editable.pasteText(0)
+            generate_keyboard_event = getattr(
+                atspi_module.Registry, "generateKeyboardEvent", None
+            )
+            if not callable(generate_keyboard_event):
+                hit_errors.append(
+                    f"{role!r}/{name!r}:AT-SPI keyboard synthesis unavailable"
+                )
+                continue
+
+            key_string = getattr(
+                atspi_module,
+                "KEY_STRING",
+                getattr(atspi_module, "ATSPI_KEY_STRING", 4),
+            )
+            generated = generate_keyboard_event(
+                None, symbol_name, int(key_string)
+            )
+            if generated is False:
+                hit_errors.append(
+                    f"{role!r}/{name!r}:AT-SPI rejected KEY_STRING"
+                )
+                continue
+
+            entered = ""
+            for _ in range(10):
                 entered = str(node.queryText().getText(0, -1))
-                operations.append(("pasteText", bool(pasted), entered))
                 if entered == symbol_name:
                     print(
-                        "chooser-atspi=point-target-pasted "
+                        "chooser-atspi=keyboard-string "
                         f"x={x} y={y} role={role!r} name={name!r} "
-                        f"interfaces={interfaces!r} extents={extents!r} "
-                        f"path={path_details!r}",
+                        f"extents={extents!r} path={path_details!r}",
                         flush=True,
                     )
                     return True
-
-            current = str(node.queryText().getText(0, -1))
-            if current:
-                deleted = editable.deleteText(0, len(current))
-                operations.append(("deleteText", bool(deleted), current))
-            inserted = editable.insertText(
-                0, symbol_name, len(symbol_name.encode("utf-8"))
-            )
-            entered = str(node.queryText().getText(0, -1))
-            operations.append(("insertText", bool(inserted), entered))
-            if entered == symbol_name:
-                print(
-                    "chooser-atspi=point-target-inserted "
-                    f"x={x} y={y} role={role!r} name={name!r} "
-                    f"interfaces={interfaces!r} extents={extents!r} "
-                    f"path={path_details!r}",
-                    flush=True,
-                )
-                return True
-
-            replaced = editable.setTextContents(symbol_name)
-            entered = str(node.queryText().getText(0, -1))
-            operations.append(("setTextContents", bool(replaced), entered))
-            if entered == symbol_name:
-                print(
-                    "chooser-atspi=point-target-set "
-                    f"x={x} y={y} role={role!r} name={name!r} "
-                    f"interfaces={interfaces!r} extents={extents!r} "
-                    f"path={path_details!r}",
-                    flush=True,
-                )
-                return True
+                time.sleep(0.05)
             hit_errors.append(
-                f"{role!r}/{name!r}:operations={operations!r}"
+                f"{role!r}/{name!r}:KEY_STRING text mismatch={entered!r}"
             )
         except Exception as exc:
             hit_errors.append(
@@ -221,69 +208,6 @@ def set_symbol_chooser_filter_accessibly(
         flush=True,
     )
     return False
-
-
-def type_symbol_name_with_wx_simulator(symbol_name: str, *, wx_module=None) -> bool:
-    """Type into the focused native chooser using wxWidgets' own event simulator."""
-    if wx_module is None:
-        try:
-            import wx as wx_module
-        except Exception as exc:
-            print(
-                f"chooser-wx-simulator=unavailable error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
-            return False
-
-    try:
-        simulator = wx_module.UIActionSimulator()
-        control_modifier = getattr(wx_module, "MOD_CONTROL", 2)
-        shift_modifier = getattr(wx_module, "MOD_SHIFT", 1)
-        # Select stale filter contents, then press individual keys through
-        # wxWidgets. The installed wxGTK binding exposes Text() as an integer
-        # key-code overload, so Char() is used for the full ASCII symbol id.
-        if not simulator.Char(ord("A"), control_modifier):
-            return False
-        sent = 0
-        text_api_sent = 0
-        for character in symbol_name:
-            try:
-                # wxPython 4.2's generated binding exposes Text as an integer
-                # code-point call despite the prose signature describing a
-                # string. Send one ASCII character at a time through that API.
-                text_sent = bool(simulator.Text(ord(character)))
-            except (TypeError, ValueError):
-                text_sent = False
-            if text_sent:
-                text_api_sent += 1
-            else:
-                if character == "_":
-                    keycode, modifiers = ord("-"), shift_modifier
-                elif character.isalpha() and character.isupper():
-                    keycode, modifiers = ord(character), shift_modifier
-                else:
-                    keycode, modifiers = ord(character), 0
-                if not simulator.Char(keycode, modifiers):
-                    print(
-                        "chooser-wx-simulator=key-failed "
-                        f"character={character!r} keycode={keycode} modifiers={modifiers}",
-                        flush=True,
-                    )
-                    return False
-            sent += 1
-        print(
-            f"chooser-wx-simulator=typed result=True chars={sent} "
-            f"text_api_chars={text_api_sent} symbol={symbol_name!r}",
-            flush=True,
-        )
-        return sent == len(symbol_name)
-    except Exception as exc:
-        print(
-            "chooser-wx-simulator=failed "
-            f"error={type(exc).__name__}: {exc}",
-            flush=True,
-        )
-        return False
 
 
 def start_native_symbol_placement(
@@ -517,45 +441,40 @@ def start_native_symbol_placement(
             except subprocess.SubprocessError:
                 continue
         print(f"chooser-x11-visible-windows={visible_windows!r}", flush=True)
-    # Populate the X11 CLIPBOARD and paste directly into the accessibility
-    # hit-test target. If AT-SPI paste is unavailable, send Ctrl+V to the focused
-    # field before falling back to XTest character events.
-    clipboard_ready = False
-    xclip = shutil.which("xclip")
-    if xclip:
-        try:
-            command_runner(
-                [xclip, "-selection", "clipboard", "-in"],
-                input=symbol_name,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                check=True,
-                timeout=5,
-            )
-            clipboard_ready = True
-        except (OSError, subprocess.SubprocessError) as exc:
-            print(
-                f"chooser-input=clipboard-unavailable error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
     filter_set_accessibly = set_symbol_chooser_filter_accessibly(
         symbol_name,
         x=filter_x,
         y=filter_y,
-        clipboard_ready=clipboard_ready,
     )
     if filter_set_accessibly:
-        print("chooser-input=atspi-focus", flush=True)
-    wx_typed = type_symbol_name_with_wx_simulator(symbol_name)
-    if wx_typed:
-        print("chooser-input=wx-simulator", flush=True)
-    elif clipboard_ready:
-        send("key", "--clearmodifiers", "ctrl+v")
-        print("chooser-input=ctrl-v", flush=True)
+        print("chooser-input=atspi-key-string", flush=True)
     else:
-        send("type", "--clearmodifiers", "--delay", "50", symbol_name)
-        print("chooser-input=xtest-type", flush=True)
+        clipboard_ready = False
+        xclip = shutil.which("xclip")
+        if xclip:
+            try:
+                command_runner(
+                    [xclip, "-selection", "clipboard", "-in"],
+                    input=symbol_name,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    check=True,
+                    timeout=5,
+                )
+                clipboard_ready = True
+            except (OSError, subprocess.SubprocessError) as exc:
+                print(
+                    f"chooser-input=clipboard-unavailable "
+                    f"error={type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+        if clipboard_ready:
+            send("key", "--clearmodifiers", "ctrl+v")
+            print("chooser-input=ctrl-v", flush=True)
+        else:
+            send("type", "--clearmodifiers", "--delay", "50", symbol_name)
+            print("chooser-input=xtest-type", flush=True)
     pause(0.5)
     if debug_capture:
         try:
