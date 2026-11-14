@@ -185,9 +185,13 @@ def start_native_symbol_placement(
         if "=" in item
         for key, value in [item.split("=", 1)]
     }
-    if pointer_values.get("WINDOW", "0") == "0":
+    # Some wxGTK/Xvfb chooser panels report WINDOW=0 even when the pointer
+    # is visibly inside their client area. The verified geometry and absolute
+    # pointer coordinates are reliable; do not reject this embedded panel on
+    # the XQueryPointer child-window field alone.
+    if int(pointer_values.get("X", "-1")) < 0 or int(pointer_values.get("Y", "-1")) < 0:
         raise RuntimeError(
-            "The pointer did not enter KiCad's native chooser Filter area: "
+            "Could not verify pointer coordinates for the native Filter field: "
             f"{pointer!r}; chooser={chooser_id!r}; geometry={geometry!r}."
         )
     send("click", "1")
