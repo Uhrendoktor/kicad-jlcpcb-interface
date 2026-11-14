@@ -112,7 +112,7 @@ class CursorPlacementTests(unittest.TestCase):
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
-        self.assertNotIn(chooser_focus, runner.commands)
+        self.assertIn(chooser_focus, runner.commands)
         self.assertIn(type_command, runner.commands)
         self.assertIn(return_command, runner.commands)
         self.assertIn(restore_pointer, runner.commands)
@@ -157,7 +157,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        self.assertNotIn(
+        self.assertIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
         self.assertIn(

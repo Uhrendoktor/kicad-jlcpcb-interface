@@ -201,12 +201,10 @@ def start_native_symbol_placement(
         )
 
     chooser_pid = focused_pid or editor_pid
-    # Follow KiCad Blocks' native chooser handoff: the chooser opens with
-    # its Search field focused, so focus the dialog directly, type the generated
-    # library symbol, and accept it. No screen-coordinate click is needed.
-    # wait_for_chooser() returns only after the native chooser itself owns
-    # X11 focus; avoid refocusing its top-level window and disturbing the
-    # Search control's internal child focus.
+    # Match KiCad Blocks' verified handoff: focus the native chooser window
+    # synchronously, then type into the chooser's already-focused Search field.
+    # No screen-coordinate click or direct-coordinate placement is involved.
+    send("windowfocus", "--sync", chooser_id)
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
 
