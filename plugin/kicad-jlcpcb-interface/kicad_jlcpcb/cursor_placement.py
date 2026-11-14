@@ -540,17 +540,22 @@ def start_native_symbol_placement(
     # generated symbol's lowercase library suffix directly into that control.
     # No automation-supplied symbol placement coordinates are used.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
-    if send_text_to_focused_search(filter_text):
-        print(
-            f"chooser-input=atspi-string text={filter_text!r}",
-            flush=True,
-        )
-    else:
-        send("type", "--clearmodifiers", "--delay", "35", filter_text)
-        print(
-            f"chooser-input=xtest-fallback text={filter_text!r}",
-            flush=True,
-        )
+    atspi_sent = send_text_to_focused_search(filter_text)
+    print(
+        f"chooser-input=atspi-string attempted={atspi_sent} text={filter_text!r}",
+        flush=True,
+    )
+    # The libatspi function can report dispatch success even when a given
+    # desktop's input-method bridge does not deliver the composed string to
+    # wxGTK. Replace any partial text and also send ordinary XTest keystrokes
+    # to the same focused Search control; this is safe whether AT-SPI worked
+    # or not because the native query is meant to equal filter_text exactly.
+    send("key", "--clearmodifiers", "ctrl+a")
+    send("type", "--clearmodifiers", "--delay", "35", filter_text)
+    print(
+        f"chooser-input=xtest-replacement text={filter_text!r}",
+        flush=True,
+    )
     pause(0.35)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
