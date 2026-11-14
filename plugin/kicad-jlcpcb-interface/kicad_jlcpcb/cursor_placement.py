@@ -749,27 +749,16 @@ def start_native_symbol_placement(
                     flush=True,
                 )
 
-        # If wxGTK exposes a distinct focused child XID, send XSendEvent
-        # directly to that child rather than the modal chooser frame. The frame
-        # XID is only a fallback for toolkits without a child input window.
-        if raw_focus and raw_focus != chooser_id:
-            send("key", "--window", raw_focus, "--clearmodifiers", "ctrl+a")
-            send(
-                "type", "--window", raw_focus,
-                "--clearmodifiers", "--delay", "35", filter_text,
-            )
-            print(
-                "chooser-input=xsend-focused-child "
-                f"window={raw_focus!r} text={filter_text!r}",
-                flush=True,
-            )
-        else:
-            send("key", "--clearmodifiers", "ctrl+a")
-            send("type", "--clearmodifiers", "--delay", "35", filter_text)
-            print(
-                f"chooser-input=xtest-fallback text={filter_text!r}",
-                flush=True,
-            )
+        # Focus the raw wxGTK child XID above, then send ordinary XTest
+        # keyboard events to the globally focused entry. xdotool --window
+        # switches to XSendEvent, which the KiCad Search editor ignores.
+        send("key", "--clearmodifiers", "ctrl+a")
+        send("type", "--clearmodifiers", "--delay", "50", filter_text)
+        print(
+            "chooser-input=xtest-focused-child "
+            f"window={raw_focus or chooser_id!r} text={filter_text!r}",
+            flush=True,
+        )
     pause(0.35)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
