@@ -1173,6 +1173,8 @@ class ComponentPopulator:
                 "symbol",
                 "messagebox",
                 "library_id",
+                "executor",
+                "image_executor",
             )
         }
         state.clear()
