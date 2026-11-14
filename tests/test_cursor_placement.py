@@ -123,6 +123,33 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
 
+    def test_accepts_return_to_another_eeschema_child_window(self):
+        class ChildWindowRunner(FakeRunner):
+            def __call__(self, arguments, **kwargs):
+                command = arguments[1]
+                if command == "getwindowfocus":
+                    value = self.outputs.pop(0) if self.outputs else "0x101"
+                    self.commands.append(arguments)
+                    return SimpleNamespace(stdout=value, returncode=0)
+                if command == "getwindowclassname":
+                    self.commands.append(arguments)
+                    return SimpleNamespace(stdout="eeschema", returncode=0)
+                if command == "getwindowname":
+                    self.commands.append(arguments)
+                    return SimpleNamespace(stdout="Schematic Editor", returncode=0)
+                return super().__call__(arguments, **kwargs)
+
+        runner = ChildWindowRunner(["0x200", "0x101"])
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            kicad=FakeKiCad(),
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+        self.assertIn(["xdotool", "getwindowclassname", "0x101"], runner.commands)
+
     def test_leaves_native_chooser_open_for_manual_choice_without_xdotool(self):
         kicad = FakeKiCad()
         with patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None):
