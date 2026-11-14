@@ -130,16 +130,16 @@ class CursorPlacementTests(unittest.TestCase):
         filter_move = ["xdotool", "mousemove", "--sync", "601", "439"]
         filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
         clipboard_command = [
-            "xclip", "-selection", "primary", "-in", "-loops", "10"
+            "xclip", "-selection", "clipboard", "-in", "-loops", "10"
         ]
-        paste_click = ["xdotool", "click", "2"]
+        paste_command = ["xdotool", "key", "--clearmodifiers", "ctrl+v"]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         self.assertIn(chooser_focus, runner.commands)
         self.assertIn(filter_move, runner.commands)
         self.assertIn(filter_click, runner.commands)
         self.assertIn(clipboard_command, runner.commands)
-        self.assertIn(paste_click, runner.commands)
+        self.assertIn(paste_command, runner.commands)
         self.assertIn(return_command, runner.commands)
         self.assertIn(restore_pointer, runner.commands)
         clipboard_index = runner.commands.index(clipboard_command)
@@ -147,8 +147,8 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_move))
         self.assertLess(runner.commands.index(filter_move), runner.commands.index(filter_click))
         self.assertLess(runner.commands.index(filter_click), clipboard_index)
-        self.assertLess(clipboard_index, runner.commands.index(paste_click))
-        self.assertLess(runner.commands.index(paste_click), runner.commands.index(return_command))
+        self.assertLess(clipboard_index, runner.commands.index(paste_command))
+        self.assertLess(runner.commands.index(paste_command), runner.commands.index(return_command))
         self.assertLess(
             runner.commands.index(return_command),
             runner.commands.index(restore_pointer),
