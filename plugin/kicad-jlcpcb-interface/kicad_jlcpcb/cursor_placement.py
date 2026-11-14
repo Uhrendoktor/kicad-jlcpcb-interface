@@ -219,51 +219,6 @@ def start_native_symbol_placement(
             except subprocess.SubprocessError:
                 continue
         print(f"chooser-x11-visible-windows={visible_windows!r}", flush=True)
-    # The chooser title is updated when the catalogue finishes loading, but
-    # its wxSearchCtrl does not reliably retain keyboard focus after the modal
-    # handoff in some X11 sessions. Click the actual Filter control, then put
-    # the pointer back where it was before the chooser opened. This only
-    # focuses the search field; KiCad still owns the symbol-placement cursor.
-    chooser_geometry = shell_geometry(
-        send("getwindowgeometry", "--shell", chooser_id)
-    )
-    try:
-        chooser_width = chooser_geometry["WIDTH"]
-        chooser_height = chooser_geometry["HEIGHT"]
-    except KeyError as exc:
-        raise RuntimeError("Could not locate the native symbol chooser Filter field.") from exc
-    # Use coordinates relative to the chooser client window. Absolute
-    # coordinates from getwindowgeometry include window-manager decoration
-    # offsets, which can place the click outside the modal dialog.
-    filter_x = min(100, max(40, chooser_width // 4))
-    filter_y = min(24, max(16, chooser_height // 28))
-    send(
-        "mousemove", "--sync", "--window", str(chooser_id),
-        str(filter_x), str(filter_y),
-    )
-    send("click", "--clearmodifiers", "--window", str(chooser_id), "1")
-    pause(0.1)
-    mouse_after_click = shell_geometry(send("getmouselocation", "--shell"))
-    if debug_capture:
-        try:
-            from PIL import ImageGrab
-
-            clicked_capture = debug_capture.replace(".png", "-clicked.png")
-            ImageGrab.grab().save(clicked_capture)
-            print(
-                f"chooser-search-debug=clicked geometry={chooser_geometry!r} "
-                f"target=({filter_x},{filter_y}) "
-                f"pointer={mouse_after_click!r} "
-                f"raw_focus={send('getwindowfocus', '-f')!r} "
-                f"screenshot={clicked_capture!r}",
-                flush=True,
-            )
-        except Exception as exc:
-            print(
-                f"chooser-search-debug=click-capture-failed "
-                f"error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
     if debug_capture:

@@ -161,10 +161,6 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertIn(0.1, pauses)
         self.assertIn(0.15, pauses)
-        self.assertFalse(
-            any(command[1] == "click" for command in runner.commands
-                if command != filter_click)
-        )
 
     def test_falls_back_to_add_hotkey_when_ipc_action_is_unavailable(self):
         runner = FakeRunner(["0x200", "0x100"])
@@ -186,8 +182,11 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        self.assertNotIn(
+        self.assertIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
+        )
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "Tab"], runner.commands
         )
         self.assertIn(
             [
