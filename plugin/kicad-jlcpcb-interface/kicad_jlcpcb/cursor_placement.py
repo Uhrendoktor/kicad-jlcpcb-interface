@@ -129,6 +129,56 @@ def start_native_symbol_placement(
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
 
+    def focus_drawing_canvas_and_send_hotkey() -> None:
+        """Focus a safe point in Eeschema's drawing canvas before pressing A."""
+        try:
+            send("windowactivate", "--sync", str(editor_window_id))
+        except subprocess.SubprocessError:
+            send("windowfocus", "--sync", str(editor_window_id))
+
+        geometry = shell_geometry(
+            send("getwindowgeometry", "--shell", str(editor_window_id))
+        )
+        try:
+            window_x = geometry["X"]
+            window_y = geometry["Y"]
+            window_width = geometry["WIDTH"]
+            window_height = geometry["HEIGHT"]
+        except KeyError as exc:
+            raise RuntimeError(
+                "Could not locate the Eeschema drawing canvas for Add Symbol."
+            ) from exc
+
+        # Keep clear of the left properties/hierarchy panels and the top toolbar.
+        local_x = min(max(window_width // 2, 300), max(40, window_width - 40))
+        local_y = min(max(window_height // 10, 90), max(40, window_height - 40))
+        target_x = window_x + local_x
+        target_y = window_y + local_y
+        send("mousemove", "--sync", str(target_x), str(target_y))
+        send("click", "--clearmodifiers", "1")
+        pause(0.1)
+
+        pointer = shell_geometry(send("getmouselocation", "--shell"))
+        pointer_window = pointer.get("WINDOW", 0)
+        pointer_pid = (
+            send("getwindowpid", f"0x{pointer_window:x}")
+            if pointer_window
+            else ""
+        )
+        print(
+            "cursor-placement-canvas-focus="
+            f"target=({target_x},{target_y}) window=0x{pointer_window:x} "
+            f"pid={pointer_pid!r} editor_pid={editor_pid!r}",
+            flush=True,
+        )
+        if pointer_pid != editor_pid:
+            raise RuntimeError(
+                "The Add Symbol focus click did not land in Eeschema's window: "
+                f"target=({target_x},{target_y}), pointer={pointer!r}, "
+                f"editor={editor_window_id!r}/{editor_pid!r}."
+            )
+        send("key", "--clearmodifiers", "a")
+
     def wait_for_chooser() -> tuple[str, str, str, str]:
         """Return the chooser XID and current focus details, if it opened."""
         current_id = ""
@@ -154,17 +204,13 @@ def start_native_symbol_placement(
 
     if not action_started:
         # Compatibility path for KiCad IPC builds without run_action.
-        send("windowfocus", "--sync", str(editor_window_id))
-        pause(0.1)
-        send("key", "--clearmodifiers", "a")
+        focus_drawing_canvas_and_send_hotkey()
 
     chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
     if not chooser_id and action_started:
         # Some KiCad builds expose run_action but do not activate the tool until
-        # Eeschema is the active X11 window. Fall back to the normal Add hotkey.
-        send("windowfocus", "--sync", str(editor_window_id))
-        pause(0.1)
-        send("key", "--clearmodifiers", "a")
+        # Eeschema's drawing canvas is active. Retry through the Add hotkey.
+        focus_drawing_canvas_and_send_hotkey()
         chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
 
     if not chooser_id:

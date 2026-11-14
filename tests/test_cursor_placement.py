@@ -157,7 +157,13 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertEqual(kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"])
         self.assertIn(
-            ["xdotool", "windowfocus", "--sync", "0x100"], runner.commands
+            ["xdotool", "windowactivate", "--sync", "0x100"], runner.commands
+        )
+        self.assertIn(
+            ["xdotool", "mousemove", "--sync", "490", "122"], runner.commands
+        )
+        self.assertIn(
+            ["xdotool", "click", "--clearmodifiers", "1"], runner.commands
         )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
