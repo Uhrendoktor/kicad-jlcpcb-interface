@@ -18,9 +18,8 @@ def download_product_image(
 ) -> bytes | None:
     """Try each supplier image URL until a safe, bounded image response is found.
 
-    JLCPCB sometimes exposes several renditions or expiring access URLs. Trying
-    all known candidates avoids treating one stale thumbnail URL as a missing
-    product photo. Redirects may not downgrade from HTTPS.
+    JLCPCB can expose multiple renditions and expiring access URLs. Trying every
+    candidate avoids treating one stale thumbnail as a missing product photo.
     """
     if isinstance(image_urls, str):
         candidates = (image_urls,)
@@ -32,23 +31,14 @@ def download_product_image(
     for candidate in candidates:
         url = str(candidate or "").strip()
         parsed = urlparse(url)
-        if (
-            url in seen
-            or parsed.scheme != "https"
-            or not parsed.hostname
-        ):
+        if url in seen or parsed.scheme != "https" or not parsed.hostname:
             continue
         seen.add(url)
-        # Supplier filenames sometimes contain Chinese text. Quote only the
-        # path while preserving existing percent escapes and the signed query.
+
+        # Supplier filenames sometimes contain non-ASCII text. Quote the path
+        # while preserving already-escaped octets and the signed query string.
         request_url = parsed._replace(
-            path=quote(
-                parsed.path,
-                safe="/%:@-._~!        request = Request(
-            url,
-            headers={
-'()*+,;=",
-            )
+            path=quote(parsed.path, safe="/%:@-._~!$&()*+,;=")
         ).geturl()
         request = Request(
             request_url,
@@ -61,7 +51,7 @@ def download_product_image(
         )
         try:
             with open_url(request, timeout=timeout) as response:
-                final_url = urlparse(str(response.geturl() or url))
+                final_url = urlparse(str(response.geturl() or request_url))
                 content_type = str(
                     response.headers.get("Content-Type", "")
                 ).casefold().split(";", 1)[0].strip()
