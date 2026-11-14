@@ -248,11 +248,20 @@ def start_native_symbol_placement(
                 f"chooser-input=primary-paste-failed {type(exc).__name__}: {exc}",
                 flush=True,
             )
-    if not primary_pasted:
-        for character in filter_text:
-            send("key", "--clearmodifiers", character)
-            pause(0.025)
-        print("chooser-input=xtest-keys", flush=True)
+    # Regardless of whether the paste request was handled, replace the
+    # field with a direct XTest key sequence. Ctrl+A makes this idempotent:
+    # successful paste text is replaced, while ignored paste leaves an empty
+    # field ready for the same character sequence.
+    send("key", "--clearmodifiers", "ctrl+a")
+    for character in filter_text:
+        send("key", "--clearmodifiers", character)
+        pause(0.04)
+    print(
+        "chooser-input=clipboard-ctrl-v-plus-xtest"
+        if primary_pasted
+        else "chooser-input=xtest-keys",
+        flush=True,
+    )
     pause(0.15)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
