@@ -139,11 +139,6 @@ def start_native_symbol_placement(
         focused_id = send("getwindowfocus")
         if focused_id == str(editor_window_id):
             return
-        focused_pid = send("getwindowpid", focused_id) if focused_id else ""
-        if focused_pid == editor_pid:
-            focused_title = send("getwindowname", focused_id).casefold()
-            if "choose symbol" not in focused_title and "select symbol" not in focused_title:
-                return
         pause(0.1)
 
     focused_id = send("getwindowfocus")
