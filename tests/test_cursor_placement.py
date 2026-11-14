@@ -164,13 +164,11 @@ class CursorPlacementTests(unittest.TestCase):
             def getDesktop(_index):
                 return desktop
 
-        class ATspi:
-            Registry = Registry
-            DESKTOP_COORDS = 0
+        atspi = SimpleNamespace(Registry=Registry, DESKTOP_COORDS=0)
 
         self.assertTrue(
             focus_symbol_chooser_search_at_point(
-                601, 439, atspi_module=ATspi
+                601, 439, atspi_module=atspi
             )
         )
         self.assertEqual(chooser.hit_test_calls, [(601, 439, 0)])
