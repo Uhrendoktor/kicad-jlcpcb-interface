@@ -376,6 +376,11 @@ def paste_search_text_via_context_menu(
             )
             return False
 
+    coord_type = getattr(
+        atspi_module,
+        "DESKTOP_COORDS",
+        getattr(atspi_module, "XY_SCREEN", 0),
+    )
     try:
         desktop = atspi_module.Registry.getDesktop(0)
     except Exception as exc:
