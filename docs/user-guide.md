@@ -156,7 +156,7 @@ The direct JLCPCB detail and MPN endpoints are undocumented website endpoints, n
 | Nothing selected | **Add** | Search the catalogue, review a suggested or manually selected KiCad symbol, then create and place a project-local copy. |
 | Multiple items or a non-symbol object | — | The action rejects the selection. Select one symbol to update it, or clear the selection to add a component. |
 
-The dialog title is the same in both cases. Its heading and controls adapt to the selection: update mode focuses on the selected symbol and catalogue fields; add mode also shows the symbol-library, reference-prefix and placement controls. Both contexts use the same proposal/review/confirmation pattern.
+Both contexts use the same window size and information hierarchy: catalogue search, a product preview card, a match list, editable KiCad details, proposed fields, review notes and one persistent action footer. The preview shows the supplier image when one is available, plus description, manufacturer, MPN, LCSC code, package, stock, indicative unit price, library class and source freshness. Product-page and datasheet links are enabled only when the catalogue provides HTTPS URLs. Add mode reveals the extra **Library:Symbol**, **Reference prefix** and **Placement** controls in the same layout; update mode keeps the selected symbol identity visible and retains its pin mapping.
 
 ### Shared review process
 
@@ -166,7 +166,7 @@ The dialog title is the same in both cases. Its heading and controls adapt to th
 4. Edit the suggested **Value** and **Footprint** as needed. In add mode, also review or edit **KiCad Library:Symbol** and **Reference prefix**. A suggested value is a proposal, not a verified electrical equivalence.
 5. Confirm the update or generation action. Nothing is written or placed before confirmation.
 
-The review controls are deliberately editable. An uncertain symbol or footprint is not silently treated as correct, and an optional footprint can be filled in later.
+The review controls are deliberately editable. An uncertain symbol or footprint is not silently treated as correct, and an optional footprint can be filled in later. Catalogue images load in the background; a missing or unavailable image uses an explicit placeholder and does not block the review workflow.
 
 ### Understand the inference confidence
 
