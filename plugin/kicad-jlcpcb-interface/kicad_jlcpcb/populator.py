@@ -781,6 +781,15 @@ class ComponentPopulator:
                 )
                 reload_project_symbol_library(self.kicad, generated)
                 self.generated_library_symbol = generated
+                # Release any modal Tk grab before handing input back to
+                # Eeschema. A withdrawn root must not retain a grab that can
+                # intercept X11 pointer or keyboard events for the native chooser.
+                try:
+                    current_grab = self.root.grab_current()
+                    if current_grab is not None:
+                        current_grab.grab_release()
+                except tk.TclError:
+                    pass
                 # Withdraw rather than iconify: Xvfb may have no window manager
                 # to honor the iconify hint, leaving this Tk window above the
                 # native modal chooser.

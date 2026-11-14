@@ -103,6 +103,7 @@ class CursorPlacementTests(unittest.TestCase):
             "xdotool", "mousemove", "--sync", "--window", "0x100", "180", "450"
         ]
         filter_click = ["xdotool", "click", "1"]
+        tab_to_filter = ["xdotool", "key", "--clearmodifiers", "shift+Tab"]
         clear_command = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "15", "R_C60489"
@@ -115,7 +116,8 @@ class CursorPlacementTests(unittest.TestCase):
         clear_index = runner.commands.index(clear_command)
         self.assertLess(title_index, move_index)
         self.assertLess(move_index, click_index)
-        self.assertLess(click_index, clear_index)
+        self.assertLess(click_index, runner.commands.index(tab_to_filter))
+        self.assertLess(runner.commands.index(tab_to_filter), clear_index)
         self.assertLess(clear_index, loaded_index)
         self.assertGreaterEqual(
             sum(command == chooser_title_command for command in runner.commands[:loaded_index]),

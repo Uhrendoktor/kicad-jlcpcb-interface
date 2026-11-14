@@ -130,7 +130,26 @@ def start_native_symbol_placement(
         "mousemove", "--sync", "--window", str(editor_window_id), "180", "450"
     )
     send("click", "1")
+    # The tree is now the active child. Shift+Tab follows wx tab order back
+    # to the preceding wxSearchCtrl in the chooser panel.
+    send("key", "--clearmodifiers", "shift+Tab")
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
+    if debug_capture:
+        try:
+            from PIL import ImageGrab
+
+            focused_capture = debug_capture.replace(".png", "-focused.png")
+            ImageGrab.grab().save(focused_capture)
+            print(
+                f"chooser-filter-focus-debug=focus={send('getwindowfocus')!r} "
+                f"screenshot={focused_capture!r}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"chooser-filter-focus-debug=failed error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
     send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "15", symbol_name)
     if debug_capture:
