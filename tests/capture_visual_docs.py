@@ -22,6 +22,7 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
+from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -34,7 +35,6 @@ from kicad_jlcpcb.library import (  # noqa: E402
     parse_sexpr,
     reload_project_symbol_library,
 )
-from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.media import download_product_image  # noqa: E402
 from kicad_jlcpcb.model import (  # noqa: E402
     find_linked_components,
