@@ -103,15 +103,33 @@ def start_native_symbol_placement(
 
     run_action = getattr(kicad, "run_action", None)
     action_started = False
+    action_detail = "KiCad IPC run_action is unavailable"
+    hotkey_attempted = False
     if callable(run_action):
         try:
-            # Invoke the native tool through IPC without changing Eeschema's
-            # active-window state; KiCad owns the modal chooser focus handoff.
-            run_action("eeschema.InteractiveDrawing.placeSymbol")
-            action_started = True
-        except Exception:
-            # Older KiCad IPC builds may not expose this action.
-            action_started = False
+            # RunAction returns a status enum. A non-raising response does not
+            # mean the editor accepted the action; only RAS_OK starts the tool.
+            action_response = run_action("eeschema.InteractiveDrawing.placeSymbol")
+            raw_status = getattr(action_response, "status", None)
+            if raw_status is None:
+                action_detail = (
+                    "KiCad IPC run_action returned no RunActionResponse.status"
+                )
+            else:
+                status_code = int(raw_status)
+                status_names = {
+                    0: "RAS_UNKNOWN",
+                    1: "RAS_OK",
+                    2: "RAS_INVALID",
+                    3: "RAS_FRAME_NOT_OPEN",
+                }
+                status_name = status_names.get(
+                    status_code, f"UNKNOWN_STATUS_{status_code}"
+                )
+                action_detail = f"{status_name} ({status_code})"
+                action_started = status_code == 1
+        except Exception as exc:
+            action_detail = f"KiCad IPC run_action raised {type(exc).__name__}: {exc}"
 
     if not action_started:
         # The compatibility hotkey needs Eeschema to be the active X11 window.
@@ -121,6 +139,7 @@ def start_native_symbol_placement(
             send("windowfocus", "--sync", str(editor_window_id))
         pause(0.1)
         send("key", "--clearmodifiers", "a")
+        hotkey_attempted = True
 
     def wait_for_chooser() -> tuple[str, str, str, str]:
         """Return the chooser XID and current focus details, if it opened."""
@@ -147,15 +166,15 @@ def start_native_symbol_placement(
 
     chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
     if not chooser_id and action_started:
-        # Some KiCad builds accept run_action but do not start the interactive
-        # tool unless the editor is the active X11 window. Retry through the
-        # standard Add Symbol hotkey rather than failing after a no-op IPC call.
+        # KiCad may acknowledge the IPC action before the modal chooser becomes
+        # the active X11 window. Retry through the standard Add Symbol hotkey.
         try:
             send("windowactivate", "--sync", str(editor_window_id))
         except subprocess.SubprocessError:
             send("windowfocus", "--sync", str(editor_window_id))
         pause(0.1)
         send("key", "--clearmodifiers", "a")
+        hotkey_attempted = True
         chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
 
     if not chooser_id:
@@ -164,12 +183,18 @@ def start_native_symbol_placement(
                 send("key", "--clearmodifiers", "Escape")
             except subprocess.SubprocessError:
                 pass
+        fallback_detail = (
+            "Add Symbol hotkey was attempted"
+            if hotkey_attempted
+            else "Add Symbol hotkey was not attempted"
+        )
         raise RuntimeError(
             "KiCad's native symbol chooser did not open. "
+            f"IPC Place Symbol result: {action_detail}; {fallback_detail}. "
             f"Editor={editor_window_id!r}/{editor_pid!r}; "
             f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
-            "Check Eeschema Preferences → Hotkeys and bind Add Symbol to A, "
-            "then retry."
+            "Check that the connected KiCad instance has Eeschema active and "
+            "that Add Symbol is available in its tool manager."
         )
 
     # Wait for KiCad to finish populating the library tree before sending
