@@ -1754,6 +1754,8 @@ def _capture_passive_component_workflows(
             raise
 
     populator_module.start_native_symbol_placement = capture_failed_native_handoff
+    chooser_debug_capture = output_dir / "add-component-chooser-after-filter.png"
+    os.environ["KICAD_CHOOSER_DEBUG_CAPTURE"] = str(chooser_debug_capture)
     try:
         _drive_populator_form(
             create,
@@ -1778,6 +1780,7 @@ def _capture_passive_component_workflows(
         )
     finally:
         populator_module.start_native_symbol_placement = original_native_handoff
+        os.environ.pop("KICAD_CHOOSER_DEBUG_CAPTURE", None)
     print(
         "live-add-mode-ui=passed "
         f"query=10k selected={create.selected_details.lcsc} "
