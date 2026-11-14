@@ -27,7 +27,7 @@ class FakeRunner:
         self.commands.append(arguments)
         command = arguments[1]
         if command == "getwindowpid":
-            pid = self.pointer_pid if arguments[-1] == "0x300" else "4242"
+            pid = self.pointer_pid if arguments[-1] in {"0x300", "768"} else "4242"
             return SimpleNamespace(stdout=pid, returncode=0)
         if command == "getwindowgeometry":
             if arguments[-1] == "0x100":
