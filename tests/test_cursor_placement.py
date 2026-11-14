@@ -124,16 +124,22 @@ class CursorPlacementTests(unittest.TestCase):
             kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
         )
         chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
+        filter_move = ["xdotool", "mousemove", "--sync", "110", "390"]
+        filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
         type_command = [
             "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         self.assertIn(chooser_focus, runner.commands)
+        self.assertIn(filter_move, runner.commands)
+        self.assertIn(filter_click, runner.commands)
         self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(type_command))
+        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_move))
+        self.assertLess(runner.commands.index(filter_move), runner.commands.index(filter_click))
+        self.assertLess(runner.commands.index(filter_click), runner.commands.index(type_command))
         self.assertLess(runner.commands.index(type_command), runner.commands.index(return_command))
         self.assertLess(
             runner.commands.index(return_command),

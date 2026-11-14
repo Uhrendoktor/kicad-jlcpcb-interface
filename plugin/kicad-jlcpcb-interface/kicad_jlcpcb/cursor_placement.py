@@ -241,9 +241,49 @@ def start_native_symbol_placement(
             f"within 15 seconds: {chooser_title!r}."
         )
 
-    # Match the working KiCad Blocks handoff: focus the native chooser, type
-    # into its default Filter control, then accept the matching library symbol.
+    # The chooser frame can be focused while its Filter child is not. Click
+    # inside the visible text entry using screen coordinates derived from the
+    # chooser's X11 geometry, then verify that the click landed within the dialog.
     send("windowfocus", "--sync", chooser_id)
+    chooser_geometry = shell_geometry(
+        send("getwindowgeometry", "--shell", chooser_id)
+    )
+    try:
+        chooser_x = chooser_geometry["X"]
+        chooser_y = chooser_geometry["Y"]
+        chooser_width = chooser_geometry["WIDTH"]
+        chooser_height = chooser_geometry["HEIGHT"]
+    except KeyError as exc:
+        raise RuntimeError(
+            "Could not locate the native symbol chooser Filter field."
+        ) from exc
+    filter_x = chooser_x + min(80, max(40, chooser_width // 8))
+    filter_y = chooser_y + min(30, max(22, chooser_height // 22))
+    send("mousemove", "--sync", str(filter_x), str(filter_y))
+    send("click", "--clearmodifiers", "1")
+    pause(0.1)
+    filter_pointer = shell_geometry(send("getmouselocation", "--shell"))
+    pointer_window = filter_pointer.get("WINDOW", 0)
+    pointer_x = filter_pointer.get("X", -1)
+    pointer_y = filter_pointer.get("Y", -1)
+    pointer_inside_chooser = (
+        pointer_window != 0
+        and chooser_x <= pointer_x < chooser_x + chooser_width
+        and chooser_y <= pointer_y < chooser_y + chooser_height
+    )
+    print(
+        "cursor-placement-filter-focus="
+        f"target=({filter_x},{filter_y}) window=0x{pointer_window:x} "
+        f"pointer=({pointer_x},{pointer_y}) "
+        f"chooser_bounds=({chooser_x},{chooser_y},{chooser_width},{chooser_height})",
+        flush=True,
+    )
+    if not pointer_inside_chooser:
+        raise RuntimeError(
+            "The Add Symbol Filter click did not land inside the native chooser: "
+            f"target=({filter_x},{filter_y}), pointer={filter_pointer!r}, "
+            f"chooser={chooser_geometry!r}."
+        )
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.15)
 
