@@ -140,6 +140,12 @@ def start_native_symbol_placement(
             current_title = send("getwindowname", current_id).casefold()
         return "", current_id, current_pid, current_title
 
+    if not action_started:
+        # Compatibility path for KiCad IPC builds without run_action.
+        send("windowfocus", "--sync", str(editor_window_id))
+        pause(0.1)
+        send("key", "--clearmodifiers", "a")
+
     chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
     if not chooser_id and action_started:
         # Some KiCad builds expose run_action but do not activate the tool until
@@ -148,19 +154,8 @@ def start_native_symbol_placement(
         pause(0.1)
         send("key", "--clearmodifiers", "a")
         chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
-    elif not chooser_id:
-        # Compatibility path for KiCad IPC builds without run_action.
-        send("windowfocus", "--sync", str(editor_window_id))
-        pause(0.1)
-        send("key", "--clearmodifiers", "a")
-        chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
 
     if not chooser_id:
-        if focused_pid == editor_pid:
-            try:
-                send("key", "--clearmodifiers", "Escape")
-            except subprocess.SubprocessError:
-                pass
         raise RuntimeError(
             "KiCad's native symbol chooser did not open. "
             f"Editor={editor_window_id!r}/{editor_pid!r}; "
