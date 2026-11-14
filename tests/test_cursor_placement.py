@@ -90,8 +90,19 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
         self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
+        )
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "BackSpace"], runner.commands
+        )
+        self.assertIn(
             [
-                "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
+                "xdotool",
+                "type",
+                "--clearmodifiers",
+                "--delay",
+                "12",
+                "R_C60489",
             ],
             runner.commands,
         )
