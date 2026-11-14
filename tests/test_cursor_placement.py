@@ -191,6 +191,38 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
 
+    def test_falls_back_to_add_hotkey_when_ipc_returns_without_opening_chooser(self):
+        runner = FakeRunner(
+            ["0x100"] * 50 + ["0x200", "0x100"]
+        )
+        kicad = FakeKiCad()
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            kicad=kicad,
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+        self.assertEqual(
+            kicad.actions, ["eeschema.InteractiveDrawing.placeSymbol"]
+        )
+        self.assertIn(
+            ["xdotool", "windowactivate", "--sync", "0x100"],
+            runner.commands,
+        )
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "a"],
+            runner.commands,
+        )
+        self.assertIn(
+            [
+                "xdotool", "type", "--clearmodifiers", "--delay", "12",
+                "R_C60489",
+            ],
+            runner.commands,
+        )
+
     def test_accepts_focus_return_to_another_eeschema_child_window(self):
         runner = FakeRunner(["0x200", "0x300"])
         start_native_symbol_placement(
