@@ -146,12 +146,32 @@ def start_native_symbol_placement(
             "and check that Add Symbol is available in Preferences → Hotkeys."
         )
 
-    # KiCad's chooser owns focus after opening; targeting it avoids sending the
-    # generated symbol name to the plugin window or another application.
+    # getwindowfocus can return a wx child control, whose geometry is not the
+    # whole chooser. Resolve the visible top-level frame by title and process.
+    chooser_windows = send(
+        "search", "--onlyvisible", "--name", "Choose Symbol", check=False
+    ).splitlines()
+    top_level_chooser = ""
+    for candidate in reversed(chooser_windows):
+        candidate = candidate.strip()
+        if not candidate:
+            continue
+        candidate_pid = send("getwindowpid", candidate, check=False)
+        candidate_title = send("getwindowname", candidate, check=False).casefold()
+        same_process = not chooser_pid or candidate_pid == chooser_pid
+        if same_process and "choose symbol" in candidate_title:
+            top_level_chooser = candidate
+            break
+    if not top_level_chooser:
+        raise RuntimeError(
+            "KiCad opened its symbol chooser, but its top-level window could not "
+            "be identified for automatic selection. Select the generated symbol manually."
+        )
+    chooser_id = top_level_chooser
+
+    # Focus the whole dialog, then click within its top-left search control.
     send("windowfocus", "--sync", chooser_id)
     pause(0.1)
-    # Focusing the top-level chooser does not always focus its search control
-    # on wxGTK. Click the search field explicitly before sending text.
     geometry = send("getwindowgeometry", "--shell", chooser_id)
     geometry_values = {
         key: value
