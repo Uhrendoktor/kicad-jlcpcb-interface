@@ -179,8 +179,16 @@ def _verify_x11_keyboard_input() -> None:
     entry.pack(fill="x", padx=14, pady=(0, 12))
     try:
         root.deiconify()
-        root.update()
-        root.wait_visibility()
+        visibility_deadline = time.monotonic() + 5.0
+        while not root.winfo_viewable() and time.monotonic() < visibility_deadline:
+            root.update()
+            time.sleep(0.05)
+        if not root.winfo_viewable():
+            raise RuntimeError(
+                "The X11 keyboard smoke-test window did not become visible "
+                "within five seconds."
+            )
+        print("x11-keyboard-smoke=window-visible", flush=True)
         entry.focus_force()
         root.update()
 
@@ -199,6 +207,10 @@ def _verify_x11_keyboard_input() -> None:
             capture_output=True,
             text=True,
             timeout=5,
+        )
+        print(
+            f"x11-keyboard-smoke=entry-clicked point=({x},{y})",
+            flush=True,
         )
         subprocess.run(
             [xdotool, "key", "--clearmodifiers", "ctrl+a"],
