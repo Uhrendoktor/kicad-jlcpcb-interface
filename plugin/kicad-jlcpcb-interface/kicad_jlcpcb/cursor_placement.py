@@ -47,6 +47,7 @@ def set_symbol_chooser_filter_accessibly(
     *,
     x: int | None = None,
     y: int | None = None,
+    clipboard_ready: bool = False,
     atspi_module=None,
 ) -> bool:
     """Set the text field directly under the native chooser filter point."""
@@ -158,8 +159,43 @@ def set_symbol_chooser_filter_accessibly(
             component = node.queryComponent()
             component.grabFocus()
             editable = node.queryEditableText()
-            editable.setTextContents(symbol_name)
+            operations = []
+            if clipboard_ready:
+                pasted = editable.pasteText(0)
+                entered = str(node.queryText().getText(0, -1))
+                operations.append(("pasteText", bool(pasted), entered))
+                if entered == symbol_name:
+                    print(
+                        "chooser-atspi=point-target-pasted "
+                        f"x={x} y={y} role={role!r} name={name!r} "
+                        f"interfaces={interfaces!r} extents={extents!r} "
+                        f"path={path_details!r}",
+                        flush=True,
+                    )
+                    return True
+
+            current = str(node.queryText().getText(0, -1))
+            if current:
+                deleted = editable.deleteText(0, len(current))
+                operations.append(("deleteText", bool(deleted), current))
+            inserted = editable.insertText(
+                0, symbol_name, len(symbol_name.encode("utf-8"))
+            )
             entered = str(node.queryText().getText(0, -1))
+            operations.append(("insertText", bool(inserted), entered))
+            if entered == symbol_name:
+                print(
+                    "chooser-atspi=point-target-inserted "
+                    f"x={x} y={y} role={role!r} name={name!r} "
+                    f"interfaces={interfaces!r} extents={extents!r} "
+                    f"path={path_details!r}",
+                    flush=True,
+                )
+                return True
+
+            replaced = editable.setTextContents(symbol_name)
+            entered = str(node.queryText().getText(0, -1))
+            operations.append(("setTextContents", bool(replaced), entered))
             if entered == symbol_name:
                 print(
                     "chooser-atspi=point-target-set "
@@ -169,6 +205,9 @@ def set_symbol_chooser_filter_accessibly(
                     flush=True,
                 )
                 return True
+            hit_errors.append(
+                f"{role!r}/{name!r}:operations={operations!r}"
+            )
         except Exception as exc:
             hit_errors.append(
                 f"{role!r}/{name!r}:{type(exc).__name__}:{exc}"
@@ -415,40 +454,42 @@ def start_native_symbol_placement(
             except subprocess.SubprocessError:
                 continue
         print(f"chooser-x11-visible-windows={visible_windows!r}", flush=True)
-    # Prefer AT-SPI hit-testing at the verified filter-field coordinates.
-    # Only use clipboard paste or XTest typing when the actual control cannot
-    # be identified or updated through the accessibility interface.
+    # Populate the X11 CLIPBOARD and paste directly into the accessibility
+    # hit-test target. If AT-SPI paste is unavailable, send Ctrl+V to the focused
+    # field before falling back to XTest character events.
+    clipboard_ready = False
+    xclip = shutil.which("xclip")
+    if xclip:
+        try:
+            command_runner(
+                [xclip, "-selection", "clipboard", "-in"],
+                input=symbol_name,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                check=True,
+                timeout=5,
+            )
+            clipboard_ready = True
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(
+                f"chooser-input=clipboard-unavailable error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
     filter_set_accessibly = set_symbol_chooser_filter_accessibly(
-        symbol_name, x=filter_x, y=filter_y
+        symbol_name,
+        x=filter_x,
+        y=filter_y,
+        clipboard_ready=clipboard_ready,
     )
     if filter_set_accessibly:
         print("chooser-input=atspi-filter", flush=True)
+    elif clipboard_ready:
+        send("key", "--clearmodifiers", "ctrl+v")
+        print("chooser-input=ctrl-v", flush=True)
     else:
-        primary_pasted = False
-        xclip = shutil.which("xclip")
-        if xclip:
-            try:
-                command_runner(
-                    [xclip, "-selection", "primary", "-in"],
-                    input=symbol_name,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    text=True,
-                    check=True,
-                    timeout=5,
-                )
-                send("click", "2")
-                primary_pasted = True
-                print("chooser-input=primary-selection-paste", flush=True)
-            except (OSError, subprocess.SubprocessError) as exc:
-                print(
-                    "chooser-input=primary-paste-failed "
-                    f"error={type(exc).__name__}: {exc}",
-                    flush=True,
-                )
-        if not primary_pasted:
-            send("type", "--clearmodifiers", "--delay", "50", symbol_name)
-            print("chooser-input=xtest-type", flush=True)
+        send("type", "--clearmodifiers", "--delay", "50", symbol_name)
+        print("chooser-input=xtest-type", flush=True)
     pause(0.5)
     if debug_capture:
         try:

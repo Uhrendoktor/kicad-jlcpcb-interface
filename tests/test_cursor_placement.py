@@ -73,6 +73,9 @@ class FakeAccessible:
         self.point_target = None
         self.hit_test_calls = []
         self.extents = (0, 0, 0, 0)
+        self.clipboard_text = ""
+        self.paste_calls = []
+        self.insert_calls = []
 
     @property
     def childCount(self):
@@ -106,6 +109,20 @@ class FakeAccessible:
 
     def setTextContents(self, text):
         self.text = text
+        return True
+
+    def pasteText(self, position):
+        self.paste_calls.append(position)
+        self.text = self.clipboard_text
+        return True
+
+    def insertText(self, position, text, length):
+        self.insert_calls.append((position, text, length))
+        self.text = self.text[:position] + text[:length]
+        return True
+
+    def deleteText(self, start, end):
+        self.text = self.text[:start] + self.text[end:]
         return True
 
     def queryText(self):
@@ -162,7 +179,8 @@ class CursorPlacementTests(unittest.TestCase):
             role="text",
             interfaces=["Accessible", "Component", "Text", "EditableText"],
         )
-        search_entry.extents = (521, 445, 300, 24)
+        search_entry.extents = (525, 424, 398, 34)
+        search_entry.clipboard_text = "R_C60489"
         chooser = FakeAccessible(
             name="Choose Symbol (22936 items loaded)",
             role="dialog",
@@ -183,10 +201,15 @@ class CursorPlacementTests(unittest.TestCase):
 
         self.assertTrue(
             set_symbol_chooser_filter_accessibly(
-                "R_C60489", x=611, y=445, atspi_module=FakeATspi
+                "R_C60489",
+                x=611,
+                y=445,
+                clipboard_ready=True,
+                atspi_module=FakeATspi,
             )
         )
         self.assertEqual(search_entry.hit_test_calls, [(611, 445, 0)])
+        self.assertEqual(search_entry.paste_calls, [0])
         self.assertEqual(search_entry.text, "R_C60489")
         self.assertTrue(search_entry.focused)
 
@@ -203,6 +226,32 @@ class CursorPlacementTests(unittest.TestCase):
             set_symbol_chooser_filter_accessibly(
                 "R_C60489", x=611, y=445, atspi_module=FakeATspi
             )
+        )
+
+    @patch(
+        "kicad_jlcpcb.cursor_placement.set_symbol_chooser_filter_accessibly",
+        return_value=False,
+    )
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
+    def test_falls_back_to_clipboard_shortcut_when_atspi_cannot_edit_target(
+        self, _which, set_filter
+    ):
+        runner = FakeRunner(["0x200", "0x100"])
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+        self.assertIn(
+            ["xclip", "-selection", "clipboard", "-in"], runner.commands
+        )
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "ctrl+v"], runner.commands
+        )
+        set_filter.assert_called_once_with(
+            "R_C60489", x=120, y=366, clipboard_ready=True
         )
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
@@ -366,10 +415,14 @@ class CursorPlacementTests(unittest.TestCase):
             pause=lambda _seconds: None,
         )
 
-        xclip_command = ["xclip", "-selection", "primary", "-in"]
+        xclip_command = ["xclip", "-selection", "clipboard", "-in"]
         middle_click = ["xdotool", "click", "2"]
         self.assertIn(xclip_command, runner.commands)
         self.assertIn(middle_click, runner.commands)
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
+            runner.commands,
+        )
         self.assertNotIn(
             ["xdotool", "type", "--clearmodifiers", "--delay", "50", "R_C60489"],
             runner.commands,
