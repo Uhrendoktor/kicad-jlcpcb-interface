@@ -36,9 +36,7 @@ def capture_eeschema_window_id(
     if focused:
         candidates.append(focused)
 
-    if not candidates or not _is_eeschema_window(
-        executable, candidates[0], read
-    ):
+    if not candidates or not _is_eeschema_window(candidates[0], read):
         for arguments in (
             ("search", "--onlyvisible", "--class", "eeschema"),
             ("search", "--onlyvisible", "--name", "[Ss]chematic [Ee]ditor"),
@@ -54,7 +52,7 @@ def capture_eeschema_window_id(
         if window_id in seen:
             continue
         seen.add(window_id)
-        if not _is_eeschema_window(executable, window_id, read):
+        if not _is_eeschema_window(window_id, read):
             continue
         if read("getwindowpid", window_id) == plugin_pid:
             # Plugin Tk windows share KiCad's WM_CLASS for taskbar grouping.
@@ -64,12 +62,10 @@ def capture_eeschema_window_id(
 
 
 def _is_eeschema_window(
-    executable: str,
     window_id: str,
-    read: Callable[[str, ...], str],
+    read: Callable[..., str],
 ) -> bool:
     """Identify the actual editor rather than a plugin-owned Tk window."""
-    del executable
     window_class = read("getwindowclassname", window_id).casefold()
     window_title = read("getwindowname", window_id).casefold()
     if "eeschema" not in window_class and "schematic editor" not in window_title:
