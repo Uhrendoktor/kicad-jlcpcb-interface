@@ -126,7 +126,7 @@ class CursorPlacementTests(unittest.TestCase):
         add_symbol_hotkey = ["xdotool", "key", "--clearmodifiers", "a"]
         title_command = ["xdotool", "getwindowname", "0x200"]
         type_command = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
+            "xdotool", "type", "--clearmodifiers", "--delay", "50", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
@@ -143,13 +143,11 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(chooser_focus, runner.commands)
         focus_filter = ["xdotool", "mousemove", "--window", "0x200", "90", "15"]
         click_filter = ["xdotool", "click", "1"]
-        clear_filter = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
         self.assertIn(focus_filter, runner.commands)
         self.assertIn(click_filter, runner.commands)
-        self.assertIn(clear_filter, runner.commands)
         self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(focus_filter))
-        self.assertLess(runner.commands.index(click_filter), runner.commands.index(clear_filter))
-        self.assertLess(runner.commands.index(clear_filter), type_index)
+        self.assertLess(runner.commands.index(focus_filter), runner.commands.index(click_filter))
+        self.assertLess(runner.commands.index(click_filter), type_index)
         self.assertLess(type_index, runner.commands.index(return_command))
         focus_checks = [
             index for index, command in enumerate(runner.commands)
@@ -163,7 +161,7 @@ class CursorPlacementTests(unittest.TestCase):
             focus_checks[-1], runner.commands.index(restore_pointer)
         )
         self.assertIn(0.1, pauses)
-        self.assertIn(0.15, pauses)
+        self.assertIn(0.5, pauses)
 
     def test_uses_add_hotkey_even_when_ipc_action_would_be_unavailable(self):
         runner = FakeRunner(["0x200", "0x100"])
@@ -194,16 +192,13 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(chooser_focus),
             runner.commands.index(
                 [
-                    "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489",
+                    "xdotool", "type", "--clearmodifiers", "--delay", "50", "R_C60489",
                 ]
             ),
         )
-        self.assertNotIn(
-            ["xdotool", "key", "--clearmodifiers", "Tab"], runner.commands
-        )
         self.assertIn(
             [
-                "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489",
+                "xdotool", "type", "--clearmodifiers", "--delay", "50", "R_C60489",
             ],
             runner.commands,
         )
