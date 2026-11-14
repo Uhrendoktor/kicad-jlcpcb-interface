@@ -420,11 +420,6 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(return_command),
             runner.commands.index(restore_pointer),
         )
-    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
-    @patch(
-        "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
-        return_value=False,
-    )
     @patch(
         "kicad_jlcpcb.cursor_placement.paste_search_text_via_context_menu",
         return_value=False,
@@ -453,6 +448,11 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "windowfocus", "--sync", "0x201"], runner.commands
         )
 
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
+    @patch(
+        "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
+        return_value=False,
+    )
     def test_uses_add_hotkey_when_ipc_action_is_unavailable(
         self, _focus_search, _which
     ):
