@@ -11,7 +11,10 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import urlopen
+
+from .catalogue_widgets import build_product_preview, display_product_image
+from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 
 from .cursor_placement import capture_eeschema_window_id, start_native_symbol_placement
 from .draft import (
@@ -37,31 +40,12 @@ from .value_search import (
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 
 
-MAX_CATALOGUE_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_CATALOGUE_IMAGE_BYTES = MAX_PRODUCT_IMAGE_BYTES
 
 
-def _download_catalogue_image(url: str) -> bytes | None:
-    """Fetch a bounded HTTPS catalogue image without blocking the Tk event loop."""
-    parsed = urlparse(str(url or ""))
-    if parsed.scheme != "https" or not parsed.hostname:
-        return None
-    request = Request(
-        url,
-        headers={
-            "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8",
-            "User-Agent": "KiCad-JLCPCB-Interface/0.1",
-        },
-    )
-    try:
-        with urlopen(request, timeout=7.0) as response:
-            final_url = urlparse(str(response.geturl() or url))
-            content_type = str(response.headers.get("Content-Type", "")).casefold()
-            if final_url.scheme != "https" or not content_type.startswith("image/"):
-                return None
-            data = response.read(MAX_CATALOGUE_IMAGE_BYTES + 1)
-            return data if len(data) <= MAX_CATALOGUE_IMAGE_BYTES else None
-    except Exception:
-        return None
+def _download_catalogue_image(url: str | tuple[str, ...]) -> bytes | None:
+    """Backward-compatible wrapper around the shared multi-URL image loader."""
+    return download_product_image(url, opener=urlopen)
 
 
 class ComponentPopulator:
@@ -178,297 +162,298 @@ class ComponentPopulator:
         self._product_url = ""
         self._datasheet_url = ""
 
-        outer = ttk.Frame(self.root, padding=16)
-        outer.pack(fill="both", expand=True)
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        outer = ttk.Frame(self.root, padding=(16, 12))
+        outer.grid(row=0, column=0, sticky="nsew")
+        outer.columnconfigure(0, weight=1)
+        outer.rowconfigure(2, weight=1)
 
         header = ttk.Frame(outer)
-        header.pack(fill="x", pady=(0, 8))
-        ttk.Label(header, text="Add or update a component", style="Title.TLabel").pack(
-            anchor="w"
-        )
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         ttk.Label(
             header,
             text=(
-                "Find a JLCPCB part, inspect its photo and catalogue data, then review the "
-                "KiCad changes before applying or placing anything."
+                "Add component" if self.create_mode
+                else f"Update component · {reference}"
             ),
-            style="Subtitle.TLabel",
-            wraplength=1080,
-        ).pack(anchor="w", pady=(3, 4))
-        ttk.Label(
-            header, textvariable=self.symbol_var, style="Muted.TLabel", wraplength=1080
+            style="Title.TLabel",
         ).pack(anchor="w")
-
-        search_frame = ttk.LabelFrame(outer, text="FIND A CATALOGUE PART", padding=(10, 8))
-        search_frame.pack(fill="x", pady=(0, 9))
-        search_frame.columnconfigure(1, weight=1)
         ttk.Label(
-            search_frame,
-            text="LCSC / MPN / keyword / value" if self.create_mode else "LCSC part number",
-        ).grid(row=0, column=0, sticky="w", padx=(0, 10))
-        self.lcsc_entry = ttk.Entry(search_frame, textvariable=self.lcsc_var)
+            header,
+            text=(
+                "New project-local symbol"
+                if self.create_mode
+                else f"{self.library_id or 'Selected symbol'}"
+            ),
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(2, 0))
+
+        search = ttk.Frame(outer)
+        search.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        search.columnconfigure(1, weight=1)
+        ttk.Label(
+            search,
+            text="Search parts",
+            style="Section.TLabel",
+        ).grid(row=0, column=0, sticky="w", padx=(0, 12))
+        self.lcsc_entry = ttk.Entry(search, textvariable=self.lcsc_var)
         self.lcsc_entry.grid(row=0, column=1, sticky="ew", padx=(0, 10))
         self.lcsc_entry.bind("<Return>", lambda _event: self.lookup())
         self.lookup_button = ttk.Button(
-            search_frame, text="Search catalogue", command=self.lookup, style="Primary.TButton"
+            search,
+            text="Search",
+            command=self.lookup,
+            style="Primary.TButton",
         )
         self.lookup_button.grid(row=0, column=2, sticky="e")
 
-        preview = ttk.Frame(outer, style="Card.TFrame", padding=10)
-        preview.pack(fill="x", pady=(0, 10))
-        preview.columnconfigure(1, weight=1)
-        visual = ttk.Frame(preview, style="Card.TFrame", padding=(0, 0, 12, 0))
-        visual.grid(row=0, column=0, sticky="ns")
-        self.image_label = ttk.Label(
-            visual,
-            text="Product image\nnot loaded",
-            anchor="center",
-            justify="center",
-            width=25,
-            padding=8,
-            style="Card.TLabel",
+        scroll_shell = ttk.Frame(outer)
+        scroll_shell.grid(row=2, column=0, sticky="nsew")
+        scroll_shell.columnconfigure(0, weight=1)
+        scroll_shell.rowconfigure(0, weight=1)
+        self.content_canvas = tk.Canvas(
+            scroll_shell,
+            background=self.palette["background"],
+            highlightthickness=0,
+            borderwidth=0,
         )
-        self.image_label.pack(fill="both", expand=True)
-        catalogue_panel = ttk.Frame(preview, style="Card.TFrame")
-        catalogue_panel.grid(row=0, column=1, sticky="nsew")
-        catalogue_panel.columnconfigure(0, weight=1)
-        ttk.Label(
-            catalogue_panel,
-            textvariable=self.catalogue_vars["description"],
-            style="CardTitle.TLabel",
-            wraplength=800,
-            justify="left",
-        ).grid(row=0, column=0, sticky="w")
-        ttk.Label(
-            catalogue_panel,
-            textvariable=self.catalogue_vars["manufacturer"],
-            style="Card.TLabel",
-            wraplength=800,
-        ).grid(row=1, column=0, sticky="w", pady=(2, 0))
-        ttk.Label(
-            catalogue_panel,
-            textvariable=self.catalogue_vars["mpn"],
-            style="CardMeta.TLabel",
-            wraplength=800,
-        ).grid(row=2, column=0, sticky="w", pady=(1, 7))
-
-        metrics = ttk.Frame(catalogue_panel, style="Card.TFrame")
-        metrics.grid(row=3, column=0, sticky="ew")
-        for column in range(5):
-            metrics.columnconfigure(column, weight=1, uniform="catalogue-metric")
-        for column, (label, key) in enumerate((
-            ("LCSC PART", "lcsc"),
-            ("PACKAGE", "package"),
-            ("STOCK", "stock"),
-            ("UNIT PRICE", "price"),
-            ("LIBRARY", "library"),
-        )):
-            metric = ttk.Frame(metrics, style="Card.TFrame", padding=(0, 2, 10, 2))
-            metric.grid(row=0, column=column, sticky="ew")
-            ttk.Label(metric, text=label, style="MetricLabel.TLabel").pack(anchor="w")
-            ttk.Label(
-                metric,
-                textvariable=self.catalogue_vars[key],
-                style="MetricValue.TLabel",
-                wraplength=145,
-            ).pack(anchor="w", pady=(2, 0))
-        link_row = ttk.Frame(catalogue_panel, style="Card.TFrame")
-        link_row.grid(row=4, column=0, sticky="ew", pady=(7, 0))
-        self.product_button = ttk.Button(
-            link_row, text="Open JLCPCB product", command=self.open_product_page, state="disabled"
+        self.content_canvas.grid(row=0, column=0, sticky="nsew")
+        content_scroll = ttk.Scrollbar(
+            scroll_shell,
+            orient="vertical",
+            command=self.content_canvas.yview,
         )
-        self.product_button.pack(side="left", padx=(0, 6))
-        self.datasheet_button = ttk.Button(
-            link_row, text="Open datasheet", command=self.open_datasheet, state="disabled"
+        content_scroll.grid(row=0, column=1, sticky="ns")
+        self.content_canvas.configure(yscrollcommand=content_scroll.set)
+        content = ttk.Frame(self.content_canvas, padding=(0, 0, 8, 12))
+        content.columnconfigure(0, weight=1)
+        content_window = self.content_canvas.create_window(
+            (0, 0), window=content, anchor="nw"
         )
-        self.datasheet_button.pack(side="left")
-        ttk.Label(
-            catalogue_panel,
-            textvariable=self.catalogue_vars["source"],
-            style="CardMeta.TLabel",
-            wraplength=820,
-        ).grid(row=5, column=0, sticky="w", pady=(6, 0))
-        ttk.Label(
-            catalogue_panel,
-            textvariable=self.catalogue_status_var,
-            style="CardMeta.TLabel",
-            wraplength=820,
-        ).grid(row=6, column=0, sticky="w", pady=(2, 0))
+        content.bind(
+            "<Configure>",
+            lambda _event: self.content_canvas.configure(
+                scrollregion=self.content_canvas.bbox("all")
+            ),
+        )
+        self.content_canvas.bind(
+            "<Configure>",
+            lambda event: self.content_canvas.itemconfigure(
+                content_window, width=event.width
+            ),
+        )
 
-        workspace = ttk.Panedwindow(outer, orient="horizontal")
-        workspace.pack(fill="both", expand=True, pady=(0, 9))
-        left = ttk.Frame(workspace, padding=(0, 0, 8, 0))
-        right = ttk.Frame(workspace, padding=(8, 0, 0, 0))
-        workspace.add(left, weight=5)
-        workspace.add(right, weight=6)
-        left.columnconfigure(0, weight=1)
+        def scroll_content(event) -> None:
+            if getattr(event, "num", None) == 4:
+                self.content_canvas.yview_scroll(-1, "units")
+            elif getattr(event, "num", None) == 5:
+                self.content_canvas.yview_scroll(1, "units")
+            elif getattr(event, "delta", 0):
+                self.content_canvas.yview_scroll(
+                    -1 if event.delta > 0 else 1, "units"
+                )
 
-        candidate_frame = ttk.LabelFrame(left, text="CATALOGUE MATCHES", padding=(8, 6))
-        candidate_frame.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        candidate_frame.columnconfigure(0, weight=1)
+        self.content_canvas.bind("<Enter>", lambda _event: self.content_canvas.bind_all(
+            "<MouseWheel>", scroll_content
+        ))
+        self.content_canvas.bind("<Leave>", lambda _event: self.content_canvas.unbind_all(
+            "<MouseWheel>"
+        ))
+        self.content_canvas.bind("<Button-4>", scroll_content)
+        self.content_canvas.bind("<Button-5>", scroll_content)
+
+        self.product_preview = build_product_preview(
+            content,
+            tk,
+            ttk,
+            self.palette,
+            self.catalogue_vars,
+            self.catalogue_status_var,
+            product_command=self.open_product_page,
+            datasheet_command=self.open_datasheet,
+        )
+        self.product_preview.frame.grid(
+            row=0, column=0, sticky="ew", pady=(0, 12)
+        )
+        self.image_label = self.product_preview.image_label
+        self.product_button = self.product_preview.product_button
+        self.datasheet_button = self.product_preview.datasheet_button
+        self._image_ref = None
+
+        self.candidate_section = ttk.Frame(content)
+        self.candidate_section.columnconfigure(0, weight=1)
+        ttk.Label(
+            self.candidate_section,
+            text="Other matches",
+            style="Section.TLabel",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 5))
         self.candidate_tree = ttk.Treeview(
-            candidate_frame,
+            self.candidate_section,
             columns=("part", "mpn", "package", "library", "stock", "price"),
             show="headings",
-            height=4,
+            height=3,
             selectmode="browse",
         )
         candidate_headings = {
             "part": ("LCSC", 88),
-            "mpn": ("MPN / value", 145),
-            "package": ("Package", 82),
-            "library": ("Class", 72),
-            "stock": ("Stock", 86),
-            "price": ("Unit price", 85),
+            "mpn": ("MPN / value", 180),
+            "package": ("Package", 88),
+            "library": ("Class", 88),
+            "stock": ("Stock", 110),
+            "price": ("Unit price", 110),
         }
         for key, (label, width) in candidate_headings.items():
             self.candidate_tree.heading(key, text=label)
             self.candidate_tree.column(
-                key, width=width, minwidth=58, stretch=key in {"mpn", "package"}
+                key,
+                width=width,
+                minwidth=65,
+                stretch=key in {"mpn", "package"},
             )
         self.candidate_tree.tag_configure(
             "stripe-alt", background=self.palette["surface_alt"]
         )
-        self.candidate_tree.grid(row=0, column=0, sticky="ew")
+        self.candidate_tree.grid(row=1, column=0, sticky="ew")
         candidate_scroll = ttk.Scrollbar(
-            candidate_frame, orient="vertical", command=self.candidate_tree.yview
+            self.candidate_section,
+            orient="vertical",
+            command=self.candidate_tree.yview,
         )
-        candidate_scroll.grid(row=0, column=1, sticky="ns")
+        candidate_scroll.grid(row=1, column=1, sticky="ns")
         self.candidate_tree.configure(yscrollcommand=candidate_scroll.set)
-        self.candidate_tree.bind("<<TreeviewSelect>>", self._on_candidate_selected)
-
-        component_options = ttk.LabelFrame(
-            left, text="KICAD COMPONENT DETAILS", padding=(9, 7)
+        self.candidate_tree.bind(
+            "<<TreeviewSelect>>", self._on_candidate_selected
         )
-        component_options.grid(row=1, column=0, sticky="ew", pady=(0, 8))
-        component_options.columnconfigure(1, weight=1)
-        row = 0
-        if self.create_mode:
-            ttk.Label(component_options, text="Library:Symbol").grid(
-                row=row, column=0, sticky="w", padx=(0, 10), pady=3
+        self.candidate_section.grid(
+            row=1, column=0, sticky="ew", pady=(0, 14)
+        )
+        self.candidate_section.grid_remove()
+
+        component_section = ttk.Frame(content)
+        component_section.grid(row=2, column=0, sticky="ew", pady=(0, 14))
+        component_section.columnconfigure(1, weight=1)
+        ttk.Label(
+            component_section,
+            text="KiCad properties",
+            style="Section.TLabel",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
+
+        row = 1
+
+        def add_editor(label: str, variable: Any, *, width: int | None = None):
+            nonlocal row
+            ttk.Label(
+                component_section,
+                text=label,
+                style="Muted.TLabel",
+            ).grid(
+                row=row, column=0, sticky="w", padx=(0, 14), pady=4
             )
-            symbol_entry = ttk.Entry(component_options, textvariable=self.symbol_hint_var)
-            symbol_entry.grid(row=row, column=1, sticky="ew", pady=3)
-            symbol_entry.bind("<KeyRelease>", self._refresh_readiness)
+            entry = ttk.Entry(component_section, textvariable=variable)
+            if width is not None:
+                entry.configure(width=width)
+            entry.grid(row=row, column=1, sticky="ew", pady=4)
+            entry.bind("<KeyRelease>", self._refresh_readiness)
             row += 1
-        ttk.Label(component_options, text="Value").grid(
-            row=row, column=0, sticky="w", padx=(0, 10), pady=3
-        )
-        value_entry = ttk.Entry(component_options, textvariable=self.value_var)
-        value_entry.grid(row=row, column=1, sticky="ew", pady=3)
-        value_entry.bind("<KeyRelease>", self._refresh_readiness)
-        row += 1
-        ttk.Label(component_options, text="Footprint (optional)").grid(
-            row=row, column=0, sticky="w", padx=(0, 10), pady=3
-        )
-        footprint_entry = ttk.Entry(component_options, textvariable=self.footprint_var)
-        footprint_entry.grid(row=row, column=1, sticky="ew", pady=3)
-        footprint_entry.bind("<KeyRelease>", self._refresh_readiness)
-        row += 1
-        if self.create_mode:
-            ttk.Label(component_options, text="Reference prefix").grid(
-                row=row, column=0, sticky="w", padx=(0, 10), pady=3
-            )
-            prefix_entry = ttk.Entry(
-                component_options, textvariable=self.reference_prefix_var, width=9
-            )
-            prefix_entry.grid(row=row, column=1, sticky="w", pady=3)
-            prefix_entry.bind("<KeyRelease>", self._refresh_readiness)
+            return entry
 
         if self.create_mode:
-            placement = ttk.LabelFrame(left, text="PLACEMENT", padding=(9, 7))
-            placement.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+            self.symbol_hint_entry = add_editor(
+                "Symbol", self.symbol_hint_var
+            )
+        self.value_entry = add_editor("Value", self.value_var)
+        self.footprint_entry = add_editor("Footprint", self.footprint_var)
+        if self.create_mode:
+            self.reference_prefix_entry = add_editor(
+                "Reference prefix", self.reference_prefix_var, width=12
+            )
+            ttk.Label(
+                component_section,
+                text="Placement",
+                style="Muted.TLabel",
+            ).grid(row=row, column=0, sticky="w", padx=(0, 14), pady=4)
+            placement = ttk.Frame(component_section)
+            placement.grid(row=row, column=1, sticky="ew", pady=4)
             self.cursor_radio = ttk.Radiobutton(
                 placement,
-                text="At cursor in KiCad",
+                text="At cursor",
                 variable=self.placement_mode_var,
                 value="cursor",
                 command=self._update_placement_controls,
                 state="normal" if self.cursor_placement_available else "disabled",
             )
-            self.cursor_radio.grid(row=0, column=0, sticky="w", padx=(0, 10))
+            self.cursor_radio.pack(side="left", padx=(0, 14))
             ttk.Radiobutton(
                 placement,
-                text="X/Y coordinates (mm)",
+                text="X/Y coordinates",
                 variable=self.placement_mode_var,
                 value="coordinates",
                 command=self._update_placement_controls,
-            ).grid(row=0, column=1, sticky="w")
-            coordinates = ttk.Frame(placement)
-            coordinates.grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
-            ttk.Label(coordinates, text="X").pack(side="left", padx=(0, 4))
-            self.x_entry = ttk.Entry(coordinates, textvariable=self.x_var, width=9)
+            ).pack(side="left")
+            row += 1
+            self.coordinates_frame = ttk.Frame(component_section)
+            self.coordinates_frame.grid(
+                row=row, column=1, sticky="w", pady=(0, 4)
+            )
+            ttk.Label(
+                self.coordinates_frame,
+                text="X",
+                style="Muted.TLabel",
+            ).pack(side="left", padx=(0, 5))
+            self.x_entry = ttk.Entry(
+                self.coordinates_frame, textvariable=self.x_var, width=10
+            )
             self.x_entry.pack(side="left")
-            ttk.Label(coordinates, text="Y").pack(side="left", padx=(10, 4))
-            self.y_entry = ttk.Entry(coordinates, textvariable=self.y_var, width=9)
+            ttk.Label(
+                self.coordinates_frame,
+                text="mm    Y",
+                style="Muted.TLabel",
+            ).pack(side="left", padx=(10, 5))
+            self.y_entry = ttk.Entry(
+                self.coordinates_frame, textvariable=self.y_var, width=10
+            )
             self.y_entry.pack(side="left")
+            row += 1
             if not self.cursor_placement_available:
                 ttk.Label(
-                    placement,
-                    text="Cursor placement needs X11 and xdotool; X/Y remains available.",
+                    component_section,
+                    text="Cursor placement requires X11 and xdotool.",
                     style="Muted.TLabel",
-                ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
+                ).grid(
+                    row=row, column=1, sticky="w", pady=(0, 4)
+                )
+                row += 1
             self._update_placement_controls()
-        else:
-            ttk.Label(
-                left,
-                text="The selected symbol's graphics, pins and electrical mapping are preserved.",
-                style="Muted.TLabel",
-                wraplength=500,
-            ).grid(row=2, column=0, sticky="w", pady=(0, 8))
 
-        ttk.Label(right, text="PROPOSED KICAD FIELDS", style="Section.TLabel").pack(
-            anchor="w", pady=(0, 6)
-        )
-        proposal_frame = ttk.Frame(right)
-        proposal_frame.pack(fill="both", expand=True)
-        proposal_frame.columnconfigure(0, weight=1)
-        proposal_frame.rowconfigure(0, weight=1)
-        self.fields_tree = ttk.Treeview(
-            proposal_frame,
-            columns=("field", "value"),
-            show="headings",
-            height=9,
-            selectmode="browse",
-        )
-        self.fields_tree.tag_configure(
-            "stripe-alt", background=self.palette["surface_alt"]
-        )
-        self.fields_tree.heading("field", text="KiCad property")
-        self.fields_tree.heading("value", text="Proposed value")
-        self.fields_tree.column("field", width=155, minwidth=118, stretch=False)
-        self.fields_tree.column("value", width=350, minwidth=180, stretch=True)
-        self.fields_tree.grid(row=0, column=0, sticky="nsew")
-        fields_scroll = ttk.Scrollbar(
-            proposal_frame, orient="vertical", command=self.fields_tree.yview
-        )
-        fields_scroll.grid(row=0, column=1, sticky="ns")
-        self.fields_tree.configure(yscrollcommand=fields_scroll.set)
-
+        proposal_section = ttk.Frame(content)
+        proposal_section.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        proposal_section.columnconfigure(0, weight=1)
         ttk.Label(
-            right, textvariable=self.confidence_var, style="Accent.TLabel", wraplength=560
-        ).pack(anchor="w", pady=(7, 6))
-        notes_frame = ttk.LabelFrame(right, text="REVIEW NOTES", padding=(8, 6))
-        notes_frame.pack(fill="x", pady=(0, 2))
-        self.notes = tk.Text(notes_frame, height=6, wrap="word")
-        self.notes.pack(fill="both", expand=True)
-        self.notes.configure(
-            state="disabled",
-            background=self.palette["field"],
-            foreground=self.palette["foreground"],
-            insertbackground=self.palette["foreground"],
-            selectbackground=self.palette["selected"],
-            selectforeground=self.palette["foreground"],
-            highlightbackground=self.palette["border"],
-            highlightcolor=self.palette["accent"],
-            borderwidth=1,
-            relief="solid",
-            padx=6,
-            pady=5,
+            proposal_section,
+            text="Fields to write",
+            style="Section.TLabel",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 5))
+        self.proposal_rows = ttk.Frame(proposal_section)
+        self.proposal_rows.grid(row=1, column=0, sticky="ew")
+        self.proposal_rows.columnconfigure(1, weight=1)
+        self._proposal_value_labels = []
+
+        self.notes_section = ttk.Frame(content)
+        self.notes_section.grid(row=4, column=0, sticky="ew", pady=(0, 12))
+        self.notes_section.columnconfigure(0, weight=1)
+        self.notes = ttk.Label(
+            self.notes_section,
+            text="",
+            style="Warning.TLabel",
+            wraplength=900,
+            justify="left",
         )
+        self.notes.pack(anchor="w", fill="x")
+        self.notes_section.grid_remove()
 
         footer = ttk.Frame(outer)
-        footer.pack(fill="x", pady=(2, 0))
+        footer.grid(row=3, column=0, sticky="ew", pady=(8, 0))
         ttk.Separator(footer).pack(fill="x", pady=(0, 8))
         footer_row = ttk.Frame(footer)
         footer_row.pack(fill="x")
@@ -476,21 +461,19 @@ class ComponentPopulator:
             footer_row,
             textvariable=self.status_var,
             style="Muted.TLabel",
-            wraplength=700,
+            wraplength=680,
             justify="left",
         ).pack(side="left", fill="x", expand=True)
         self.apply_button = ttk.Button(
             footer_row,
             text=(
-                "Generate and place component"
-                if self.create_mode
-                else "Apply reviewed fields"
+                "Add component" if self.create_mode else "Update component"
             ),
             command=self.apply,
             state="disabled",
             style="Primary.TButton",
         )
-        self.apply_button.pack(side="right", padx=(10, 0))
+        self.apply_button.pack(side="right", padx=(12, 0))
 
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self._poll_id = self.root.after(100, self._poll_results)
@@ -532,7 +515,7 @@ class ComponentPopulator:
         self.draft = None
         self.selected_details = None
         self.apply_button.configure(state="disabled")
-        self.fields_tree.delete(*self.fields_tree.get_children())
+        self._clear_proposal_rows()
         self.candidate_tree.delete(*self.candidate_tree.get_children())
         self.candidate_rows.clear()
         self._reset_catalogue_preview()
@@ -713,7 +696,7 @@ class ComponentPopulator:
         self._image_lcsc = ""
         self._image_pending = False
         self._image_ref = None
-        self.image_label.configure(image="", text="Product image\nnot loaded", padding=8)
+        self.image_label.configure(image="", text="No catalogue image", padding=8)
         for key, value in {
             "description": "Search for a part to preview its catalogue record.",
             "manufacturer": "—",
@@ -794,13 +777,14 @@ class ComponentPopulator:
             text="Loading image…" if details.image_url else "No catalogue image",
             padding=8,
         )
-        self._image_pending = bool(details.image_url)
-        if not details.image_url:
+        image_urls = details.image_urls or ((details.image_url,) if details.image_url else ())
+        self._image_pending = bool(image_urls)
+        if not image_urls:
             self.catalogue_status_var.set("No supplier image on this record.")
             return
         results_queue = self.results
         future = self.image_executor.submit(
-            _download_catalogue_image, details.image_url
+            _download_catalogue_image, image_urls
         )
 
         def enqueue_image_result(
@@ -814,33 +798,9 @@ class ComponentPopulator:
         future.add_done_callback(enqueue_image_result)
 
     def _show_product_image(self, image_data: bytes | None) -> None:
-        if not image_data:
-            self.image_label.configure(
-                image="",
-                text="No catalogue image",
-                padding=8,
-            )
-            self._image_ref = None
-            return
-        try:
-            from io import BytesIO
-
-            from PIL import Image, ImageTk
-
-            with Image.open(BytesIO(image_data)) as source:
-                image = source.convert("RGB")
-                image.thumbnail((220, 160), Image.Resampling.LANCZOS)
-            photo = ImageTk.PhotoImage(image, master=self.root)
-        except Exception:
-            self.image_label.configure(
-                image="",
-                text="Image unavailable",
-                padding=8,
-            )
-            self._image_ref = None
-            return
-        self._image_ref = photo
-        self.image_label.configure(image=photo, text="", padding=0)
+        self._image_ref = display_product_image(
+            self.image_label, image_data, self.root, size=(148, 118)
+        )
 
     def open_product_page(self) -> None:
         if self._is_https_url(self._product_url):
@@ -853,27 +813,47 @@ class ComponentPopulator:
     def _update_placement_controls(self) -> None:
         if not self.create_mode:
             return
-        coordinate_state = (
-            "normal" if self.placement_mode_var.get() == "coordinates" else "disabled"
-        )
-        self.x_entry.configure(state=coordinate_state)
-        self.y_entry.configure(state=coordinate_state)
+        if self.placement_mode_var.get() == "coordinates":
+            self.coordinates_frame.grid()
+        else:
+            self.coordinates_frame.grid_remove()
 
     def _set_notes(self, lines: tuple[str, ...]) -> None:
-        self.notes.configure(state="normal")
-        self.notes.delete("1.0", "end")
-        self.notes.insert("1.0", "\n".join(lines))
-        self.notes.configure(state="disabled")
+        visible = tuple(line.strip() for line in lines if line.strip())
+        if not visible:
+            self.notes.configure(text="")
+            self.notes_section.grid_remove()
+            return
+        self.notes.configure(
+            text="\n".join(f"• {line}" for line in visible),
+            wraplength=max(320, self.content_canvas.winfo_width() - 40),
+        )
+        self.notes_section.grid()
+
+    def _clear_proposal_rows(self) -> None:
+        for child in self.proposal_rows.winfo_children():
+            child.destroy()
+        self._proposal_value_labels.clear()
+
+    def _render_proposal_rows(self, fields: tuple[tuple[str, str], ...]) -> None:
+        self._clear_proposal_rows()
+        for index, (name, value) in enumerate(fields):
+            row = ttk.Frame(self.proposal_rows)
+            row.grid(row=index, column=0, columnspan=2, sticky="ew", pady=2)
+            row.columnconfigure(1, weight=1)
+            ttk.Label(
+                row, text=name, style="Muted.TLabel", width=20, anchor="nw"
+            ).grid(row=0, column=0, sticky="nw", padx=(0, 14))
+            value_label = ttk.Label(
+                row, text=value or "—", wraplength=760, justify="left"
+            )
+            value_label.grid(row=0, column=1, sticky="ew")
+            self._proposal_value_labels.append(value_label)
+
 
     def _render_draft(self, draft: ComponentDraft, cached: bool) -> None:
-        self.fields_tree.delete(*self.fields_tree.get_children())
         if self.selected_details is not None:
             self._update_catalogue_preview(self.selected_details)
-        self.fields_tree.insert(
-            "",
-            "end",
-            values=("Suggested symbol type", draft.symbol_hint or "Choose manually"),
-        )
         self.value_var.set(
             draft.value
             or (
@@ -894,19 +874,7 @@ class ComponentPopulator:
                 draft.footprint
                 or self._field_value(getattr(self.symbol, "footprint_field", None))
             )
-        self.fields_tree.insert(
-            "",
-            "end",
-            values=("Inference confidence", draft.confidence),
-            tags=("stripe-alt",),
-        )
-        for index, (name, value) in enumerate(draft.proposed_fields):
-            self.fields_tree.insert(
-                "",
-                "end",
-                values=(name, value),
-                tags=("stripe-alt",) if index % 2 == 0 else (),
-            )
+        self._render_proposal_rows(tuple(draft.proposed_fields))
         notes = list(draft.warnings)
         if self.create_mode:
             notes = [
@@ -914,14 +882,6 @@ class ComponentPopulator:
                 for note in notes
                 if not note.startswith("For an update, the selected symbol's graphics")
             ]
-        notes.append(f"Catalogue source: {draft.source_label}")
-        if self.create_mode and self.selected_details is not None:
-            library_class = (
-                "Basic" if self.selected_details.is_basic is True
-                else "Extended" if self.selected_details.is_basic is False
-                else "unclassified"
-            )
-            notes.append(f"JLCPCB library class: {library_class}.")
         selected_hint = (
             self.symbol_hint_var.get().strip()
             if self.create_mode
@@ -949,9 +909,8 @@ class ComponentPopulator:
             )
         if self.create_mode:
             notes.append(
-                "A project-local copy of the selected KiCad symbol will be generated. "
-                "Its original pin numbers, pin types, units and graphics are preserved; "
-                "the tool does not infer an IC pin map or create PCB copper geometry."
+                "KiCad pin numbers and graphics are copied from the selected library symbol; "
+                "the catalogue does not provide a verified pin map. Check the datasheet."
             )
             if not self.footprint_var.get().strip():
                 notes.append(
@@ -965,7 +924,7 @@ class ComponentPopulator:
             )
         self._set_notes(tuple(notes))
         self.confidence_var.set(
-            f"{draft.kind.title()} · {draft.confidence.title()} confidence · {draft.lcsc}"
+            f"{draft.kind.title()} · {draft.confidence.title()} confidence"
         )
         can_apply = (
             compatible

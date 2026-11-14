@@ -165,21 +165,48 @@ def _is_signed_url(url: str) -> bool:
     )
 
 
-def _image_url(component: dict[str, Any], extra: dict[str, Any]) -> str:
-    direct = _first(component, "image_url", "imageUrl", "img_url", "imgUrl")
-    if isinstance(direct, str) and direct.startswith("https://"):
-        return direct
+def _image_urls(component: dict[str, Any], extra: dict[str, Any]) -> tuple[str, ...]:
+    """Collect all supplier image renditions, not just the first thumbnail URL."""
+    candidates: list[str] = []
+    seen: set[str] = set()
 
-    images = _first(extra, "images", "productImages", "product_images")
-    if isinstance(images, list):
-        for image in images:
-            if not isinstance(image, dict):
-                continue
-            for key in ("900x900", "224x224", "96x96", "url", "imageUrl"):
-                candidate = image.get(key)
-                if isinstance(candidate, str) and candidate.startswith("https://"):
-                    return candidate
-    return ""
+    def add(value: Any) -> None:
+        if isinstance(value, str):
+            url = value.strip()
+            if url.startswith("https://") and url not in seen:
+                candidates.append(url)
+                seen.add(url)
+        elif isinstance(value, dict):
+            preferred = ("900x900", "imageUrl", "url", "224x224", "96x96")
+            for key in preferred:
+                if key in value:
+                    add(value[key])
+            for key, item in value.items():
+                if key not in preferred:
+                    add(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                add(item)
+
+    for key in ("image_url", "imageUrl", "img_url", "imgUrl"):
+        add(component.get(key))
+    for key in ("images", "productImages", "product_images"):
+        add(extra.get(key))
+        add(component.get(key))
+    for key in (
+        "productBigImageAccessIdUrl",
+        "minImageAccessIdUrl",
+        "componentImageUrl",
+        "minImage",
+    ):
+        add(component.get(key))
+    return tuple(candidates)
+
+
+def _image_url(component: dict[str, Any], extra: dict[str, Any]) -> str:
+    """Backward-compatible primary image URL."""
+    candidates = _image_urls(component, extra)
+    return candidates[0] if candidates else ""
 
 
 def _datasheet_url(component: dict[str, Any], extra: dict[str, Any]) -> str:
@@ -235,6 +262,7 @@ class JlcPartDetails:
     pre_min_purchase_num: int | None = None
     no_buy_reason: str = ""
     mpn_match: bool | None = None
+    image_urls: tuple[str, ...] = ()
 
     @property
     def source_label(self) -> str:
@@ -328,18 +356,8 @@ def normalize_component_payload(
         _first(component, "is_preferred", "preferred", "isPreferred", "preferredComponentFlag")
     )
 
-    image = _image_url(component, extra)
-    if not image:
-        image = str(
-            _first(
-                component,
-                "productBigImageAccessIdUrl",
-                "minImageAccessIdUrl",
-                "componentImageUrl",
-                "minImage",
-            )
-            or ""
-        )
+    images = _image_urls(component, extra)
+    image = images[0] if images else ""
     datasheet = _datasheet_url(component, extra)
     if not datasheet:
         datasheet = str(
@@ -388,6 +406,7 @@ def normalize_component_payload(
         unit_price_usd=_numeric(raw_price),
         datasheet_url=datasheet,
         image_url=image,
+        image_urls=images,
         is_basic=is_basic,
         is_preferred=is_preferred,
         category=str(category or ""),
