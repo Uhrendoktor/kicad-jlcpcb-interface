@@ -138,6 +138,27 @@ class PassiveValueSearchTests(unittest.TestCase):
             [item[0].lcsc for item in exact_passive_candidates("0.1uF", [details])],
             ["C20001"],
         )
+    
+    def test_limits_shortlist_after_ranking_basic_parts_first(self):
+        parts = [
+            self.resistor(
+                f"C{30000 + index}",
+                is_basic=index < 7,
+                stock=1000 - index,
+                price=0.001 + (index / 10000),
+            )
+            for index in range(12)
+        ]
+
+        matches = exact_passive_candidates("10k", parts, limit=5)
+
+        self.assertEqual(len(matches), 5)
+        self.assertTrue(all(details.is_basic is True for details, _draft in matches))
+        self.assertEqual(
+            [details.lcsc for details, _draft in matches],
+            [f"C{30000 + index}" for index in range(5)],
+        )
+
 
 
 if __name__ == "__main__":
