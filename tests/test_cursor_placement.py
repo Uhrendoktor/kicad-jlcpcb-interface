@@ -144,7 +144,7 @@ class CursorPlacementTests(unittest.TestCase):
         filter_move = [
             "xdotool", "mousemove", "--sync", "--window", "0x200", "100", "24"
         ]
-        filter_click = ["xdotool", "click", "--clearmodifiers", "1"]
+        filter_click = ["xdotool", "click", "--clearmodifiers", "--window", "0x200", "1"]
         restore_pointer = ["xdotool", "mousemove", "--sync", "500", "150"]
         type_index = runner.commands.index(type_command)
         return_index = runner.commands.index(return_command)

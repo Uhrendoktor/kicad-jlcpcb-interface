@@ -192,7 +192,7 @@ def start_native_symbol_placement(
         "mousemove", "--sync", "--window", str(chooser_id),
         str(filter_x), str(filter_y),
     )
-    send("click", "--clearmodifiers", "1")
+    send("click", "--clearmodifiers", "--window", str(chooser_id), "1")
     pause(0.1)
     mouse_after_click = shell_geometry(send("getmouselocation", "--shell"))
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
