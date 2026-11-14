@@ -107,8 +107,8 @@ class CursorPlacementTests(unittest.TestCase):
         loaded_index = runner.commands.index(type_command)
         title_index = runner.commands.index(chooser_title_command)
         activate_index = runner.commands.index(activate_command)
-        self.assertLess(title_index, activate_index)
-        self.assertLess(activate_index, loaded_index)
+        self.assertLess(activate_index, title_index)
+        self.assertLess(title_index, loaded_index)
         self.assertGreaterEqual(
             sum(command == chooser_title_command for command in runner.commands[:loaded_index]),
             2,
