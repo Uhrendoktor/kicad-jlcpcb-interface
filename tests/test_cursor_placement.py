@@ -206,9 +206,9 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertFalse(send_text_to_focused_search("c60489", atspi_module=atspi))
 
-    def test_sends_atspi_key_events_to_nested_search_entry(self):
-        search_entry = FakeAccessible("")
-        search_entry.extents = (545, 424, 378, 34)
+    def test_focuses_nested_search_entry_through_atspi(self):
+        search_entry = FakeAccessible("Search")
+        search_entry.extents = (525, 424, 398, 34)
         search_wrapper = FakeAccessible("Search", children=[search_entry])
         search_wrapper.extents = (525, 424, 398, 34)
         chooser = FakeAccessible(
@@ -218,39 +218,23 @@ class CursorPlacementTests(unittest.TestCase):
         chooser.point_target = search_wrapper
         chooser.extents = (519, 399, 882, 705)
         desktop = FakeAccessible(children=[chooser])
-        generated_events = []
 
         class Registry:
             @staticmethod
             def getDesktop(_index):
                 return desktop
 
-            @staticmethod
-            def generateKeyboardEvent(keyval, keystring, kind):
-                generated_events.append((keyval, keystring, kind))
-                search_entry.text += chr(keyval)
-
-        atspi = SimpleNamespace(
-            Registry=Registry,
-            DESKTOP_COORDS=0,
-            KEY_SYM=3,
-        )
+        atspi = SimpleNamespace(Registry=Registry, DESKTOP_COORDS=0)
 
         self.assertTrue(
             focus_symbol_chooser_search_at_point(
-                601, 449, text="c60489", atspi_module=atspi
+                601, 449, atspi_module=atspi
             )
         )
         self.assertEqual(chooser.hit_test_calls, [(601, 449, 0)])
-        self.assertFalse(search_wrapper.focused)
-        self.assertFalse(search_entry.focused)
-        self.assertEqual(search_entry.focus_calls, 0)
-        self.assertEqual(search_entry.insert_calls, [])
-        self.assertEqual(search_entry.text, "c60489")
-        self.assertEqual(
-            generated_events,
-            [(ord(character), "", 3) for character in "c60489"],
-        )
+        self.assertTrue(search_entry.focused)
+        self.assertEqual(search_entry.focus_calls, 1)
+
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     @patch(
@@ -314,12 +298,19 @@ class CursorPlacementTests(unittest.TestCase):
         _focus_search.assert_called_once_with(
             601, 449, text="c60489"
         )
-        self.assertNotIn(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
+        clear_search = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
+        type_search = [
+            "xdotool", "type", "--clearmodifiers", "--delay", "35", "c60489"
+        ]
+        self.assertIn(clear_search, runner.commands)
+        self.assertIn(type_search, runner.commands)
+        self.assertLess(
+            runner.commands.index(client_click),
+            runner.commands.index(clear_search),
         )
-        self.assertNotIn(
-            ["xdotool", "type", "--clearmodifiers", "--delay", "35", "c60489"],
-            runner.commands,
+        self.assertLess(
+            runner.commands.index(clear_search),
+            runner.commands.index(type_search),
         )
         self.assertIn(return_command, runner.commands)
         self.assertLess(

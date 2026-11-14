@@ -100,10 +100,9 @@ def focus_symbol_chooser_search_at_point(
     x: int,
     y: int,
     *,
-    text: str | None = None,
     atspi_module=None,
 ) -> bool:
-    """Send key events to the Search widget already focused by the caller's X11 click."""
+    """Focus the actual Search widget under a verified screen point."""
     if atspi_module is None:
         try:
             import pyatspi as atspi_module
@@ -143,10 +142,10 @@ def focus_symbol_chooser_search_at_point(
             chooser = node
             break
         try:
-            count = min(int(node.childCount), 100)
+            child_count = min(int(node.childCount), 100)
         except Exception:
-            count = 0
-        for index in range(count):
+            child_count = 0
+        for index in range(child_count):
             try:
                 stack.append(node.getChildAtIndex(index))
             except Exception:
@@ -159,9 +158,10 @@ def focus_symbol_chooser_search_at_point(
         )
         return False
 
-    # Resolve the widget under the search-field point through the actual
-    # accessibility hierarchy. The chooser contains other text controls;
-    # focusing the top-level dialog or a generic text node is insufficient.
+    # Hit-test the already clicked screen point to identify KiCad's wxSearchCtrl
+    # child. Do not try AT-SPI key synthesis here: the X11 device-event backend
+    # may be unimplemented, and the libatspi STRING API can report success even
+    # when the focused application never receives the characters.
     target = chooser
     path = []
     for _ in range(8):
@@ -188,21 +188,18 @@ def focus_symbol_chooser_search_at_point(
         except Exception:
             name = ""
         try:
-            extents = target.queryComponent().getExtents(coord_type)
+            bounds = target.queryComponent().getExtents(coord_type)
         except Exception:
-            extents = None
-        path.append((role, name, extents))
+            bounds = None
+        path.append((role, name, bounds))
 
-    # The point hit-test can return a wrapper for wxSearchCtrl rather than
-    # its nested text-entry child. Walk only descendants whose component bounds
-    # remain inside the Search control and prefer the deepest editable node.
-    candidates = [(target, 0)]
     search_bounds = None
     try:
         search_bounds = target.queryComponent().getExtents(coord_type)
     except Exception:
         pass
 
+    candidates = [(target, 0)]
     stack = [(target, 0)]
     inspected = 0
     while stack and inspected < 120:
@@ -216,7 +213,6 @@ def focus_symbol_chooser_search_at_point(
             try:
                 child = parent.getChildAtIndex(index)
                 bounds = child.queryComponent().getExtents(coord_type)
-                child_depth = depth + 1
                 if search_bounds is not None and bounds is not None:
                     sx, sy, sw, sh = search_bounds
                     cx, cy, cw, ch = bounds
@@ -228,14 +224,13 @@ def focus_symbol_chooser_search_at_point(
                 else:
                     contained = True
                 if contained:
-                    candidates.append((child, child_depth))
-                    stack.append((child, child_depth))
+                    candidates.append((child, depth + 1))
+                    stack.append((child, depth + 1))
             except Exception:
                 continue
 
-    candidate_details = []
+    details = []
     candidates.sort(key=lambda item: item[1], reverse=True)
-    last_error = None
     for candidate, depth in candidates:
         try:
             role = str(candidate.getRoleName())
@@ -249,81 +244,50 @@ def focus_symbol_chooser_search_at_point(
             bounds = candidate.queryComponent().getExtents(coord_type)
         except Exception:
             bounds = None
-        # start_native_symbol_placement() has already clicked this exact
-        # Search-field point and verified the pointer coordinates. Do not call
-        # AT-SPI grabFocus() here: wxGTK may focus the wxSearchCtrl wrapper and
-        # steal focus from its embedded text editor.
-        focused = True
 
-        text_result = None
-        if focused and text is not None:
-            if not text.isascii():
-                candidate_details.append(
-                    (depth, role, name, bounds, "keyboard input supports ASCII only")
-                )
-                continue
+        # Ignore the decorative magnifying-glass icon. The accessible object
+        # named Search is the native entry, even on builds that expose only
+        # Accessible/Component/Text and omit EditableText.
+        is_search_entry = (
+            name.casefold() == "search"
+            or role.casefold() in {"entry", "search box"}
+        )
+        if not is_search_entry:
+            continue
 
-            # EditableText.insertText() can update AT-SPI's cached text without
-            # changing wxGTK's rendered Search widget. Don't treat cached text
-            # as success: send AT-SPI key events to the focused, hit-tested
-            # Search control and verify the text interface afterward.
-            try:
-                registry = atspi_module.Registry
-                generate_key_event = getattr(
-                    registry, "generateKeyboardEvent", None
-                )
-                key_sym = getattr(atspi_module, "KEY_SYM", 3)
-                if not callable(generate_key_event):
-                    raise RuntimeError(
-                        "AT-SPI keyboard event synthesis is unavailable."
-                    )
-                for character in text:
-                    generate_key_event(ord(character), "", key_sym)
-                    time.sleep(0.025)
-
-                time.sleep(0.1)
-                text_result = str(candidate.queryText().getText(0, -1))
-                matched = text_result == text
-                candidate_details.append(
-                    (
-                        depth,
-                        role,
-                        name,
-                        bounds,
-                        f"keysyms-dispatched count={len(text)} "
-                        f"cached_text={text_result!r} matched={matched}",
-                    )
-                )
-                print(
-                    "chooser-atspi=keysyms-dispatched "
-                    f"focused={focused} depth={depth} role={role!r} "
-                    f"name={name!r} bounds={bounds!r} "
-                    f"key_type={key_sym!r} "
-                    f"cached_text={text_result!r} matched={matched} "
-                    f"candidates={candidate_details[:20]!r}",
-                    flush=True,
-                )
-                if matched:
-                    return True
-            except Exception as exc:
-                candidate_details.append(
-                    (depth, role, name, bounds, f"keyboard:{type(exc).__name__}:{exc}")
-                )
-                last_error = exc
-        elif focused and text is None:
+        try:
+            focused = bool(candidate.queryComponent().grabFocus())
+        except Exception as exc:
             print(
-                "chooser-atspi=focus-target "
-                f"focused={focused} depth={depth} role={role!r} "
-                f"name={name!r} bounds={bounds!r} path={path!r}",
+                "chooser-atspi=grab-focus-failed "
+                f"role={role!r} name={name!r} error={type(exc).__name__}:{exc}",
                 flush=True,
             )
-            return True
+            return False
+
+        state_focused = None
+        try:
+            state = candidate.getState()
+            state_enum = getattr(atspi_module, "StateType", None)
+            focused_state = getattr(state_enum, "FOCUSED", None)
+            if focused_state is not None:
+                state_focused = bool(state.contains(focused_state))
+        except Exception:
+            pass
+
+        print(
+            "chooser-atspi=search-focused "
+            f"focused={focused} state_focused={state_focused} "
+            f"x={x} y={y} depth={depth} role={role!r} "
+            f"name={name!r} bounds={bounds!r} path={path!r}",
+            flush=True,
+        )
+        return focused or state_focused is True
 
     print(
-        "chooser-atspi=editable-child-not-found "
+        "chooser-atspi=search-entry-not-found "
         f"x={x} y={y} search_bounds={search_bounds!r} "
-        f"inspected={inspected} candidates={candidate_details[:30]!r} "
-        f"last_error={type(last_error).__name__ if last_error else None}",
+        f"inspected={inspected} path={path!r} details={details!r}",
         flush=True,
     )
     return False
@@ -549,23 +513,21 @@ def start_native_symbol_placement(
     # generated symbol's lowercase library suffix directly into that control.
     # No automation-supplied symbol placement coordinates are used.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
-    atspi_sent = focus_symbol_chooser_search_at_point(
-        filter_x, filter_y, text=filter_text
-    )
+    atspi_focused = focus_symbol_chooser_search_at_point(filter_x, filter_y)
     print(
-        "chooser-input=atspi-keysyms "
-        f"attempted={atspi_sent} text={filter_text!r}",
+        "chooser-focus=atspi "
+        f"focused={atspi_focused} text={filter_text!r}",
         flush=True,
     )
-    if not atspi_sent:
-        # Fall back to XTest only when the accessibility path cannot resolve
-        # and update the nested Search entry under the clicked point.
-        send("key", "--clearmodifiers", "ctrl+a")
-        send("type", "--clearmodifiers", "--delay", "35", filter_text)
-        print(
-            f"chooser-input=xtest-fallback text={filter_text!r}",
-            flush=True,
-        )
+    # Send text with XTest after focusing the Search widget. XTest targets the
+    # actual X11 keyboard focus; unlike xdotool --window it does not use
+    # XSendEvent, which GTK controls commonly ignore.
+    send("key", "--clearmodifiers", "ctrl+a")
+    send("type", "--clearmodifiers", "--delay", "35", filter_text)
+    print(
+        f"chooser-input=xtest text={filter_text!r}",
+        flush=True,
+    )
     pause(0.35)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
