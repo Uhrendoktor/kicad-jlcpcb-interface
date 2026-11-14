@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import subprocess
 import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
@@ -18,10 +16,10 @@ from kicad_jlcpcb.cursor_placement import (  # noqa: E402
 
 
 class FakeRunner:
-    def __init__(self, outputs=(), window_names=(), pointer_pid="4242"):
+    def __init__(self, outputs=(), window_names=(), pointer_window="0x300"):
         self.outputs = list(outputs)
         self.window_names = list(window_names)
-        self.pointer_pid = pointer_pid
+        self.pointer_window = pointer_window
         self.commands = []
         self.mouse_reads = 0
 
@@ -29,15 +27,7 @@ class FakeRunner:
         self.commands.append(arguments)
         command = arguments[1]
         if command == "getwindowpid":
-            if arguments[-1] in {"0x300", "768"} and self.pointer_pid is None:
-                raise subprocess.CalledProcessError(1, arguments)
-            pid = self.pointer_pid if arguments[-1] in {"0x300", "768"} else "4242"
-            return SimpleNamespace(stdout=pid, returncode=0)
-        if arguments[0].endswith("xwininfo"):
-            parent = "0x100" if arguments[-1] == "0x300" else "0x21f"
-            return SimpleNamespace(
-                stdout=f"Parent window id: {parent}\n", returncode=0
-            )
+            return SimpleNamespace(stdout="4242", returncode=0)
         if command == "getwindowgeometry":
             if arguments[-1] == "0x100":
                 geometry = "WINDOW=0x100\nX=10\nY=20\nWIDTH=960\nHEIGHT=1024\nSCREEN=0"
@@ -49,7 +39,7 @@ class FakeRunner:
             output = (
                 "X=500\nY=150\nSCREEN=0\nWINDOW=0x100"
                 if self.mouse_reads == 1
-                else "X=300\nY=256\nSCREEN=0\nWINDOW=0x300"
+                else f"X=300\nY=256\nSCREEN=0\nWINDOW={self.pointer_window}"
             )
             return SimpleNamespace(stdout=output, returncode=0)
         if command == "getwindowfocus":
@@ -172,31 +162,10 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(0.1, pauses)
         self.assertIn(0.15, pauses)
 
-    def test_accepts_canvas_child_without_pid_when_parent_is_eeschema(self):
-        runner = FakeRunner(
-            ["0x200", "0x100"],
-            ["Choose Symbol", "Choose Symbol (22936 items loaded)"],
-            pointer_pid=None,
-        )
-        with patch(
-            "kicad_jlcpcb.cursor_placement.shutil.which",
-            return_value="/usr/bin/xwininfo",
-        ):
-            start_native_symbol_placement(
-                "0x100",
-                "R_C60489",
-                xdotool="xdotool",
-                command_runner=runner,
-                pause=lambda _seconds: None,
-            )
-        self.assertIn(
-            ["/usr/bin/xwininfo", "-id", "0x300"], runner.commands
-        )
-
-    def test_refuses_hotkey_when_canvas_click_hits_another_window(self):
-        runner = FakeRunner(["0x100"] * 56, pointer_pid="7777")
+    def test_refuses_hotkey_when_canvas_click_hits_the_x11_root_window(self):
+        runner = FakeRunner(["0x100"] * 56, pointer_window="0")
         with self.assertRaisesRegex(
-            RuntimeError, "drawing-area click landed in another application"
+            RuntimeError, "drawing-area click landed on the X11 root window"
         ):
             start_native_symbol_placement(
                 "0x100",

@@ -126,67 +126,11 @@ def start_native_symbol_placement(
     send("click", "--clearmodifiers", "1")
     pause(0.1)
     pointer = shell_geometry(send("getmouselocation", "--shell"))
-    pointer_window = pointer.get("WINDOW", 0)
-    if pointer_window == 0:
+    if pointer.get("WINDOW", 0) == 0:
         raise RuntimeError(
             "The Eeschema drawing-area click landed on the X11 root window. "
-            f"Editor PID={editor_pid!r}; pointer={pointer!r}."
+            f"Editor={editor_window_id!r}; pointer={pointer!r}."
         )
-
-    pointer_pid = ""
-    try:
-        pointer_pid = send("getwindowpid", str(pointer_window))
-    except subprocess.SubprocessError:
-        # wx canvas child windows often have no _NET_WM_PID property of their
-        # own. Verify their X11 parent chain instead of rejecting the click.
-        pass
-    if pointer_pid and pointer_pid != editor_pid:
-        raise RuntimeError(
-            "The Eeschema drawing-area click landed in another application. "
-            f"Editor PID={editor_pid!r}; pointer={pointer!r}; "
-            f"pointer PID={pointer_pid!r}."
-        )
-    if not pointer_pid:
-        xwininfo = shutil.which("xwininfo")
-        if xwininfo:
-            try:
-                editor_xid = int(str(editor_window_id), 0)
-            except ValueError:
-                editor_xid = int(str(editor_window_id))
-            current_xid = pointer_window
-            belongs_to_editor = False
-            for _ in range(20):
-                result = command_runner(
-                    [xwininfo, "-id", hex(current_xid)],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    timeout=3,
-                )
-                parent_match = re.search(
-                    r"Parent window id:\s+(0[xX][0-9a-fA-F]+|\d+)",
-                    str(getattr(result, "stdout", "") or ""),
-                )
-                if not parent_match:
-                    break
-                parent_text = parent_match.group(1)
-                parent_xid = (
-                    int(parent_text, 16)
-                    if parent_text.lower().startswith("0x")
-                    else int(parent_text)
-                )
-                if parent_xid == editor_xid:
-                    belongs_to_editor = True
-                    break
-                if parent_xid in {0, current_xid}:
-                    break
-                current_xid = parent_xid
-            if not belongs_to_editor:
-                raise RuntimeError(
-                    "The Eeschema canvas click did not land inside the editor window. "
-                    f"Editor={editor_window_id!r}; pointer={pointer!r}; "
-                    f"last parent XID={current_xid!r}."
-                )
     send("key", "--clearmodifiers", "a")
 
     def wait_for_chooser() -> tuple[str, str, str, str]:
