@@ -146,10 +146,8 @@ def start_native_symbol_placement(
             "KiCad's native symbol chooser did not finish loading its catalog "
             f"within 15 seconds: {chooser_title!r}."
         )
-    print(
-        "native-symbol-placement-trigger=ipc" if action_started else "native-symbol-placement-trigger=hotkey",
-        flush=True,
-    )
+    trigger = "ipc" if action_started else "hotkey"
+    print(f"native-symbol-placement-trigger={trigger}", flush=True)
 
     # The Filter is a wx child control inside the Eeschema frame, not a
     # separate X11 child window. Move relative to the Eeschema XID so the
