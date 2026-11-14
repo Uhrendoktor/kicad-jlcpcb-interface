@@ -210,6 +210,10 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
         self.assertIn(
+            ["xdotool", "windowactivate", "--sync", "0x200"], runner.commands
+        )
+        self.assertIn(["xdotool", "getactivewindow"], runner.commands)
+        self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
         for character in "c60489":
@@ -238,6 +242,10 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
         self.assertIn(
+            ["xdotool", "windowactivate", "--sync", "0x200"], runner.commands
+        )
+        self.assertIn(["xdotool", "getactivewindow"], runner.commands)
+        self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
 
