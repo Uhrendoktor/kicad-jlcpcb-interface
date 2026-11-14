@@ -1200,6 +1200,7 @@ def _drive_populator_form(
         # callback returns. Join that short-lived worker before destroying Tk,
         # so callback/future cleanup cannot release Tk objects on the worker.
         populator.executor.shutdown(wait=True, cancel_futures=True)
+        populator.image_executor.shutdown(wait=True, cancel_futures=True)
         populator.close()
 
     def advance() -> None:
@@ -1208,6 +1209,7 @@ def _drive_populator_form(
             if (
                 populator.draft is None
                 or str(populator.apply_button.cget("state")) != "normal"
+                or populator._image_pending
             ):
                 if time.monotonic() >= state["deadline"]:
                     raise TimeoutError(
@@ -1218,8 +1220,19 @@ def _drive_populator_form(
                 return
 
             draft = populator.draft
-            if populator.create_mode and not populator.candidate_tree.get_children():
-                raise RuntimeError("The Add Component catalogue row was not rendered.")
+            if not populator.candidate_tree.get_children():
+                raise RuntimeError("The shared catalogue match list did not render a selected part.")
+            if populator.catalogue_vars["lcsc"].get() != expected_lcsc:
+                raise RuntimeError(
+                    "The shared catalogue preview does not match the selected part: "
+                    f"{populator.catalogue_vars['lcsc'].get()!r} != {expected_lcsc!r}"
+                )
+            if (
+                populator.selected_details is not None
+                and populator.selected_details.image_url
+                and populator._image_ref is None
+            ):
+                raise RuntimeError("The product photo was not rendered in the shared preview card.")
             if (
                 draft.lcsc != expected_lcsc
                 or draft.kind != "resistor"
@@ -1446,7 +1459,7 @@ def _capture_passive_component_workflows(
         theme="light",
     )
 
-    populate.root.geometry("860x780+960+30")
+    populate.root.geometry("1120x860+780+30")
     populate.lcsc_var.set("C60489")
     populate.lookup()
 
@@ -1509,7 +1522,7 @@ def _capture_passive_component_workflows(
         kicad=kicad,
         theme="light",
     )
-    create.root.geometry("1040x930+840+30")
+    create.root.geometry("1120x860+780+30")
     create.placement_mode_var.set("coordinates")
     create.lcsc_var.set("C105637")
     create.x_var.set("205.0")
