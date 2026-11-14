@@ -1373,6 +1373,15 @@ def _drive_populator_form(
             state["done"] = True
             close_populator()
         except BaseException as exc:
+            if cursor_completion:
+                try:
+                    _capture_desktop(
+                        output_dir / "add-component-chooser-failure.png"
+                    )
+                except Exception as capture_exc:
+                    failures.append(
+                        f"chooser diagnostic capture failed: {capture_exc}"
+                    )
             failures.append(f"{type(exc).__name__}: {exc}")
             try:
                 close_populator()
