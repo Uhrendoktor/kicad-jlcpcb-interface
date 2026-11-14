@@ -286,10 +286,36 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
-        self.assertNotIn(
-            ["xdotool", "click", "--clearmodifiers", "1"], runner.commands
-        )
         self.assertIn(["xdotool", "getactivewindow"], runner.commands)
+        filter_geometry = [
+            "xdotool", "getwindowgeometry", "--shell", "0x200"
+        ]
+        filter_move = ["xdotool", "mousemove", "--sync", "631", "449"]
+        pointer_check = ["xdotool", "getmouselocation", "--shell"]
+        filter_click = ["xdotool", "click", "1"]
+        self.assertIn(filter_geometry, runner.commands)
+        self.assertIn(filter_move, runner.commands)
+        self.assertIn(pointer_check, runner.commands)
+        self.assertIn(filter_click, runner.commands)
+        self.assertEqual(
+            sum(command == pointer_check for command in runner.commands), 2
+        )
+        self.assertLess(
+            runner.commands.index(filter_geometry),
+            runner.commands.index(filter_move),
+        )
+        self.assertLess(
+            runner.commands.index(filter_move),
+            max(i for i,c in enumerate(runner.commands) if c == pointer_check),
+        )
+        self.assertLess(
+            max(i for i,c in enumerate(runner.commands) if c == pointer_check),
+            runner.commands.index(filter_click),
+        )
+        self.assertLess(
+            runner.commands.index(filter_click),
+            runner.commands.index(type_command),
+        )
         _send_text.assert_called_once_with("c60489")
         self.assertIn(type_command, runner.commands)
         self.assertIn(return_command, runner.commands)
