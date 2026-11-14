@@ -129,7 +129,14 @@ def start_native_symbol_placement(
             "KiCad's native symbol chooser did not finish loading its catalog "
             f"within 15 seconds: {chooser_title!r}."
         )
-    pause(0.2)
+    # Explicitly focus KiCad's native Filter search control. X11 focus
+    # queries report the chooser's top-level frame, not the wxSearchCtrl child;
+    # the first-paint ForceFocus alone did not receive synthetic key events in
+    # the Xvfb integration run. The Filter field is the first row of this
+    # stable native chooser layout.
+    send("mousemove", "--sync", "--window", chooser_id, "145", "15")
+    send("click", "1")
+    pause(0.1)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     send("type", "--clearmodifiers", "--delay", "15", symbol_name)
     if debug_capture:
