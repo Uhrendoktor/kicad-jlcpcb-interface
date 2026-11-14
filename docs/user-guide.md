@@ -194,13 +194,13 @@ Existing fields with matching names are updated; unrelated custom fields are pre
 
 ### Add a new project-local symbol
 
-Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a reusable project-local symbol copied from a standalone KiCad stock-library symbol, then opens KiCad's native Add Symbol chooser and attaches the selected copy to the mouse cursor.
+Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a project-local copy of a standalone KiCad stock-library symbol, then opens KiCad's native Add Symbol chooser so you can select the copy from the `JLCPCB_Generated` project library.
 
 1. Save the KiCad project and clear the Eeschema selection.
 2. Search by LCSC code, manufacturer part number, device name or another keyword. Resistor/capacitor value queries such as 10k, 4k7, 470R, 100nF and 4.7uF use exact-value candidate filtering; other free-text searches show catalogue candidates to review.
 3. Select a catalogue row when the search returns multiple parts. Review the suggested symbol, Value, package, Footprint, metadata, confidence and warnings.
 4. In **Component details**, accept or edit the suggested KiCad `Library:Symbol`. When no confident symbol mapping is available, enter a stock ID manually, for example `Amplifier_Operational:LM358`. You can also replace an uncertain automatic suggestion. Edit Value, optional Footprint and Reference prefix as required.
-5. Confirm **Generate and place component**. KiCad opens its native Add Symbol chooser, filters to the generated project-local copy and returns to Eeschema with the symbol attached to the mouse cursor. Click in the schematic to place it or press Escape to cancel. Add mode has no X/Y coordinate fallback.
+5. Confirm **Generate and place component**. KiCad opens its native Add Symbol chooser. Select the new copy under the `JLCPCB_Generated` project library and confirm the chooser. KiCad then attaches the selected symbol to the mouse cursor; click in the schematic to place it or press Escape to cancel. Add mode has no X/Y coordinate fallback.
 
 Automatic symbol suggestions currently cover common resistors, capacitors, inductors, diodes, LEDs, fuses and crystals. The suggestions are generic symbol templates, not manufacturer-specific pin maps. When classification is ambiguous, the symbol field remains for manual selection rather than guessing an IC pinout.
 
@@ -233,7 +233,7 @@ The existing generated symbol is detected and reused; placement can continue whe
 
 #### Placement and electrical checks
 
-Add mode is cursor-only. It opens KiCad's native Add Symbol chooser with Eeschema's `A` shortcut. The workflow focuses a blank area of the drawing canvas first so the active drawing tool receives the shortcut, then filters to the generated project-local symbol and accepts the chooser selection. Automatic input requires an X11 desktop with `xdotool` installed. No X/Y coordinate placement fallback is offered. Check Eeschema Preferences → Hotkeys if `A` does not open the chooser.
+Add mode is cursor-only. It opens KiCad's native Add Symbol chooser through the Eeschema IPC placement action. Select the newly generated item from the `JLCPCB_Generated` project library and confirm the chooser; KiCad attaches it to the mouse cursor for placement. On KiCad builds without the IPC action, the add-on uses Eeschema's `A` shortcut as a compatibility fallback on X11. No X/Y coordinate placement fallback is offered.
 
 The optional Footprint field is a KiCad footprint-library reference, not a footprint generator. A symbol can be created without a footprint, but it will need a suitable footprint before PCB layout. Always inspect the symbol/footprint pair and verify pin numbers, electrical types, package dimensions and ratings against the manufacturer datasheet.
 

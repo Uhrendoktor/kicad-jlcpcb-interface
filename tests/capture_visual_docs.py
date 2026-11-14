@@ -60,7 +60,7 @@ ASSET_NAMES = (
     "populate-component-applied.png",
     "add-component-proposed.png",
     "add-component-confirmation.png",
-    "add-component-cursor.png",
+    "add-component-chooser-open.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
     "schematic-properties-opened.png",
@@ -1414,6 +1414,26 @@ def _drive_populator_form(
 
             validate_result(populator)
             if populator.create_mode:
+                chooser = subprocess.run(
+                    [
+                        "xdotool", "search", "--onlyvisible", "--name",
+                        "Choose Symbol",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=10,
+                )
+                chooser_windows = [
+                    value.strip()
+                    for value in chooser.stdout.splitlines()
+                    if value.strip()
+                ]
+                if chooser.returncode or not chooser_windows:
+                    raise RuntimeError(
+                        "The native Add Symbol chooser did not remain open for "
+                        "manual project-library selection."
+                    )
                 _capture_desktop(output_dir / completed_asset)
                 cancelled = subprocess.run(
                     ["xdotool", "key", "--clearmodifiers", "Escape"],
@@ -1424,7 +1444,8 @@ def _drive_populator_form(
                 )
                 if cancelled.returncode:
                     raise RuntimeError(
-                        "Could not cancel the visual fixture's pending cursor placement: "
+                        "Could not dismiss the native chooser after capturing its "
+                        "manual-selection state: "
                         + (cancelled.stderr.strip() or str(cancelled.returncode))
                     )
             else:
@@ -1632,36 +1653,24 @@ def _capture_passive_component_workflows(
                 "The generated project library does not contain the selected symbol."
             )
 
-    debug_capture = output_dir / "add-component-chooser-after-filter.png"
-    os.environ["KICAD_CHOOSER_DEBUG_CAPTURE"] = str(debug_capture)
-    try:
-        _drive_populator_form(
-            create,
-            output_dir,
-            proposal_asset="add-component-proposed.png",
-            light_asset="add-component-light.png",
-            dark_asset="add-component-dark.png",
-            confirmation_asset="add-component-confirmation.png",
-            completed_asset="add-component-cursor.png",
-            confirmation_title="Confirm new schematic component",
-            required_confirmation_text="pin numbers and electrical types are retained",
-            expected_lcsc="C105637",
-            expected_value="1k",
-            expected_footprint="Resistor_SMD:R_0402_1005Metric",
-            validate_result=validate_create_result,
-            require_image=True,
-        )
-    except BaseException:
-        raise
-    else:
-        debug_capture.unlink(missing_ok=True)
-        debug_capture.with_name(
-            debug_capture.stem + "-clicked" + debug_capture.suffix
-        ).unlink(missing_ok=True)
-    finally:
-        os.environ.pop("KICAD_CHOOSER_DEBUG_CAPTURE", None)
+    _drive_populator_form(
+        create,
+        output_dir,
+        proposal_asset="add-component-proposed.png",
+        light_asset="add-component-light.png",
+        dark_asset="add-component-dark.png",
+        confirmation_asset="add-component-confirmation.png",
+        completed_asset="add-component-chooser-open.png",
+        confirmation_title="Confirm new schematic component",
+        required_confirmation_text="JLCPCB_Generated project library",
+        expected_lcsc="C105637",
+        expected_value="1k",
+        expected_footprint="Resistor_SMD:R_0402_1005Metric",
+        validate_result=validate_create_result,
+        require_image=True,
+    )
     print(
-        "live-add-mode-ui=passed cursor=active "
+        "live-add-mode-ui=passed chooser=opened-for-manual-selection "
         "library_id=JLCPCB_Generated:R_C105637",
         flush=True,
     )

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
@@ -51,7 +50,7 @@ def start_native_symbol_placement(
     command_runner: Callable = subprocess.run,
     pause: Callable[[float], None] = time.sleep,
 ) -> None:
-    """Open KiCad's native symbol chooser and attach the selected symbol to the cursor."""
+    """Open KiCad's native Add Symbol chooser for manual cursor placement."""
     if not editor_window_id:
         raise RuntimeError(
             "Could not identify the active Eeschema window. Launch this action "
@@ -61,33 +60,23 @@ def start_native_symbol_placement(
         raise ValueError("The generated KiCad symbol name is invalid.")
 
     executable = xdotool or shutil.which("xdotool")
-    kicad_type = (
-        f"{type(kicad).__module__}.{type(kicad).__qualname__}"
-        if kicad is not None
-        else "None"
-    )
     run_action = getattr(kicad, "run_action", None)
     action_started = False
-    ipc_status = f"run_action unavailable on {kicad_type}"
+    ipc_status = "run_action unavailable"
     if callable(run_action):
         try:
-            action_result = run_action("eeschema.InteractiveDrawing.placeSymbol")
+            run_action("eeschema.InteractiveDrawing.placeSymbol")
             action_started = True
-            ipc_status = (
-                "started; result_type="
-                f"{type(action_result).__module__}.{type(action_result).__qualname__}"
-            )
+            ipc_status = "started"
         except Exception as exc:
-            # Keep the keyboard compatibility path, but preserve the IPC error
-            # so a failed native action is diagnosable from CI and user reports.
             ipc_status = f"failed: {type(exc).__name__}: {exc}"
     print(f"cursor-placement-ipc={ipc_status}", flush=True)
 
-    if action_started and not executable:
-        # The native chooser is already open. Let the user select the symbol
-        # manually when automatic filtering is unavailable.
-        return
     if not executable:
+        if action_started:
+            # The IPC tool has opened the native chooser; the user can select
+            # the project-local symbol directly in KiCad.
+            return
         raise RuntimeError(
             "Cursor placement requires xdotool on the supported Linux/X11 desktop. "
             "Install it with sudo apt install xdotool, then reopen the action."
@@ -117,20 +106,14 @@ def start_native_symbol_placement(
                 for key, value in values.items()
             }
         except ValueError as exc:
-            raise RuntimeError("Could not read the X11 mouse position.") from exc
-
-    original_pointer = shell_geometry(send("getmouselocation", "--shell"))
-    if "X" not in original_pointer or "Y" not in original_pointer:
-        raise RuntimeError(
-            "Could not record the mouse position before opening the symbol chooser."
-        )
+            raise RuntimeError("Could not read Eeschema window geometry.") from exc
 
     editor_pid = send("getwindowpid", str(editor_window_id))
     if not editor_pid:
         raise RuntimeError("Could not determine the active Eeschema process.")
 
     def focus_drawing_canvas_and_send_hotkey() -> None:
-        """Focus a safe point in Eeschema's drawing canvas before pressing A."""
+        """Use the native Add hotkey when this KiCad build lacks IPC run_action."""
         try:
             send("windowactivate", "--sync", str(editor_window_id))
         except subprocess.SubprocessError:
@@ -149,7 +132,8 @@ def start_native_symbol_placement(
                 "Could not locate the Eeschema drawing canvas for Add Symbol."
             ) from exc
 
-        # Keep clear of the left properties/hierarchy panels and the top toolbar.
+        # Focus a clear point in the drawing area, away from the left panels
+        # and the top toolbar, before using Eeschema's Add Symbol hotkey.
         local_x = min(max(window_width // 2, 300), max(40, window_width - 40))
         local_y = min(max(window_height // 10, 90), max(40, window_height - 40))
         target_x = window_x + local_x
@@ -167,24 +151,15 @@ def start_native_symbol_placement(
             and window_x <= pointer_x < window_x + window_width
             and window_y <= pointer_y < window_y + window_height
         )
-        print(
-            "cursor-placement-canvas-focus="
-            f"target=({target_x},{target_y}) window=0x{pointer_window:x} "
-            f"pointer=({pointer_x},{pointer_y}) "
-            f"editor_bounds=({window_x},{window_y},{window_width},{window_height})",
-            flush=True,
-        )
         if not pointer_inside_editor:
             raise RuntimeError(
-                "The Add Symbol focus click did not land inside Eeschema's "
-                "window bounds: "
-                f"target=({target_x},{target_y}), pointer={pointer!r}, "
-                f"editor={editor_window_id!r}/{geometry!r}."
+                "The Add Symbol focus click did not land inside Eeschema's window: "
+                f"pointer={pointer!r}, editor={editor_window_id!r}/{geometry!r}."
             )
         send("key", "--clearmodifiers", "a")
 
     def wait_for_chooser() -> tuple[str, str, str, str]:
-        """Return the chooser XID and current focus details, if it opened."""
+        """Return the native chooser window and its current focus details."""
         current_id = ""
         current_pid = ""
         current_title = ""
@@ -213,7 +188,7 @@ def start_native_symbol_placement(
     chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
     if not chooser_id and action_started:
         # Some KiCad builds expose run_action but do not activate the tool until
-        # Eeschema's drawing canvas is active. Retry through the Add hotkey.
+        # Eeschema's drawing canvas is active. Retry through the native hotkey.
         focus_drawing_canvas_and_send_hotkey()
         chooser_id, focused_id, focused_pid, focused_title = wait_for_chooser()
 
@@ -226,7 +201,6 @@ def start_native_symbol_placement(
             f"IPC handoff: {ipc_status}."
         )
 
-    chooser_pid = focused_pid or editor_pid
     chooser_title = ""
     chooser_ready = False
     for _ in range(150):
@@ -241,132 +215,8 @@ def start_native_symbol_placement(
             f"within 15 seconds: {chooser_title!r}."
         )
 
-    # Activate the chooser through the window manager instead of setting X
-    # input focus directly. KiCad's DIALOG_SHIM::OnActivate() restores its
-    # configured initial focus target (the Filter field) when the dialog is
-    # activated without a wx child holding focus.
-    try:
-        send("windowactivate", "--sync", chooser_id)
-    except subprocess.SubprocessError:
-        # Retain compatibility with X11 sessions without EWMH activation.
-        send("windowfocus", "--sync", chooser_id)
-    pause(0.1)
-
-    # Route keyboard events to the X11 child under the Filter control instead
-    # of relying on global focus. xdotool --window uses XSendEvent for this
-    # target, which can reach a text child even when XTEST focus stays on the
-    # chooser frame.
-    chooser_geometry = shell_geometry(
-        send("getwindowgeometry", "--shell", chooser_id)
-    )
-    try:
-        chooser_x = chooser_geometry["X"]
-        chooser_y = chooser_geometry["Y"]
-        chooser_width = chooser_geometry["WIDTH"]
-        chooser_height = chooser_geometry["HEIGHT"]
-    except KeyError as exc:
-        raise RuntimeError(
-            "Could not locate the native symbol chooser Filter field."
-        ) from exc
-    filter_x = chooser_x + min(80, max(40, chooser_width // 8))
-    filter_y = chooser_y + min(12, max(8, chooser_height // 60))
-    send("mousemove", "--sync", str(filter_x), str(filter_y))
-    pause(0.1)
-    filter_pointer = shell_geometry(send("getmouselocation", "--shell"))
-    filter_window = filter_pointer.get("WINDOW", 0)
-    filter_pointer_x = filter_pointer.get("X", -1)
-    filter_pointer_y = filter_pointer.get("Y", -1)
-    if (
-        filter_window == 0
-        or not (
-            chooser_x <= filter_pointer_x < chooser_x + chooser_width
-            and chooser_y <= filter_pointer_y < chooser_y + chooser_height
-        )
-    ):
-        raise RuntimeError(
-            "Could not identify the X11 child under KiCad's native Filter field: "
-            f"pointer={filter_pointer!r}, chooser={chooser_geometry!r}."
-        )
-    filter_window_id = f"0x{filter_window:x}"
     print(
-        "cursor-placement-filter-input-target="
-        f"window={filter_window_id} pointer=({filter_pointer_x},{filter_pointer_y})",
+        "cursor-placement-ready-for-manual-selection="
+        f"library=JLCPCB_Generated symbol={symbol_name} chooser={chooser_title!r}",
         flush=True,
-    )
-    debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
-    if debug_capture:
-        try:
-            from PIL import ImageGrab
-
-            probe_capture = debug_capture.replace(".png", "-key-probe.png")
-            send("key", "--window", filter_window_id, "--clearmodifiers", "r")
-            pause(0.1)
-            ImageGrab.grab().save(probe_capture)
-            print(
-                f"chooser-search-debug=single-key-probe focus={send('getwindowfocus')!r} "
-                f"screenshot={probe_capture!r}",
-                flush=True,
-            )
-        except Exception as exc:
-            print(
-                "chooser-search-debug=probe-capture-failed "
-                f"error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
-            send("key", "--window", filter_window_id, "--clearmodifiers", "BackSpace")
-    send(
-        "type", "--window", filter_window_id, "--clearmodifiers",
-        "--delay", "12", symbol_name,
-    )
-    pause(0.15)
-
-    if debug_capture:
-        try:
-            from PIL import ImageGrab
-
-            typed_capture = debug_capture.replace(".png", "-typed.png")
-            ImageGrab.grab().save(typed_capture)
-            print(
-                f"chooser-search-debug=typed focus={send('getwindowfocus')!r} "
-                f"screenshot={typed_capture!r}",
-                flush=True,
-            )
-        except Exception as exc:
-            print(
-                "chooser-search-debug=capture-failed "
-                f"error={type(exc).__name__}: {exc}",
-                flush=True,
-            )
-
-    send("key", "--window", chooser_id, "--clearmodifiers", "Return")
-
-    def restore_placement_pointer() -> None:
-        send(
-            "mousemove", "--sync",
-            str(original_pointer["X"]), str(original_pointer["Y"]),
-        )
-        pause(0.1)
-
-    for _ in range(30):
-        focused_id = send("getwindowfocus")
-        if focused_id == str(editor_window_id):
-            restore_placement_pointer()
-            return
-        focused_pid = send("getwindowpid", focused_id) if focused_id else ""
-        if chooser_pid and focused_pid == chooser_pid:
-            focused_title = send("getwindowname", focused_id).casefold()
-            if "choose symbol" not in focused_title and "select symbol" not in focused_title:
-                restore_placement_pointer()
-                return
-        pause(0.1)
-
-    focused_id = send("getwindowfocus")
-    focused_pid = send("getwindowpid", focused_id) if focused_id else ""
-    focused_title = send("getwindowname", focused_id) if focused_id else ""
-    raise RuntimeError(
-        "KiCad accepted the symbol chooser selection but did not return focus "
-        f"to Eeschema. Editor={editor_window_id!r}/{editor_pid!r}; "
-        f"chooser={chooser_id!r} ({chooser_title!r}); "
-        f"focused={focused_id!r}/{focused_pid!r} ({focused_title!r}). "
-        "Check the native chooser and retry placement."
     )

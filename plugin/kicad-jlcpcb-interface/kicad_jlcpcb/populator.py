@@ -1022,8 +1022,10 @@ class ComponentPopulator:
                 f"{draft.value} ({draft.lcsc}) and open KiCad's native Add Symbol chooser?\n\n"
                 "The selected symbol's pin numbers and electrical types are retained; "
                 "they are not inferred from catalogue data. Verify pin mapping against "
-                "the datasheet. Footprint is optional. KiCad will attach the symbol to "
-                "the mouse cursor; click to place or press Escape to cancel."
+                "the datasheet. Footprint is optional. In the native chooser, select the "
+                "new copy under the JLCPCB_Generated project library and confirm it. "
+                "KiCad will then attach the symbol to the mouse cursor; click to place "
+                "or press Escape to cancel."
             )
             if not self.messagebox.askyesno(
                 "Confirm new schematic component", warning, parent=self.root
