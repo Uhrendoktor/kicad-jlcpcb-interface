@@ -110,17 +110,14 @@ def start_native_symbol_placement(
             "then retry."
         )
 
-    # The tree follows the native Filter search control and its sort button
-    # in KiCad's focus order. Focus a visible tree row, then traverse twice
-    # backward (tree -> sort button -> Filter) before sending the query. One
-    # Shift+Tab stops at the sort button and silently drops typed characters.
+    # Send the mouse and keyboard events directly to the native chooser
+    # window. The search field is a wxSearchCtrl without a separate X11 child
+    # window, so targeting the chooser frame avoids pointer hit-testing against
+    # the floating preview canvas or GTK's transient focus traversal.
     send("windowfocus", "--sync", chooser_id)
-    send("mousemove", "--sync", "--window", chooser_id, "150", "145")
-    send("click", "1")
-    send("key", "--clearmodifiers", "shift+Tab")
-    send("key", "--clearmodifiers", "shift+Tab")
-    pause(0.1)
-    send("type", "--clearmodifiers", "--delay", "12", symbol_name)
+    send("mousemove", "--sync", "--window", chooser_id, "150", "15")
+    send("click", "--window", chooser_id, "1")
+    send("type", "--window", chooser_id, "--delay", "12", symbol_name)
     pause(0.15)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:

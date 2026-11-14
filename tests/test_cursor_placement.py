@@ -103,21 +103,18 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(add_hotkey),
         )
         chooser_focus = ["xdotool", "windowfocus", "--sync", "0x200"]
-        tree_move = [
-            "xdotool", "mousemove", "--sync", "--window", "0x200", "150", "145"
+        filter_move = [
+            "xdotool", "mousemove", "--sync", "--window", "0x200", "150", "15"
         ]
-        click_tree = ["xdotool", "click", "1"]
-        shift_tab = ["xdotool", "key", "--clearmodifiers", "shift+Tab"]
+        filter_click = ["xdotool", "click", "--window", "0x200", "1"]
         type_command = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "12", "R_C60489"
+            "xdotool", "type", "--window", "0x200", "--delay", "12", "R_C60489"
         ]
         return_command = ["xdotool", "key", "--clearmodifiers", "Return"]
         self.assertIn(chooser_focus, runner.commands)
-        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(tree_move))
-        self.assertLess(runner.commands.index(tree_move), runner.commands.index(click_tree))
-        self.assertEqual(runner.commands.count(shift_tab), 2)
-        self.assertLess(runner.commands.index(click_tree), runner.commands.index(shift_tab))
-        self.assertLess(runner.commands.index(shift_tab), runner.commands.index(type_command))
+        self.assertLess(runner.commands.index(chooser_focus), runner.commands.index(filter_move))
+        self.assertLess(runner.commands.index(filter_move), runner.commands.index(filter_click))
+        self.assertLess(runner.commands.index(filter_click), runner.commands.index(type_command))
         self.assertLess(
             runner.commands.index(type_command), runner.commands.index(return_command)
         )
