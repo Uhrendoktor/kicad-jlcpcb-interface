@@ -206,6 +206,23 @@ def start_native_symbol_placement(
         send("windowfocus", "--sync", chooser_id)
     except subprocess.SubprocessError:
         send("windowactivate", "--sync", chooser_id)
+
+    # The chooser's top-level window can have X11 focus while its wxWidgets
+    # filter entry still has no keyboard focus. Click inside that native search
+    # field explicitly. This is UI navigation only; symbol placement remains
+    # entirely under KiCad's cursor tool.
+    chooser_geometry = shell_geometry(
+        send("getwindowgeometry", "--shell", chooser_id)
+    )
+    if not {"X", "Y", "WIDTH", "HEIGHT"}.issubset(chooser_geometry):
+        raise RuntimeError("Could not locate the native symbol chooser filter field.")
+    filter_x = chooser_geometry["X"] + int(chooser_geometry["WIDTH"] * 0.10)
+    filter_y = chooser_geometry["Y"] + int(chooser_geometry["HEIGHT"] * 0.05)
+    send("mousemove", "--sync", str(filter_x), str(filter_y))
+    send("click", "1")
+    pause(0.1)
+    send("key", "--clearmodifiers", "ctrl+a")
+
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
         xwininfo = shutil.which("xwininfo")
