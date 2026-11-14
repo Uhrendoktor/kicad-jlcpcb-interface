@@ -290,7 +290,7 @@ class CursorPlacementTests(unittest.TestCase):
         filter_geometry = [
             "xdotool", "getwindowgeometry", "--shell", "0x200"
         ]
-        filter_move = ["xdotool", "mousemove", "--sync", "631", "449"]
+        filter_move = ["xdotool", "mousemove", "--sync", "601", "449"]
         pointer_check = ["xdotool", "getmouselocation", "--shell"]
         filter_click = ["xdotool", "click", "1"]
         self.assertIn(filter_geometry, runner.commands)
