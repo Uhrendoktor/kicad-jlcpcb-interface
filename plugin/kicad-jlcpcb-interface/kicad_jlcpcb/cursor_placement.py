@@ -212,7 +212,6 @@ def start_native_symbol_placement(
         chooser_x = chooser_geometry["X"]
         chooser_y = chooser_geometry["Y"]
         chooser_width = chooser_geometry["WIDTH"]
-        chooser_height = chooser_geometry["HEIGHT"]
     except KeyError as exc:
         raise RuntimeError(
             "Could not locate the native symbol chooser Search field."
