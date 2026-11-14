@@ -1643,7 +1643,8 @@ def _capture_passive_component_workflows(
         completed_asset="add-component-cursor.png",
         confirmation_title="Confirm new schematic component",
         required_confirmation_text=(
-            "original KiCad symbol pin numbers, pin types, units and graphics are retained"
+            "selected stock symbol's pin numbers, electrical types, units and graphics "
+            "are copied as-is"
         ),
         expected_lcsc=None,
         expected_value="10k",
