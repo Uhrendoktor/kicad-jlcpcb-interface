@@ -483,8 +483,11 @@ def start_native_symbol_placement(
         clipboard_ready=clipboard_ready,
     )
     if filter_set_accessibly:
-        print("chooser-input=atspi-filter", flush=True)
-    elif clipboard_ready:
+        print("chooser-input=atspi-focus", flush=True)
+    if clipboard_ready:
+        # Always send a real clipboard paste after AT-SPI focus. The GTK/wx
+        # bridge can report updated EditableText while the visible control
+        # remains unchanged; Ctrl+V exercises the focused widget itself.
         send("key", "--clearmodifiers", "ctrl+v")
         print("chooser-input=ctrl-v", flush=True)
     else:

@@ -401,7 +401,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xclip", "-selection", "clipboard", "-in"], runner.commands
         )
-        self.assertNotIn(
+        self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "ctrl+v"], runner.commands
         )
         self.assertNotIn(
