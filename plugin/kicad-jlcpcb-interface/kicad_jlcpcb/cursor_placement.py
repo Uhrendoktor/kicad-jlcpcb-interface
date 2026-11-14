@@ -129,46 +129,18 @@ def start_native_symbol_placement(
             "KiCad's native symbol chooser did not finish loading its catalog "
             f"within 15 seconds: {chooser_title!r}."
         )
-    # The chooser is a docked pane in Eeschema, not a separate small dialog.
-    # Resolve its absolute X11 origin and click the native Filter control near
-    # the pane's upper-left corner. Xdotool's window-relative move was landing
-    # in the editor toolbar because the focused X window spans the editor.
-    geometry_text = send("getwindowgeometry", "--shell", chooser_id)
-    geometry: dict[str, int] = {}
-    for line in geometry_text.splitlines():
-        key, separator, value = line.partition("=")
-        if separator and key in {"X", "Y", "WIDTH", "HEIGHT"}:
-            try:
-                geometry[key] = int(value)
-            except ValueError:
-                pass
-    if not all(key in geometry for key in ("X", "Y", "WIDTH", "HEIGHT")):
-        raise RuntimeError(
-            "Could not determine the Eeschema symbol chooser geometry for its "
-            f"Filter control: {geometry_text!r}."
-        )
-    filter_x = geometry["X"] + int(geometry["WIDTH"] * 0.23)
-    filter_y = geometry["Y"] + 15
-    send("mousemove", "--sync", str(filter_x), str(filter_y))
-    send("click", "1")
+    # Set X input focus to the loaded native chooser. KiCad's first-paint
+    # handler focuses the Filter wxSearchCtrl, but under bare Xvfb the server
+    # focus can still be held by the Eeschema parent frame. Reassert the
+    # chooser's top-level focus after loading so XTest keyboard events are
+    # dispatched to its current child focus target.
+    send("windowfocus", "--sync", chooser_id)
     pause(0.1)
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
-        pointer = send("getmouselocation", "--shell")
-        tree = subprocess.run(
-            ["xwininfo", "-tree", "-id", chooser_id],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=5,
-        )
-        windows = send("search", "--onlyvisible", "--pid", editor_pid)
         print(
-            "chooser-input-target="
-            f"geometry={geometry!r} click=({filter_x},{filter_y}) "
-            f"mouse={pointer!r} visible_pid_windows={windows!r} "
-            f"xwininfo_returncode={tree.returncode} "
-            f"xwininfo_tree={tree.stdout!r} xwininfo_error={tree.stderr!r}",
+            "chooser-window-focus="
+            f"chooser={chooser_id!r} focus={send('getwindowfocus')!r}",
             flush=True,
         )
     send("type", "--clearmodifiers", "--delay", "15", symbol_name)
