@@ -1669,6 +1669,11 @@ def _capture_passive_component_workflows(
 
     def capture_failed_native_handoff(*args, **kwargs):
         try:
+            if create.root.winfo_viewable():
+                raise RuntimeError(
+                    "The Component Workspace must be withdrawn before native "
+                    "Eeschema cursor placement starts."
+                )
             return original_native_handoff(*args, **kwargs)
         except Exception as exc:
             # Preserve the exact native chooser state for CI diagnosis. The
