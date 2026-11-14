@@ -177,7 +177,7 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
-    def test_uses_editable_text_insert_on_nested_search_entry(self):
+    def test_sends_atspi_key_events_to_nested_search_entry(self):
         search_entry = FakeAccessible("")
         search_entry.extents = (545, 424, 378, 34)
         search_wrapper = FakeAccessible("Search", children=[search_entry])
@@ -215,9 +215,12 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(chooser.hit_test_calls, [(601, 449, 0)])
         self.assertFalse(search_wrapper.focused)
         self.assertTrue(search_entry.focused)
-        self.assertEqual(search_entry.insert_calls, [(0, "c60489", 6)])
+        self.assertEqual(search_entry.insert_calls, [])
         self.assertEqual(search_entry.text, "c60489")
-        self.assertEqual(generated_events, [])
+        self.assertEqual(
+            generated_events,
+            [(ord(character), "", 3) for character in "c60489"],
+        )
 
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
