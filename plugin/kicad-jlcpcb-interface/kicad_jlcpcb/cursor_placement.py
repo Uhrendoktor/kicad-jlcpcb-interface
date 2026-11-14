@@ -541,8 +541,7 @@ def start_native_symbol_placement(
         "chooser-pointer="
         f"position=({pointer.get('X')},{pointer.get('Y')}) "
         f"window={pointer_window!r} pid={pointer_pid!r} "
-        f"target={chooser_id!r} active={send('getactivewindow')!r} "
-        f"focus={send('getwindowfocus')!r}",
+        f"target={chooser_id!r} active={send('getactivewindow')!r}",
         flush=True,
     )
     if pointer.get("X") != filter_x or pointer.get("Y") != filter_y:
