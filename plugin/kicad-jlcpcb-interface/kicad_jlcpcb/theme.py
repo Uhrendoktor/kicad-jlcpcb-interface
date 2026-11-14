@@ -273,6 +273,29 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         foreground=palette["foreground"],
     )
     style.configure(
+        "CardTitle.TLabel",
+        background=palette["surface"],
+        foreground=palette["foreground"],
+        font=("TkDefaultFont", 11, "bold"),
+    )
+    style.configure(
+        "CardMeta.TLabel",
+        background=palette["surface"],
+        foreground=palette["muted"],
+    )
+    style.configure(
+        "MetricLabel.TLabel",
+        background=palette["surface"],
+        foreground=palette["muted"],
+        font=("TkDefaultFont", 8, "bold"),
+    )
+    style.configure(
+        "MetricValue.TLabel",
+        background=palette["surface"],
+        foreground=palette["foreground"],
+        font=("TkDefaultFont", 10, "bold"),
+    )
+    style.configure(
         "TLabelframe",
         background=palette["background"],
         foreground=palette["foreground"],
