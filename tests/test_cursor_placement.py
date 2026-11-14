@@ -133,12 +133,8 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
-        canvas_click = ["xdotool", "click", "--clearmodifiers", "1"]
-        add_symbol_hotkey = ["xdotool", "key", "--clearmodifiers", "a"]
-        self.assertIn(canvas_click, runner.commands)
-        self.assertLess(
-            runner.commands.index(canvas_click),
-            runner.commands.index(add_symbol_hotkey),
+        self.assertNotIn(
+            ["xdotool", "click", "--clearmodifiers", "1"], runner.commands
         )
         self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
@@ -178,8 +174,12 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
-        self.assertNotIn(
-            ["xdotool", "click", "--clearmodifiers", "1"], runner.commands
+        canvas_click = ["xdotool", "click", "--clearmodifiers", "1"]
+        add_symbol_hotkey = ["xdotool", "key", "--clearmodifiers", "a"]
+        self.assertIn(canvas_click, runner.commands)
+        self.assertLess(
+            runner.commands.index(canvas_click),
+            runner.commands.index(add_symbol_hotkey),
         )
 
 
