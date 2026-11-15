@@ -329,13 +329,20 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertEqual(search_entry.focus_calls, 1)
 
 
-    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
+    @patch(
+        "kicad_jlcpcb.cursor_placement.paste_search_text_via_context_menu"
+    )
+    @patch(
+        "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
+        return_value=True,
+    )
     @patch(
         "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
         return_value=True,
     )
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
-        self, _focus_search, _which
+        self, _which, _focus_search, _send_text, _paste
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
         kicad = FakeKiCad()
@@ -392,19 +399,14 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(filter_click),
         )
         _focus_search.assert_called_once_with(601, 449)
-        clear_search = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
-        type_search = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "50", "c60489"
-        ]
-        self.assertIn(clear_search, runner.commands)
-        self.assertIn(type_search, runner.commands)
-        self.assertLess(
-            runner.commands.index(client_click),
-            runner.commands.index(clear_search),
+        _send_text.assert_called_once_with("c60489")
+        _paste.assert_not_called()
+        self.assertNotIn(
+            ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
         )
-        self.assertLess(
-            runner.commands.index(clear_search),
-            runner.commands.index(type_search),
+        self.assertNotIn(
+            ["xdotool", "type", "--clearmodifiers", "--delay", "50", "c60489"],
+            runner.commands,
         )
         self.assertIn(return_command, runner.commands)
         self.assertLess(
@@ -425,11 +427,15 @@ class CursorPlacementTests(unittest.TestCase):
         return_value=False,
     )
     @patch(
+        "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
+        return_value=False,
+    )
+    @patch(
         "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
         return_value=True,
     )
     def test_uses_global_xtest_after_refocusing_raw_x11_child(
-        self, _focus_search, _paste
+        self, _focus_search, _send_text, _paste
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
         runner.raw_focus_window = "0x201"

@@ -714,51 +714,64 @@ def start_native_symbol_placement(
         f"focused={atspi_focused} text={filter_text!r}",
         flush=True,
     )
-    pasted = paste_search_text_via_context_menu(
-        filter_text,
-        x=filter_x,
-        y=filter_y,
-        send=send,
-        command_runner=command_runner,
-        pause=pause,
+    # Try libatspi's composed-string API while the real Search widget has
+    # focus. The unit-tested helper is deliberately attempted before context
+    # menu or raw X11 fallbacks; the live screenshot below verifies whether the
+    # native wxGTK control actually received the characters.
+    synthesized = (
+        atspi_focused and send_text_to_focused_search(filter_text)
     )
-    if not pasted:
-        # getwindowfocus normally climbs to a WM_CLASS-bearing top-level
-        # frame. Query the raw X11 focus as well: wxGTK may keep keyboard focus
-        # on a child window while the chooser frame remains the active window.
-        raw_focus = send("getwindowfocus", "-f")
+    if synthesized:
         print(
-            "chooser-x11-raw-focus="
-            f"raw={raw_focus!r} chooser={chooser_id!r}",
+            f"chooser-input=atspi-string text={filter_text!r}",
             flush=True,
         )
-        if raw_focus and raw_focus != chooser_id:
-            try:
-                send("windowfocus", "--sync", raw_focus)
-                pause(0.05)
-                focused_raw = send("getwindowfocus", "-f")
-                print(
-                    "chooser-x11-child-focus="
-                    f"requested={raw_focus!r} actual={focused_raw!r}",
-                    flush=True,
-                )
-            except subprocess.SubprocessError as exc:
-                print(
-                    "chooser-x11-child-focus=failed "
-                    f"target={raw_focus!r} error={type(exc).__name__}:{exc}",
-                    flush=True,
-                )
+    else:
+        pasted = paste_search_text_via_context_menu(
+            filter_text,
+            x=filter_x,
+            y=filter_y,
+            send=send,
+            command_runner=command_runner,
+            pause=pause,
+        )
+        if not pasted:
+            # getwindowfocus normally climbs to a WM_CLASS-bearing top-level
+            # frame. Query the raw X11 focus as well: wxGTK may keep keyboard
+            # focus on a child window while the chooser frame is active.
+            raw_focus = send("getwindowfocus", "-f")
+            print(
+                "chooser-x11-raw-focus="
+                f"raw={raw_focus!r} chooser={chooser_id!r}",
+                flush=True,
+            )
+            if raw_focus and raw_focus != chooser_id:
+                try:
+                    send("windowfocus", "--sync", raw_focus)
+                    pause(0.05)
+                    focused_raw = send("getwindowfocus", "-f")
+                    print(
+                        "chooser-x11-child-focus="
+                        f"requested={raw_focus!r} actual={focused_raw!r}",
+                        flush=True,
+                    )
+                except subprocess.SubprocessError as exc:
+                    print(
+                        "chooser-x11-child-focus=failed "
+                        f"target={raw_focus!r} error={type(exc).__name__}:{exc}",
+                        flush=True,
+                    )
 
-        # Focus the raw wxGTK child XID above, then send ordinary XTest
-        # keyboard events to the globally focused entry. xdotool --window
-        # switches to XSendEvent, which the KiCad Search editor ignores.
-        send("key", "--clearmodifiers", "ctrl+a")
-        send("type", "--clearmodifiers", "--delay", "50", filter_text)
-        print(
-            "chooser-input=xtest-focused-child "
-            f"window={raw_focus or chooser_id!r} text={filter_text!r}",
-            flush=True,
-        )
+            # Focus the raw wxGTK child XID above, then send ordinary XTest
+            # keyboard events to the globally focused entry. xdotool --window
+            # switches to XSendEvent, which the KiCad Search editor ignores.
+            send("key", "--clearmodifiers", "ctrl+a")
+            send("type", "--clearmodifiers", "--delay", "50", filter_text)
+            print(
+                "chooser-input=xtest-focused-child "
+                f"window={raw_focus or chooser_id!r} text={filter_text!r}",
+                flush=True,
+            )
     pause(0.35)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
