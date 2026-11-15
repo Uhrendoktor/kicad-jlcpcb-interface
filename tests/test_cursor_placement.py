@@ -13,6 +13,7 @@ sys.path.insert(0, str(PLUGIN))
 from kicad_jlcpcb.cursor_placement import (  # noqa: E402
     capture_eeschema_window_id,
     focus_symbol_chooser_search_at_point,
+    paste_search_text_via_clipboard_shortcut,
     paste_search_text_via_context_menu,
     send_text_to_focused_search,
     start_native_symbol_placement,
