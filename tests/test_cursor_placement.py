@@ -537,8 +537,8 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(filter_click),
         )
         self.assertLess(
+            runner.commands.index(["xdotool", "getwindowfocus", "-f"]),
             runner.commands.index(["xdotool", "windowfocus", "--sync", "0x201"]),
-            runner.commands.index(["xdotool", "getmouselocation", "--shell"], 1),
         )
         _focus_search.assert_called_once_with(601, 449)
         _paste.assert_called_once()
