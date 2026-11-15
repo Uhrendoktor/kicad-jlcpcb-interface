@@ -330,7 +330,8 @@ class CursorPlacementTests(unittest.TestCase):
 
 
     @patch(
-        "kicad_jlcpcb.cursor_placement.paste_search_text_via_context_menu"
+        "kicad_jlcpcb.cursor_placement.paste_search_text_via_context_menu",
+        return_value=True,
     )
     @patch(
         "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
@@ -381,21 +382,14 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(pointer_check, runner.commands)
         self.assertIn(filter_click, runner.commands)
         self.assertIn(client_click, runner.commands)
-        self.assertIn(
+        self.assertNotIn(
             ["xdotool", "getwindowfocus", "-f"], runner.commands
         )
-        self.assertIn(
+        self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x201"], runner.commands
         )
-        self.assertIn(
+        self.assertNotIn(
             ["xdotool", "key", "--window", "0x201", "--clearmodifiers", "ctrl+a"],
-            runner.commands,
-        )
-        self.assertIn(
-            [
-                "xdotool", "type", "--window", "0x201", "--clearmodifiers",
-                "--delay", "50", "c60489",
-            ],
             runner.commands,
         )
         self.assertEqual(
@@ -414,8 +408,8 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(filter_click),
         )
         _focus_search.assert_called_once_with(601, 449)
-        _send_text.assert_called_once_with("c60489")
-        _paste.assert_not_called()
+        _paste.assert_called_once()
+        _send_text.assert_not_called()
         self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
         )

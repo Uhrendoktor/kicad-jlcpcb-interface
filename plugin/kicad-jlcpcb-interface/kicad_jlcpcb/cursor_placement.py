@@ -714,21 +714,40 @@ def start_native_symbol_placement(
         f"focused={atspi_focused} text={filter_text!r}",
         flush=True,
     )
-    # Keep the libatspi composed-string attempt, but do not assume its
-    # success status means wxGTK displayed the query. The chooser's Search
-    # control lives in a child X11 window; target that XID directly with
-    # XSendEvent after taking raw focus. If no child is exposed, use the
-    # established context-menu and global XTest fallbacks.
-    synthesized = (
-        atspi_focused and send_text_to_focused_search(filter_text)
-    )
-    if synthesized:
+    # Prefer the Search field's native context-menu Paste action. This is a
+    # real GTK text edit, unlike AT-SPI STRING synthesis (which can report
+    # success without changing the visible field) or XSendEvent to the 1x1
+    # input-method child window.
+    pasted = False
+    if atspi_focused:
+        pasted = paste_search_text_via_context_menu(
+            filter_text,
+            x=filter_x,
+            y=filter_y,
+            send=send,
+            command_runner=command_runner,
+            pause=pause,
+        )
+    if pasted:
         print(
-            f"chooser-input=atspi-string text={filter_text!r}",
+            f"chooser-input=context-menu-paste text={filter_text!r}",
             flush=True,
         )
 
-    raw_focus = send("getwindowfocus", "-f")
+    # Keep composed-string and raw child-window input as fallbacks only when
+    # the native context-menu Paste action cannot be located or invoked.
+    synthesized = False
+    if not pasted:
+        synthesized = (
+            atspi_focused and send_text_to_focused_search(filter_text)
+        )
+        if synthesized:
+            print(
+                f"chooser-input=atspi-string text={filter_text!r}",
+                flush=True,
+            )
+
+    raw_focus = send("getwindowfocus", "-f") if not pasted else ""
     print(
         "chooser-x11-raw-focus="
         f"raw={raw_focus!r} chooser={chooser_id!r}",
@@ -763,25 +782,16 @@ def start_native_symbol_placement(
                 f"target={raw_focus!r} error={type(exc).__name__}:{exc}",
                 flush=True,
             )
-    elif not synthesized:
-        pasted = paste_search_text_via_context_menu(
-            filter_text,
-            x=filter_x,
-            y=filter_y,
-            send=send,
-            command_runner=command_runner,
-            pause=pause,
+    elif not synthesized and not pasted:
+        # Last-resort global XTest typing when no child X11 input window
+        # can be identified and the native Paste action was unavailable.
+        send("key", "--clearmodifiers", "ctrl+a")
+        send("type", "--clearmodifiers", "--delay", "50", filter_text)
+        print(
+            "chooser-input=xtest-focused-window "
+            f"window={chooser_id!r} text={filter_text!r}",
+            flush=True,
         )
-        if not pasted:
-            # Last-resort global XTest typing when no child X11 input window
-            # can be identified.
-            send("key", "--clearmodifiers", "ctrl+a")
-            send("type", "--clearmodifiers", "--delay", "50", filter_text)
-            print(
-                "chooser-input=xtest-focused-window "
-                f"window={chooser_id!r} text={filter_text!r}",
-                flush=True,
-            )
     pause(0.35)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
