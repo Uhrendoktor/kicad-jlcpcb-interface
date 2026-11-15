@@ -380,7 +380,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(pointer_check, runner.commands)
         self.assertIn(filter_click, runner.commands)
         self.assertIn(client_click, runner.commands)
-        self.assertIn(
+        self.assertNotIn(
             ["xdotool", "getwindowfocus", "-f"], runner.commands
         )
         self.assertEqual(
