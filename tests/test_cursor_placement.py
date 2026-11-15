@@ -332,6 +332,41 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertEqual(pasted, [True])
 
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
+    def test_pastes_search_text_with_clipboard_shortcut(self, _which):
+        commands = []
+
+        def runner(arguments, **kwargs):
+            commands.append((arguments, kwargs))
+            return SimpleNamespace(stdout="", returncode=0)
+
+        def send(*arguments):
+            commands.append((["xdotool", *arguments], {}))
+            return ""
+
+        pauses = []
+        self.assertTrue(
+            paste_search_text_via_clipboard_shortcut(
+                "c60489",
+                send=send,
+                command_runner=runner,
+                pause=pauses.append,
+            )
+        )
+        clipboard_calls = [
+            (command, kwargs) for command, kwargs in commands
+            if command == ["xclip", "-selection", "clipboard", "-in"]
+        ]
+        self.assertEqual(len(clipboard_calls), 1)
+        self.assertEqual(clipboard_calls[0][1]["input"], "c60489")
+        self.assertIn(
+            (["xdotool", "key", "--clearmodifiers", "ctrl+a"], {}), commands
+        )
+        self.assertIn(
+            (["xdotool", "key", "--clearmodifiers", "ctrl+v"], {}), commands
+        )
+        self.assertIn(0.2, pauses)
+
     def test_captures_only_a_focused_eeschema_window(self):
         runner = FakeRunner()
         self.assertEqual(
@@ -416,7 +451,7 @@ class CursorPlacementTests(unittest.TestCase):
 
 
     @patch(
-        "kicad_jlcpcb.cursor_placement.paste_search_text_via_context_menu",
+        "kicad_jlcpcb.cursor_placement.paste_search_text_via_clipboard_shortcut",
         return_value=True,
     )
     @patch(
@@ -522,6 +557,10 @@ class CursorPlacementTests(unittest.TestCase):
         return_value=False,
     )
     @patch(
+        "kicad_jlcpcb.cursor_placement.paste_search_text_via_clipboard_shortcut",
+        return_value=False,
+    )
+    @patch(
         "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
         return_value=False,
     )
@@ -530,7 +569,7 @@ class CursorPlacementTests(unittest.TestCase):
         return_value=True,
     )
     def test_targets_raw_wxgtk_child_with_xsend_event_after_atspi_fails(
-        self, _focus_search, _send_text, _paste
+        self, _focus_search, _send_text, _paste_clipboard, _paste_context
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
         runner.raw_focus_window = "0x201"

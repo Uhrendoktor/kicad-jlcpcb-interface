@@ -298,6 +298,50 @@ def focus_symbol_chooser_search_at_point(
     return False
 
 
+def paste_search_text_via_clipboard_shortcut(
+    text: str,
+    *,
+    send: Callable,
+    command_runner: Callable = subprocess.run,
+    pause: Callable[[float], None] = time.sleep,
+) -> bool:
+    """Paste text into the currently focused native Search field via Ctrl+V."""
+    if not text:
+        return True
+    xclip = shutil.which("xclip")
+    if not xclip:
+        print("chooser-paste=clipboard-shortcut-xclip-unavailable", flush=True)
+        return False
+    try:
+        command_runner(
+            [xclip, "-selection", "clipboard", "-in"],
+            input=text,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+        # The native Search control has already been focused through AT-SPI and
+        # a verified screen click. Use normal XTest key events (not XSendEvent
+        # to the chooser's 1x1 input-method child window).
+        send("key", "--clearmodifiers", "ctrl+a")
+        send("key", "--clearmodifiers", "ctrl+v")
+        pause(0.2)
+        print(
+            f"chooser-paste=clipboard-shortcut text={text!r}",
+            flush=True,
+        )
+        return True
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(
+            "chooser-paste=clipboard-shortcut-failed "
+            f"error={type(exc).__name__}:{exc}",
+            flush=True,
+        )
+        return False
+
+
 def paste_search_text_via_context_menu(
     text: str,
     *,
@@ -755,12 +799,19 @@ def start_native_symbol_placement(
         f"focused={atspi_focused} text={filter_text!r}",
         flush=True,
     )
-    # Prefer the Search field's native context-menu Paste action. This is a
-    # real GTK text edit, unlike AT-SPI STRING synthesis (which can report
-    # success without changing the visible field) or XSendEvent to the 1x1
-    # input-method child window.
+    # The native Search field is focused. Prefer a normal XTest Ctrl+V paste
+    # from the X11 CLIPBOARD; this targets the focused GTK control without
+    # sending XSendEvent to the chooser's 1x1 input-method child window.
     pasted = False
     if atspi_focused:
+        pasted = paste_search_text_via_clipboard_shortcut(
+            filter_text,
+            send=send,
+            command_runner=command_runner,
+            pause=pause,
+        )
+    if not pasted and atspi_focused:
+        # Older KiCad builds may expose a native context-menu Paste action.
         pasted = paste_search_text_via_context_menu(
             filter_text,
             x=filter_x,
@@ -771,12 +822,12 @@ def start_native_symbol_placement(
         )
     if pasted:
         print(
-            f"chooser-input=context-menu-paste text={filter_text!r}",
+            f"chooser-input=clipboard-or-native-paste text={filter_text!r}",
             flush=True,
         )
 
     # Keep composed-string and raw child-window input as fallbacks only when
-    # the native context-menu Paste action cannot be located or invoked.
+    # both native clipboard paste paths are unavailable.
     synthesized = False
     if not pasted:
         synthesized = (
