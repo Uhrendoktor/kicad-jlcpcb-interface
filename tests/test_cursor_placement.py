@@ -242,9 +242,95 @@ class CursorPlacementTests(unittest.TestCase):
         ]
         self.assertEqual(len(clipboard_calls), 1)
         self.assertEqual(clipboard_calls[0][1]["input"], "c60489")
-        self.assertIn((["xdotool", "click", "3"], {}), commands)
+        self.assertIn(
+            (["xdotool", "key", "--clearmodifiers", "shift+F10"], {}),
+            commands,
+        )
         self.assertEqual(pasted, ["c60489"])
         self.assertIn(0.2, pauses)
+
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value="xclip")
+    def test_uses_popup_bounds_when_paste_item_extents_are_unavailable(self, _which):
+        pasted = []
+
+        class Node:
+            def __init__(self, name, role, children=(), bounds=None, action=None):
+                self.name = name
+                self.role = role
+                self.children = list(children)
+                self.bounds = bounds or (-2147483648, -2147483648, 1, 1)
+                self.action = action
+
+            @property
+            def childCount(self):
+                return len(self.children)
+
+            def getChildAtIndex(self, index):
+                return self.children[index]
+
+            def getRoleName(self):
+                return self.role
+
+            def queryComponent(self):
+                return self
+
+            def getExtents(self, _coord_type):
+                return self.bounds
+
+            def queryAction(self):
+                return self.action
+
+        class Action:
+            nActions = 1
+
+            def getName(self, _index):
+                return "click"
+
+            def doAction(self, _index):
+                pasted.append(True)
+                return True
+
+        paste_item = Node("Paste", "menu item", action=Action())
+        popup = Node(
+            "context menu", "popup menu", children=[paste_item],
+            bounds=(600, 445, 150, 90),
+        )
+        chooser = Node(
+            "Choose Symbol (22936 items loaded)", "dialog", children=[popup],
+            bounds=(519, 399, 882, 705),
+        )
+        desktop = Node(
+            "desktop", "desktop", children=[chooser], bounds=(0, 0, 1920, 1500)
+        )
+
+        class Registry:
+            @staticmethod
+            def getDesktop(_index):
+                return desktop
+
+        fake_atspi = SimpleNamespace(Registry=Registry, DESKTOP_COORDS=0)
+        commands = []
+
+        def runner(arguments, **kwargs):
+            commands.append((arguments, kwargs))
+            return SimpleNamespace(stdout="", returncode=0)
+
+        def send(*arguments):
+            commands.append((["xdotool", *arguments], {}))
+            return ""
+
+        self.assertTrue(
+            paste_search_text_via_context_menu(
+                "c60489",
+                x=601,
+                y=449,
+                send=send,
+                command_runner=runner,
+                pause=lambda _seconds: None,
+                atspi_module=fake_atspi,
+            )
+        )
+        self.assertEqual(pasted, [True])
 
     def test_captures_only_a_focused_eeschema_window(self):
         runner = FakeRunner()

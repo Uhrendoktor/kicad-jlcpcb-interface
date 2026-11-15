@@ -333,10 +333,11 @@ def paste_search_text_via_context_menu(
         )
         return False
 
-    # The pointer is already inside the actual Search field. Its context menu
-    # exposes Paste as an accessibility action, avoiding synthetic key events.
+    # The Search widget is focused. Ask GTK to open its native context menu
+    # through the standard keyboard command; a pointer right-click on the
+    # chooser's Openbox frame did not reach the text control in the live run.
     try:
-        send("click", "3")
+        send("key", "--clearmodifiers", "shift+F10")
         pause(0.2)
         debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
         if debug_capture:
@@ -390,12 +391,12 @@ def paste_search_text_via_context_menu(
         )
         return False
 
-    stack = [desktop]
+    stack = [(desktop, [])]
     inspected = 0
     menu_candidates = []
     rejected_candidates = []
     while stack and inspected < 1500:
-        node = stack.pop()
+        node, ancestors = stack.pop()
         inspected += 1
         try:
             name = str(getattr(node, "name", "") or "")
@@ -405,24 +406,47 @@ def paste_search_text_via_context_menu(
             role = str(node.getRoleName())
         except Exception:
             role = ""
+        try:
+            bounds = node.queryComponent().getExtents(coord_type)
+        except Exception:
+            bounds = None
+        current = (name, role, bounds)
         if name.casefold() == "paste" and "menu" in role.casefold():
-            try:
-                bounds = node.queryComponent().getExtents(coord_type)
-            except Exception:
-                bounds = None
-            if bounds is not None:
-                left, top, width, height = bounds
+            menu_bounds = None
+            for _ancestor_name, ancestor_role, ancestor_bounds in reversed(ancestors):
+                if (
+                    "menu" in ancestor_role.casefold()
+                    and "item" not in ancestor_role.casefold()
+                    and ancestor_bounds is not None
+                    and ancestor_bounds[2] > 0
+                    and ancestor_bounds[3] > 0
+                ):
+                    menu_bounds = ancestor_bounds
+                    break
+            item_bounds = bounds
+            effective_bounds = (
+                item_bounds
+                if item_bounds is not None
+                and item_bounds[2] > 0
+                and item_bounds[3] > 0
+                else menu_bounds
+            )
+            if effective_bounds is not None:
+                left, top, width, height = effective_bounds
                 near_search = (
                     left >= x - 100
-                    and left <= x + 260
-                    and top >= y - 20
-                    and top <= y + 240
+                    and left <= x + 320
+                    and top >= y - 40
+                    and top <= y + 300
                     and width > 0
                     and height > 0
                 )
             else:
                 near_search = False
-            candidate_detail = (name, role, bounds, near_search)
+            candidate_detail = (
+                name, role, item_bounds, menu_bounds, near_search,
+                ancestors[-4:],
+            )
             if near_search:
                 menu_candidates.append((node, candidate_detail))
             else:
@@ -433,16 +457,24 @@ def paste_search_text_via_context_menu(
             child_count = 0
         for index in range(child_count):
             try:
-                stack.append(node.getChildAtIndex(index))
+                stack.append((node.getChildAtIndex(index), [*ancestors, current]))
             except Exception:
                 continue
 
     # Prefer the Paste command in the popup adjacent to the Search entry;
     # ignore similarly named actions in Eeschema's global menu bar.
+    def candidate_bounds(detail):
+        item_bounds, menu_bounds = detail[2], detail[3]
+        if item_bounds is not None and item_bounds[2] > 0 and item_bounds[3] > 0:
+            return item_bounds
+        return menu_bounds
+
     menu_candidates.sort(
         key=lambda pair: (
-            abs(pair[1][2][1] - y) if pair[1][2] else float("inf"),
-            abs(pair[1][2][0] - x) if pair[1][2] else float("inf"),
+            abs(candidate_bounds(pair[1])[1] - y)
+            if candidate_bounds(pair[1]) else float("inf"),
+            abs(candidate_bounds(pair[1])[0] - x)
+            if candidate_bounds(pair[1]) else float("inf"),
         )
     )
     for item, candidate_detail in menu_candidates:
