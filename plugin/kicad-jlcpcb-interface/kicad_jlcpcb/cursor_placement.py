@@ -112,6 +112,12 @@ def dump_symbol_chooser_accessibility_tree(
             )
             return []
 
+    coord_type = getattr(
+        atspi_module,
+        "DESKTOP_COORDS",
+        getattr(atspi_module, "XY_SCREEN", 0),
+    )
+
     try:
         desktop = atspi_module.Registry.getDesktop(0)
     except Exception as exc:
@@ -223,7 +229,12 @@ def dump_symbol_chooser_accessibility_tree(
             except Exception:
                 table = None
             if table is not None:
-                for method_name in ("getNRows", "getNColumns", "getSelectedRows", "getSelectedColumns"):
+                for method_name in (
+                    "getNRows",
+                    "getNColumns",
+                    "getSelectedRows",
+                    "getSelectedColumns",
+                ):
                     try:
                         result = getattr(table, method_name)()
                         table_info[method_name] = (
