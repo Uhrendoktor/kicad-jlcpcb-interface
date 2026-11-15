@@ -799,9 +799,39 @@ def start_native_symbol_placement(
         f"focused={atspi_focused} text={filter_text!r}",
         flush=True,
     )
-    # The native Search field is focused. Prefer a normal XTest Ctrl+V paste
-    # from the X11 CLIPBOARD; this targets the focused GTK control without
-    # sending XSendEvent to the chooser's 1x1 input-method child window.
+    # Resolve and focus wxGTK's raw input child before sending keyboard
+    # input. The child is often a 1x1 XIM window; XSendEvent to it was ignored,
+    # but XTest events sent while it is the focused window are delivered via
+    # the normal GTK input-method route.
+    raw_focus = send("getwindowfocus", "-f")
+    child_focus_ready = False
+    print(
+        "chooser-x11-raw-focus="
+        f"raw={raw_focus!r} chooser={chooser_id!r}",
+        flush=True,
+    )
+    if raw_focus and raw_focus != chooser_id:
+        try:
+            send("windowfocus", "--sync", raw_focus)
+            pause(0.05)
+            focused_raw = send("getwindowfocus", "-f")
+            child_focus_ready = focused_raw == raw_focus
+            print(
+                "chooser-x11-child-focus="
+                f"requested={raw_focus!r} actual={focused_raw!r} "
+                f"ready={child_focus_ready}",
+                flush=True,
+            )
+        except subprocess.SubprocessError as exc:
+            print(
+                "chooser-x11-child-focus-failed "
+                f"target={raw_focus!r} error={type(exc).__name__}:{exc}",
+                flush=True,
+            )
+
+    # Prefer a normal XTest Ctrl+V paste from the X11 CLIPBOARD after the
+    # native GTK input child has focus. Do not use --window (XSendEvent) for
+    # the paste keystrokes.
     pasted = False
     if atspi_focused:
         pasted = paste_search_text_via_clipboard_shortcut(
@@ -811,7 +841,6 @@ def start_native_symbol_placement(
             pause=pause,
         )
     if not pasted and atspi_focused:
-        # Older KiCad builds may expose a native context-menu Paste action.
         pasted = paste_search_text_via_context_menu(
             filter_text,
             x=filter_x,
@@ -826,8 +855,6 @@ def start_native_symbol_placement(
             flush=True,
         )
 
-    # Keep composed-string and raw child-window input as fallbacks only when
-    # both native clipboard paste paths are unavailable.
     synthesized = False
     if not pasted:
         synthesized = (
@@ -839,25 +866,10 @@ def start_native_symbol_placement(
                 flush=True,
             )
 
-    raw_focus = send("getwindowfocus", "-f") if not pasted else ""
-    print(
-        "chooser-x11-raw-focus="
-        f"raw={raw_focus!r} chooser={chooser_id!r}",
-        flush=True,
-    )
-    if raw_focus and raw_focus != chooser_id:
+    if not pasted and raw_focus and raw_focus != chooser_id and child_focus_ready:
+        # Final child-targeted fallback if global XTest / native paste was not
+        # available; this is XSendEvent and is intentionally last.
         try:
-            send("windowfocus", "--sync", raw_focus)
-            pause(0.05)
-            focused_raw = send("getwindowfocus", "-f")
-            print(
-                "chooser-x11-child-focus="
-                f"requested={raw_focus!r} actual={focused_raw!r}",
-                flush=True,
-            )
-            # Unlike XTest, --window directs KeyPress/KeyRelease events to the
-            # actual focused wxGTK child. This path had not previously been
-            # tested against the child XID (only against the top-level frame).
             send("key", "--window", raw_focus, "--clearmodifiers", "ctrl+a")
             send(
                 "type", "--window", raw_focus, "--clearmodifiers",
@@ -874,9 +886,9 @@ def start_native_symbol_placement(
                 f"target={raw_focus!r} error={type(exc).__name__}:{exc}",
                 flush=True,
             )
-    elif not synthesized and not pasted:
-        # Last-resort global XTest typing when no child X11 input window
-        # can be identified and the native Paste action was unavailable.
+    elif not pasted and not synthesized:
+        # Last-resort global XTest typing when no native clipboard or child
+        # input route is available.
         send("key", "--clearmodifiers", "ctrl+a")
         send("type", "--clearmodifiers", "--delay", "50", filter_text)
         print(
