@@ -96,6 +96,137 @@ def capture_eeschema_window_id(
 
 
 
+def dump_symbol_chooser_accessibility_tree(
+    *,
+    atspi_module=None,
+    max_nodes: int = 320,
+) -> list[dict]:
+    """Emit a bounded accessibility snapshot of the native chooser tree."""
+    if atspi_module is None:
+        try:
+            import pyatspi as atspi_module
+        except Exception as exc:
+            print(
+                f"chooser-tree-dump=unavailable error={type(exc).__name__}:{exc}",
+                flush=True,
+            )
+            return []
+
+    try:
+        desktop = atspi_module.Registry.getDesktop(0)
+    except Exception as exc:
+        print(
+            f"chooser-tree-dump=desktop-unavailable "
+            f"error={type(exc).__name__}:{exc}",
+            flush=True,
+        )
+        return []
+
+    stack = [(desktop, 0)]
+    chooser = None
+    visited = 0
+    while stack and visited < 1200:
+        node, depth = stack.pop()
+        visited += 1
+        try:
+            name = str(getattr(node, "name", "") or "")
+        except Exception:
+            name = ""
+        if "choose symbol" in name.casefold():
+            chooser = node
+            break
+        try:
+            count = min(int(node.childCount), 100)
+        except Exception:
+            count = 0
+        for index in reversed(range(count)):
+            try:
+                stack.append((node.getChildAtIndex(index), depth + 1))
+            except Exception:
+                continue
+
+    if chooser is None:
+        print(
+            f"chooser-tree-dump=dialog-not-found inspected={visited}",
+            flush=True,
+        )
+        return []
+
+    tree = []
+    stack = [(chooser, 0, -1)]
+    while stack and len(tree) < max_nodes:
+        node, depth, parent = stack.pop()
+        try:
+            name = str(getattr(node, "name", "") or "")
+        except Exception:
+            name = ""
+        try:
+            role = str(node.getRoleName())
+        except Exception:
+            role = ""
+        try:
+            bounds = node.queryComponent().getExtents(0)
+            bounds = [int(value) for value in bounds]
+        except Exception:
+            bounds = None
+        try:
+            child_count = min(int(node.childCount), 100)
+        except Exception:
+            child_count = 0
+        try:
+            interfaces = list(node.getInterfaces())
+        except Exception:
+            interfaces = []
+        actions = []
+        try:
+            action = node.queryAction()
+            action_count = min(int(action.nActions), 20)
+            for index in range(action_count):
+                try:
+                    actions.append(str(action.getName(index) or ""))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        item = {
+            "index": len(tree),
+            "parent": parent,
+            "depth": depth,
+            "name": name[:120],
+            "role": role,
+            "bounds": bounds,
+            "children": child_count,
+            "interfaces": interfaces,
+            "actions": actions,
+        }
+        tree.append(item)
+
+        # Query common table metadata on the library data-view control.
+        if "table" in role.casefold() or "tree" in role.casefold() or "list" in role.casefold():
+            table_info = {}
+            for method_name in ("getNRows", "getNColumns"):
+                try:
+                    table_info[method_name] = int(getattr(node.queryTable(), method_name)())
+                except Exception:
+                    pass
+            if table_info:
+                item["table"] = table_info
+
+        for index in reversed(range(child_count)):
+            try:
+                stack.append((node.getChildAtIndex(index), depth + 1, item["index"]))
+            except Exception:
+                continue
+
+    print(
+        "chooser-tree-dump="
+        + __import__("json").dumps(tree, ensure_ascii=False, separators=(",", ":")),
+        flush=True,
+    )
+    return tree
+
+
 def focus_symbol_chooser_search_at_point(
     x: int,
     y: int,
@@ -793,6 +924,8 @@ def start_native_symbol_placement(
     # generated symbol's lowercase library suffix directly into that control.
     # No automation-supplied symbol placement coordinates are used.
     filter_text = symbol_name.partition("_")[2].casefold() or symbol_name.casefold()
+    if os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip():
+        dump_symbol_chooser_accessibility_tree()
     atspi_focused = focus_symbol_chooser_search_at_point(filter_x, filter_y)
     print(
         "chooser-focus=atspi "
