@@ -200,16 +200,69 @@ def dump_symbol_chooser_accessibility_tree(
             "interfaces": interfaces,
             "actions": actions,
         }
+        try:
+            item["text"] = str(node.queryText().getText(0, -1))[:160]
+        except Exception:
+            pass
+        try:
+            value = node.queryValue()
+            item["value"] = str(getattr(value, "currentValue", ""))[:160]
+        except Exception:
+            pass
+        try:
+            item["attributes"] = str(node.getAttributes())[:200]
+        except Exception:
+            pass
         tree.append(item)
 
-        # Query common table metadata on the library data-view control.
+        # Query the native tree-table model, not only its accessible children.
         if "table" in role.casefold() or "tree" in role.casefold() or "list" in role.casefold():
             table_info = {}
-            for method_name in ("getNRows", "getNColumns"):
-                try:
-                    table_info[method_name] = int(getattr(node.queryTable(), method_name)())
-                except Exception:
-                    pass
+            try:
+                table = node.queryTable()
+            except Exception:
+                table = None
+            if table is not None:
+                for method_name in ("getNRows", "getNColumns", "getSelectedRows", "getSelectedColumns"):
+                    try:
+                        result = getattr(table, method_name)()
+                        table_info[method_name] = (
+                            [int(value) for value in result]
+                            if isinstance(result, (tuple, list))
+                            else int(result)
+                        )
+                    except Exception:
+                        pass
+                cell_samples = []
+                for row_index in range( min(table_info.get("getNRows", 0), 18) ):
+                    row_cells = []
+                    for column_index in range( min(table_info.get("getNColumns", 0), 2) ):
+                        try:
+                            cell = table.getAccessibleAt(row_index, column_index)
+                            cell_name = str(getattr(cell, "name", "") or "")
+                            cell_role = str(cell.getRoleName())
+                            try:
+                                cell_text = str(cell.queryText().getText(0, -1))
+                            except Exception:
+                                cell_text = ""
+                            try:
+                                cell_bounds = [
+                                    int(value)
+                                    for value in cell.queryComponent().getExtents(coord_type)
+                                ]
+                            except Exception:
+                                cell_bounds = None
+                            row_cells.append({
+                                "name": cell_name[:100],
+                                "role": cell_role,
+                                "text": cell_text[:160],
+                                "bounds": cell_bounds,
+                            })
+                        except Exception as exc:
+                            row_cells.append({"error": f"{type(exc).__name__}:{exc}"})
+                    cell_samples.append(row_cells)
+                if cell_samples:
+                    table_info["cells"] = cell_samples
             if table_info:
                 item["table"] = table_info
 
