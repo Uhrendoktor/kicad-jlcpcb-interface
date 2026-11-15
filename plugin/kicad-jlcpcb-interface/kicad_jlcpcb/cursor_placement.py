@@ -391,6 +391,21 @@ def paste_search_text_via_context_menu(
         )
         return False
 
+    def valid_bounds(bounds) -> bool:
+        if bounds is None:
+            return False
+        try:
+            left, top, width, height = (int(value) for value in bounds)
+        except (TypeError, ValueError):
+            return False
+        # AT-SPI reports -2147483648 for unavailable component extents.
+        return (
+            abs(left) < 1_000_000
+            and abs(top) < 1_000_000
+            and width > 0
+            and height > 0
+        )
+
     stack = [(desktop, [])]
     inspected = 0
     menu_candidates = []
@@ -417,19 +432,13 @@ def paste_search_text_via_context_menu(
                 if (
                     "menu" in ancestor_role.casefold()
                     and "item" not in ancestor_role.casefold()
-                    and ancestor_bounds is not None
-                    and ancestor_bounds[2] > 0
-                    and ancestor_bounds[3] > 0
+                    and valid_bounds(ancestor_bounds)
                 ):
                     menu_bounds = ancestor_bounds
                     break
             item_bounds = bounds
             effective_bounds = (
-                item_bounds
-                if item_bounds is not None
-                and item_bounds[2] > 0
-                and item_bounds[3] > 0
-                else menu_bounds
+                item_bounds if valid_bounds(item_bounds) else menu_bounds
             )
             if effective_bounds is not None:
                 left, top, width, height = effective_bounds
@@ -465,9 +474,9 @@ def paste_search_text_via_context_menu(
     # ignore similarly named actions in Eeschema's global menu bar.
     def candidate_bounds(detail):
         item_bounds, menu_bounds = detail[2], detail[3]
-        if item_bounds is not None and item_bounds[2] > 0 and item_bounds[3] > 0:
+        if valid_bounds(item_bounds):
             return item_bounds
-        return menu_bounds
+        return menu_bounds if valid_bounds(menu_bounds) else None
 
     menu_candidates.sort(
         key=lambda pair: (
