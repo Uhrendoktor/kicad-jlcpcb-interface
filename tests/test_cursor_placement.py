@@ -345,6 +345,7 @@ class CursorPlacementTests(unittest.TestCase):
         self, _which, _focus_search, _send_text, _paste
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
+        runner.raw_focus_window = "0x201"
         kicad = FakeKiCad()
 
         start_native_symbol_placement(
@@ -380,8 +381,22 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(pointer_check, runner.commands)
         self.assertIn(filter_click, runner.commands)
         self.assertIn(client_click, runner.commands)
-        self.assertNotIn(
+        self.assertIn(
             ["xdotool", "getwindowfocus", "-f"], runner.commands
+        )
+        self.assertIn(
+            ["xdotool", "windowfocus", "--sync", "0x201"], runner.commands
+        )
+        self.assertIn(
+            ["xdotool", "key", "--window", "0x201", "--clearmodifiers", "ctrl+a"],
+            runner.commands,
+        )
+        self.assertIn(
+            [
+                "xdotool", "type", "--window", "0x201", "--clearmodifiers",
+                "--delay", "50", "c60489",
+            ],
+            runner.commands,
         )
         self.assertEqual(
             sum(command == pointer_check for command in runner.commands), 2
@@ -434,7 +449,7 @@ class CursorPlacementTests(unittest.TestCase):
         "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
         return_value=True,
     )
-    def test_uses_global_xtest_after_refocusing_raw_x11_child(
+    def test_targets_raw_wxgtk_child_with_xsend_event_after_atspi_fails(
         self, _focus_search, _send_text, _paste
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
@@ -454,19 +469,13 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "windowfocus", "--sync", "0x201"], runner.commands
         )
         self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+a"],
+            ["xdotool", "key", "--window", "0x201", "--clearmodifiers", "ctrl+a"],
             runner.commands,
         )
         self.assertIn(
             [
-                "xdotool", "type", "--clearmodifiers", "--delay", "50", "c60489"
-            ],
-            runner.commands,
-        )
-        self.assertNotIn(
-            [
                 "xdotool", "type", "--window", "0x201", "--clearmodifiers",
-                "--delay", "35", "c60489",
+                "--delay", "50", "c60489",
             ],
             runner.commands,
         )
