@@ -218,7 +218,9 @@ class PassiveValueSearchTests(unittest.TestCase):
         self.assertEqual([details.lcsc for details, _draft in matches], ["C20001"])
         self.assertEqual(matches[0][1].footprint, "Resistor_SMD:R_0402_1005Metric")
 
-    def test_tolerance_filter_uses_explicit_supplier_description_when_attribute_missing(self):
+    def test_tolerance_filter_uses_description_when_attribute_missing(
+        self,
+    ):
         details = JlcPartDetails(
             lcsc="C20006",
             description=(
