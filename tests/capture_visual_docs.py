@@ -837,36 +837,6 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             and len(node) >= 3
             and getattr(node[0], "value", "") == "property"
         }
-        expected_x, expected_y = schematic_page_center_mm(schematic)
-        position = getattr(populator.placed_symbol, "position", None)
-        if position is None:
-            raise RuntimeError("The placed schematic symbol has no IPC position.")
-        actual_x = float(position.x) / 1_000_000
-        actual_y = float(position.y) / 1_000_000
-        if (
-            abs(actual_x - expected_x) > 0.02
-            or abs(actual_y - expected_y) > 0.02
-        ):
-            raise RuntimeError(
-                "The generated symbol is not at the schematic page center: "
-                f"expected=({expected_x}, {expected_y}) mm; "
-                f"actual=({actual_x}, {actual_y}) mm."
-            )
-        placed_id = str(
-            getattr(getattr(populator.placed_symbol, "id", None), "value", None)
-            or getattr(populator.placed_symbol, "id", "")
-        )
-        selected_ids = {
-            str(
-                getattr(getattr(item, "id", None), "value", None)
-                or getattr(item, "id", "")
-            )
-            for item in schematic.get_selection()
-        }
-        if not placed_id or placed_id not in selected_ids:
-            raise RuntimeError(
-                "Eeschema did not confirm that the newly placed symbol is selected."
-            )
         generated_pin_numbers = [
             next(
                 child[1].value for child in pin
@@ -1728,7 +1698,7 @@ def _capture_passive_component_workflows(
             raise RuntimeError(
                 "The passive value-search Add action did not generate the selected "
                 "project-local resistor symbol or incorrectly inserted an instance "
-                "before the cursor placement."
+                "before the page-center placement."
             )
         generated_root = parse_sexpr(
             generated.library_path.read_text(encoding="utf-8")
@@ -1753,6 +1723,36 @@ def _capture_passive_component_workflows(
             and len(node) >= 3
             and getattr(node[0], "value", "") == "property"
         }
+        expected_x, expected_y = schematic_page_center_mm(schematic)
+        position = getattr(populator.placed_symbol, "position", None)
+        if position is None:
+            raise RuntimeError("The placed schematic symbol has no IPC position.")
+        actual_x = float(position.x) / 1_000_000
+        actual_y = float(position.y) / 1_000_000
+        if (
+            abs(actual_x - expected_x) > 0.02
+            or abs(actual_y - expected_y) > 0.02
+        ):
+            raise RuntimeError(
+                "The generated symbol is not at the schematic page center: "
+                f"expected=({expected_x}, {expected_y}) mm; "
+                f"actual=({actual_x}, {actual_y}) mm."
+            )
+        placed_id = str(
+            getattr(getattr(populator.placed_symbol, "id", None), "value", None)
+            or getattr(populator.placed_symbol, "id", "")
+        )
+        selected_ids = {
+            str(
+                getattr(getattr(item, "id", None), "value", None)
+                or getattr(item, "id", "")
+            )
+            for item in schematic.get_selection()
+        }
+        if not placed_id or placed_id not in selected_ids:
+            raise RuntimeError(
+                "Eeschema did not confirm that the newly placed symbol is selected."
+            )
         if (
             generated_properties.get("Value") != "10k"
             or generated_properties.get("LCSC") != details.lcsc
