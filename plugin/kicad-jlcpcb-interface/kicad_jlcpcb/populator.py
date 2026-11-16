@@ -1045,7 +1045,7 @@ class ComponentPopulator:
                             )
                             continue
                     else:
-                        keyword_query, basic_only = query
+                        basic_only = bool(query[1])
                         matches_by_id = {}
                         for details in rank_basic_first(
                             result, basic_only=basic_only
