@@ -294,6 +294,11 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         relief="flat",
     )
     style.configure(
+        "Note.TLabel",
+        background=palette["surface_alt"],
+        foreground=palette["muted"],
+    )
+    style.configure(
         "ProductPreview.TFrame",
         background=palette["surface"],
         borderwidth=0,
