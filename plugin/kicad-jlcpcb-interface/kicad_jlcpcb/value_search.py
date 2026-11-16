@@ -45,6 +45,29 @@ def is_lcsc_lookup_query(query: str) -> bool:
     return bool(re.search(r"(?:^|[/=_-])C\d{3,}(?:[./?#&]|$)", text, re.IGNORECASE))
 
 
+def rank_basic_first(
+    results: Iterable[JlcPartDetails], *, basic_only: bool = False
+) -> list[JlcPartDetails]:
+    """Return catalogue records with Basic listings first, preserving supplier order.
+
+    When basic_only is enabled, Extended and unclassified records are excluded.
+    With the filter off, they remain available after the Basic group.
+    """
+    candidates = [
+        details
+        for details in results
+        if not basic_only or details.is_basic is True
+    ]
+    return sorted(
+        candidates,
+        key=lambda details: (
+            0 if details.is_basic is True
+            else 1 if details.is_basic is False
+            else 2
+        ),
+    )
+
+
 def _decimal_value(raw: str, kind: str) -> Decimal:
     """Convert a passive value to ohms or farads, preserving SI prefixes."""
     candidate = (
@@ -264,6 +287,7 @@ def exact_passive_candidates(
     footprint: str = "",
     tolerance: str = "",
     max_results: int = 5,
+    basic_only: bool = False,
 ) -> list[tuple[JlcPartDetails, ComponentDraft]]:
     """Return a small exact-value shortlist, preferring Basic purchasable parts.
 
@@ -276,6 +300,8 @@ def exact_passive_candidates(
     )
     matches: dict[str, tuple[JlcPartDetails, ComponentDraft]] = {}
     for details in results:
+        if basic_only and details.is_basic is not True:
+            continue
         if details.is_buyable is False:
             continue
         try:
