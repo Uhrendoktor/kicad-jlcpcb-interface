@@ -360,6 +360,15 @@ class ComponentPopulator:
         self.basic_only_checkbutton.grid(
             row=0, column=2, sticky="w", padx=(0, 8)
         )
+        self.basic_only_tooltip = _HoverTooltip(
+            self.basic_only_checkbutton,
+            lambda: (
+                "Basic parts only\n"
+                "When enabled, Extended and unclassified listings are hidden. "
+                "When disabled, Basic parts still rank first. "
+                "Exact LCSC lookups always return the requested part."
+            ),
+        )
 
         self._filter_icon_active = False
         self._filter_icon_image = self._create_advanced_filter_icon(active=False)
@@ -1316,7 +1325,7 @@ class ComponentPopulator:
 
     def _show_product_image(self, image_data: bytes | None) -> None:
         self._image_ref = display_product_image(
-            self.image_label, image_data, self.root, size=(148, 118)
+            self.image_label, image_data, self.root, size=(116, 92)
         )
         if image_data is None and self._image_attempted and not self._image_pending:
             self.image_label.configure(text="Image unavailable")
