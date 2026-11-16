@@ -725,7 +725,7 @@ class ComponentPopulator:
         self.notes = ttk.Label(
             self.notes_section,
             text="",
-            style="Warning.TLabel",
+            style="Note.TLabel",
             wraplength=900,
             justify="left",
         )
