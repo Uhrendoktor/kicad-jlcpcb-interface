@@ -4,15 +4,17 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb import populator as populator_module  # noqa: E402
-from kicad_jlcpcb.draft import symbol_library_id  # noqa: E402
+from kicad_jlcpcb.draft import build_component_draft, symbol_library_id  # noqa: E402
+from kicad_jlcpcb.provider import JlcPartDetails  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
+    ComponentPopulator,
     MAX_CATALOGUE_IMAGE_BYTES,
     _download_catalogue_image,
     _is_automatically_mapped_passive,
@@ -111,6 +113,94 @@ class TkGarbageCollectionLeaseTests(unittest.TestCase):
             disable.assert_not_called()
             collect.assert_called_once_with()
             enable.assert_not_called()
+
+
+class ComponentCreationApplyTests(unittest.TestCase):
+    def test_add_action_places_without_confirmation_dialog(self):
+        details = JlcPartDetails(
+            lcsc="C12345",
+            description="10kΩ thick film resistor",
+            manufacturer_part_number="RC0402-test",
+            package="0402",
+            is_basic=True,
+            is_buyable=True,
+            category="Resistors",
+            attributes={"Resistance": "10KΩ"},
+        )
+        draft = build_component_draft(details)
+        self.assertEqual(draft.kind, "resistor")
+        self.assertEqual(draft.value, "10k")
+
+        class Variable:
+            def __init__(self, value=""):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        project = object()
+        kicad = object()
+        generated = SimpleNamespace(
+            library_id="JLCPCB_Generated:R_C12345",
+            reference_prefix="R",
+        )
+        placed_symbol = object()
+        askyesno = Mock(
+            side_effect=AssertionError("Add mode must not show a confirmation dialog.")
+        )
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = True
+        populator.draft = draft
+        populator.symbol_hint_var = Variable()
+        populator.footprint_var = Variable()
+        populator.reference_prefix_var = Variable()
+        populator.value_var = Variable()
+        populator.selected_details = details
+        populator.messagebox = SimpleNamespace(
+            askyesno=askyesno,
+            showerror=Mock(),
+        )
+        populator.root = SimpleNamespace(
+            grab_current=Mock(return_value=None),
+            withdraw=Mock(),
+            update_idletasks=Mock(),
+        )
+        populator.tk = SimpleNamespace(TclError=RuntimeError)
+        populator.schematic = SimpleNamespace(get_project=lambda: project)
+        populator.kicad = kicad
+        populator.generated_library = None
+        populator.generated_library_symbol = None
+        populator.placed_symbol = None
+        populator.placement_completed = False
+        populator.closed = False
+        populator.status_var = Variable()
+        populator.close = Mock()
+
+        with (
+            patch.object(
+                populator_module,
+                "generate_project_library_symbol",
+                return_value=generated,
+            ) as generate_symbol,
+            patch.object(
+                populator_module, "reload_project_symbol_library"
+            ) as reload_library,
+            patch.object(
+                populator_module,
+                "place_and_select_component_from_draft",
+                return_value=placed_symbol,
+            ) as place_symbol,
+        ):
+            populator.apply()
+
+        askyesno.assert_not_called()
+        generate_symbol.assert_called_once()
+        reload_library.assert_called_once_with(kicad, generated)
+        place_symbol.assert_called_once()
+        self.assertIs(populator.generated_library, generated)
+        self.assertIs(populator.placed_symbol, placed_symbol)
+        self.assertTrue(populator.placement_completed)
+        populator.close.assert_called_once_with()
 
 
 class AutomaticPassiveMappingTests(unittest.TestCase):
