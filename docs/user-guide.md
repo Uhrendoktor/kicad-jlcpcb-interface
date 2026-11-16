@@ -164,7 +164,7 @@ Both contexts use the same window size and information hierarchy: catalogue sear
 2. Use the primary **Value or part number** field for a passive value, LCSC code, manufacturer part number or keyword. The primary search field remains simple by default. Expand **Advanced filters** to optionally enter a package/footprint and tolerance in their own fields. Search by value with any filters you need; a direct LCSC code loads that exact record.
 3. Review the proposed fields, inference confidence, catalogue source/freshness and warnings before applying anything.
 4. Edit the suggested **Value** and **Footprint** as needed. For passives, the stock **KiCad Library:Symbol** and **Reference prefix** are selected automatically; review the automatic mapping note. For other parts, manually review or edit the suggested symbol when required. A suggested value is a proposal, not a verified electrical equivalence.
-5. Confirm the update or generation action. Nothing is written or placed before confirmation.
+5. In Update mode, confirm **Apply reviewed fields to selected symbol** to save the proposal. In Add mode, **Generate & select component** immediately creates the project-local symbol and inserts it into the schematic; no second confirmation window appears.
 
 The review controls are deliberately editable. An uncertain symbol or footprint is not silently treated as correct, and an optional footprint can be filled in later. Catalogue images load in the background; a missing or unavailable image uses an explicit placeholder and does not block the review workflow.
 
@@ -200,7 +200,7 @@ Use add mode when nothing is selected in Eeschema. The add-on creates or reuses 
 2. Search by LCSC code, manufacturer part number, device name or another keyword. For a passive, enter only its value in the primary field, such as `10k`, `4k7` or `100nF`. Expand **Advanced filters** to optionally set a package/footprint and tolerance in separate fields. Value matching is exact; every supplied advanced filter must also match.
 3. For a passive value search, choose from the shortlist of up to five exact matches. Basic parts are listed first. Selecting a candidate automatically fills the stock `Device:R` or `Device:C` symbol, reference prefix, Value, reviewed footprint mapping and catalogue metadata. The product preview shows the supplier photo and available specifications. You can still edit Value or Footprint before generation.
 4. For other part searches, select a catalogue row and review the suggested symbol, Value, package, Footprint, metadata, confidence and warnings. When no confident symbol mapping is available, enter a stock ID manually, for example `Amplifier_Operational:LM358`.
-5. Confirm **Generate & select component**. KiCad inserts the generated part at the center of the current sheet, brings it into view and selects it. Use the normal Move tool to move it to the desired location.
+5. Choose **Generate & select component**. KiCad immediately creates the project-local symbol, inserts it at the center of the current sheet, brings it into view and selects it. Use the normal Move tool to move it to the desired location.
 
 Automatic symbol suggestions currently cover common resistors, capacitors, inductors, diodes, LEDs, fuses and crystals. The suggestions are generic symbol templates, not manufacturer-specific pin maps. When classification is ambiguous, the symbol field remains for manual selection rather than guessing an IC pinout.
 
