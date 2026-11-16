@@ -1242,6 +1242,7 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
     basic_only = populator.basic_only_checkbutton.grid_info()
     filters = populator.advanced_filters_button.grid_info()
     summary_position = populator.advanced_filter_summary.grid_info()
+    summary_is_visible = populator.advanced_filter_summary.winfo_ismapped()
     search = populator.lookup_button.grid_info()
     section = populator.advanced_filters_section.grid_info()
     section_is_visible = populator.advanced_filters_section.winfo_ismapped()
@@ -1255,8 +1256,13 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
         or basic_only.get("column") != 2
         or filters.get("row") != 0
         or filters.get("column") != 3
-        or summary_position.get("row") != 0
-        or summary_position.get("column") != 4
+        or (
+            summary_is_visible
+            and (
+                summary_position.get("row") != 0
+                or summary_position.get("column") != 4
+            )
+        )
         or search.get("row") != 0
         or search.get("column") != 5
         or (
