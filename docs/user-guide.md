@@ -156,7 +156,7 @@ The direct JLCPCB detail and MPN endpoints are undocumented website endpoints, n
 | Nothing selected | **Add** | Search the catalogue, review a suggested or manually selected KiCad symbol, then create and place a project-local copy. |
 | Multiple items or a non-symbol object | — | The action rejects the selection. Select one symbol to update it, or clear the selection to add a component. |
 
-Both contexts use the same window size and information hierarchy: catalogue search, a product preview card, a match list, editable KiCad details, proposed fields, review notes and one persistent action footer. The preview shows the supplier image when one is available, plus description, manufacturer, MPN, LCSC code, package, stock, indicative unit price, library class and source freshness. Product-page and datasheet links are enabled only when the catalogue provides HTTPS URLs. Add mode automatically maps common passives and exposes a manual **Library:Symbol** override only when required. All Add-mode placement is performed by KiCad's native cursor tool; there are no coordinate controls.
+Both contexts use the same window size and information hierarchy: catalogue search, a product preview card, a match list, editable KiCad details, proposed fields, review notes and one persistent action footer. The preview shows the supplier image when one is available, plus description, manufacturer, MPN, LCSC code, package, stock, indicative unit price, library class and source freshness. Product-page and datasheet links are enabled only when the catalogue provides HTTPS URLs. Add mode automatically maps common passives and exposes a manual **Library:Symbol** override only when required. KiCad inserts the generated symbol at the sheet center, focuses it and leaves it selected for the Move tool; there are no coordinate controls.
 
 ### Shared review process
 
@@ -194,13 +194,13 @@ Existing fields with matching names are updated; unrelated custom fields are pre
 
 ### Add a new project-local symbol
 
-Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a project-local symbol copied from a standalone KiCad stock-library symbol, then hands it to KiCad's native cursor tool for mouse placement.
+Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a project-local symbol copied from a standalone KiCad stock-library symbol, inserts it at the current sheet center through KiCad IPC, and leaves it selected in the editor.
 
 1. Save the KiCad project and clear the Eeschema selection.
 2. Search by LCSC code, manufacturer part number, device name or another keyword. For a simple passive, just enter its value—for example `10k`, `4k7`, `470R`, `100nF` or `4.7uF`.
 3. For a passive value search, choose from the shortlist of up to five exact matches. Basic parts are listed first. Selecting a candidate automatically fills the stock `Device:R` or `Device:C` symbol, reference prefix, Value, reviewed footprint mapping and catalogue metadata. The product preview shows the supplier photo and available specifications. You can still edit Value or Footprint before generation.
 4. For other part searches, select a catalogue row and review the suggested symbol, Value, package, Footprint, metadata, confidence and warnings. When no confident symbol mapping is available, enter a stock ID manually, for example `Amplifier_Operational:LM358`.
-5. Confirm **Generate & place at cursor**. KiCad opens its native Add Symbol chooser with the project-local generated symbol selected and attached to the mouse cursor. Click in the schematic to place the part or press Escape to cancel.
+5. Confirm **Generate & select component**. KiCad inserts the generated part at the center of the current sheet, brings it into view and selects it. Use the normal Move tool to move it to the desired location.
 
 Automatic symbol suggestions currently cover common resistors, capacitors, inductors, diodes, LEDs, fuses and crystals. The suggestions are generic symbol templates, not manufacturer-specific pin maps. When classification is ambiguous, the symbol field remains for manual selection rather than guessing an IC pinout.
 
@@ -215,7 +215,7 @@ For the selected KiCad Library:Symbol, the add-on:
 - Refuses symbols that extend another library symbol, because the generator copies a standalone definition rather than resolving inherited definitions. Choose a standalone stock symbol instead.
 - Writes the selected Value, optional Footprint, Datasheet and Description plus hidden LCSC, Manufacturer, MPN, category and catalogue attribute properties.
 - Writes or extends the project-local JLCPCB_Generated.kicad_sym library and registers it in sym-lib-table using a project-relative KiCad project variable URI.
-- Reloads the project library, then opens KiCad's native Add Symbol chooser and leaves the generated part attached to the schematic cursor.
+- Reloads the project library, inserts the generated part at the current sheet center through schematic IPC, then focuses and selects it for the next Move operation.
 
 The generated symbol ID uses the selected reference prefix and LCSC part number, so repeat generation for the same part can reuse the existing project-local symbol. The generator protects unowned files and refuses to overwrite a generated symbol that has been manually modified. The library writer uses atomic file replacement and creates a backup when extending an existing generated library.
 
@@ -233,7 +233,7 @@ The existing generated symbol is detected and reused; placement can continue whe
 
 #### Placement and electrical checks
 
-Cursor placement uses KiCad's native Place Symbol IPC action when available. Older builds use the native Eeschema Add Symbol hotkey through xdotool on X11. Launch the action from Eeschema; check Preferences → Hotkeys if the compatibility hotkey does not open the chooser. If neither cursor route is available, Add mode reports the limitation; it does not fall back to coordinate placement.
+Add-mode placement uses the schematic IPC API to insert at the page center and select the generated symbol. The position is automatic; no coordinates are entered. If KiCad cannot focus or select the new instance, the add-on reports the IPC error and does not claim placement succeeded.
 
 The optional Footprint field is a KiCad footprint-library reference, not a footprint generator. A symbol can be created without a footprint, but it will need a suitable footprint before PCB layout. Always inspect the symbol/footprint pair and verify pin numbers, electrical types, package dimensions and ratings against the manufacturer datasheet.
 
@@ -266,7 +266,7 @@ The optional Footprint field is a KiCad footprint-library reference, not a footp
 The add-on is an early prototype, with a deliberately conservative scope:
 
 - Update mode writes reviewed catalogue fields to one selected editable schematic symbol of any component family; it does not replace the symbol or rewrite pins.
-- Add mode generates a project-local copy of a standalone KiCad stock symbol. Common resistor/capacitor value searches offer up to five exact candidates with Basic parts first and automatically select the generic stock symbol, reference prefix and mapped footprint when available. Other recognized categories receive cautious symbol suggestions; ambiguous categories require manual symbol selection. Placement uses KiCad's native cursor workflow only.
+- Add mode generates a project-local copy of a standalone KiCad stock symbol. Common resistor/capacitor value searches offer up to five exact candidates with Basic parts first and automatically select the generic stock symbol, reference prefix and mapped footprint when available. Other recognized categories receive cautious symbol suggestions; ambiguous categories require manual symbol selection. Placement is page-center-and-select through KiCad schematic IPC; use KiCad's Move tool for final positioning.
 - The generator does not infer manufacturer-specific pin maps, electrical pin types or IC symbol geometry. It copies the pin definitions of the symbol selected by the user.
 - Footprint suggestions cover only reviewed package/type combinations. Footprint creation, pad mapping, footprint preview and 3D model generation are not implemented.
 - Catalogue endpoints are unofficial website endpoints and may change without notice.

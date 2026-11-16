@@ -59,7 +59,7 @@ class VerifyVisualBundleTests(unittest.TestCase):
 
     def test_workflow_evidence_uses_a_static_screenshot(self) -> None:
         self.assertIn("schematic-properties-opened.png", ASSET_NAMES)
-        self.assertIn("add-component-cursor.png", ASSET_NAMES)
+        self.assertIn("add-component-placed-selected.png", ASSET_NAMES)
         self.assertNotIn("add-component-chooser-open.png", ASSET_NAMES)
         self.assertFalse(any(name.lower().endswith(".gif") for name in ASSET_NAMES))
 

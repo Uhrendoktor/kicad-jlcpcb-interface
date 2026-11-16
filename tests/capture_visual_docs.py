@@ -22,8 +22,6 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
-from kicad_jlcpcb import populator as populator_module  # noqa: E402
-from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -41,6 +39,7 @@ from kicad_jlcpcb.model import (  # noqa: E402
     find_linked_components,
     find_selected_component,
 )
+from kicad_jlcpcb.placement import schematic_page_center_mm  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
     resolve_component_action_target,
@@ -59,7 +58,7 @@ ASSET_NAMES = (
     "populate-component-applied.png",
     "add-component-proposed.png",
     "add-component-confirmation.png",
-    "add-component-cursor.png",
+    "add-component-placed-selected.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
     "schematic-properties-opened.png",
@@ -838,6 +837,36 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             and len(node) >= 3
             and getattr(node[0], "value", "") == "property"
         }
+        expected_x, expected_y = schematic_page_center_mm(schematic)
+        position = getattr(populator.placed_symbol, "position", None)
+        if position is None:
+            raise RuntimeError("The placed schematic symbol has no IPC position.")
+        actual_x = float(position.x) / 1_000_000
+        actual_y = float(position.y) / 1_000_000
+        if (
+            abs(actual_x - expected_x) > 0.02
+            or abs(actual_y - expected_y) > 0.02
+        ):
+            raise RuntimeError(
+                "The generated symbol is not at the schematic page center: "
+                f"expected=({expected_x}, {expected_y}) mm; "
+                f"actual=({actual_x}, {actual_y}) mm."
+            )
+        placed_id = str(
+            getattr(getattr(populator.placed_symbol, "id", None), "value", None)
+            or getattr(populator.placed_symbol, "id", "")
+        )
+        selected_ids = {
+            str(
+                getattr(getattr(item, "id", None), "value", None)
+                or getattr(item, "id", "")
+            )
+            for item in schematic.get_selection()
+        }
+        if not placed_id or placed_id not in selected_ids:
+            raise RuntimeError(
+                "Eeschema did not confirm that the newly placed symbol is selected."
+            )
         generated_pin_numbers = [
             next(
                 child[1].value for child in pin
@@ -1257,7 +1286,6 @@ def _drive_populator_form(
     assert_basic_shortlist: bool = False,
     preferred_lcsc: str | None = None,
     avoid_lcsc: str | None = None,
-    capture_cursor: bool = False,
 ) -> None:
     """Capture the real LCSC proposal form, confirm it, and verify the IPC result."""
     root = populator.root
@@ -1531,44 +1559,13 @@ def _drive_populator_form(
                 populator.messagebox.showerror = original_showerror
 
             validate_result(populator)
-            if capture_cursor:
-                focused = subprocess.run(
-                    ["xdotool", "getwindowfocus"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                    timeout=10,
-                ).stdout.strip()
-                title = subprocess.run(
-                    ["xdotool", "getwindowname", focused],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    timeout=10,
-                ).stdout.strip()
-                window_class = subprocess.run(
-                    ["xdotool", "getwindowclassname", focused],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    timeout=10,
-                ).stdout.strip()
-                is_editor_class = "eeschema" in window_class.casefold()
-                is_editor_title = "schematic editor" in title.casefold()
-                if not (is_editor_class or is_editor_title):
+            if populator.create_mode:
+                if not populator.placement_completed or populator.placed_symbol is None:
                     raise RuntimeError(
-                        "The native cursor handoff did not return focus to Eeschema: "
-                        f"{window_class!r} / {title!r}"
+                        "Add mode did not place and select the generated project symbol."
                     )
                 time.sleep(0.25)
                 _capture_desktop(output_dir / completed_asset)
-                subprocess.run(
-                    ["xdotool", "key", "--clearmodifiers", "Escape"],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
             else:
                 root.update()
                 _capture_window(root, output_dir / completed_asset)
@@ -1601,35 +1598,6 @@ def _capture_passive_component_workflows(
     cache_dir: Path,
 ) -> None:
     """Exercise both modes of the unified component action against live Eeschema."""
-    # Mimic the production entrypoint: ensure Eeschema is the focused window and
-    # capture its ID before either mode opens a Tk component dialog.
-    windows = subprocess.run(
-        ["xdotool", "search", "--onlyvisible", "--class", "eeschema"],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=10,
-    )
-    editor_candidates = [
-        item.strip() for item in windows.stdout.splitlines() if item.strip()
-    ]
-    if windows.returncode or not editor_candidates:
-        raise RuntimeError(
-            "The live GUI fixture could not find a visible Eeschema window."
-        )
-    subprocess.run(
-        ["xdotool", "windowfocus", "--sync", editor_candidates[0]],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=10,
-    )
-    editor_window_id = capture_eeschema_window_id()
-    if not editor_window_id:
-        raise RuntimeError(
-            "The live GUI fixture could not capture the focused Eeschema window."
-        )
-
     # Populate: the entrypoint requires exactly one selected generic passive.
     schematic.clear_selection()
     schematic.add_to_selection([symbols["R2"]])
@@ -1736,7 +1704,6 @@ def _capture_passive_component_workflows(
         create_mode=True,
         kicad=kicad,
         theme="light",
-        editor_window_id=editor_window_id,
     )
     create.root.geometry("1024x768+780+30")
     create.lcsc_var.set("10k")
@@ -1755,6 +1722,8 @@ def _capture_passive_component_workflows(
             or generated.library_id != f"JLCPCB_Generated:R_{details.lcsc}"
             or not generated.library_path.is_file()
             or populator.symbol is not None
+            or not populator.placement_completed
+            or populator.placed_symbol is None
         ):
             raise RuntimeError(
                 "The passive value-search Add action did not generate the selected "
@@ -1793,131 +1762,30 @@ def _capture_passive_component_workflows(
                 "Generated passive symbol is missing the chosen catalogue value or metadata."
             )
 
-    original_native_handoff = populator_module.start_native_symbol_placement
-
-    def capture_failed_native_handoff(*args, **kwargs):
-        try:
-            if create.root.winfo_viewable():
-                raise RuntimeError(
-                    "The Component Workspace must be withdrawn before native "
-                    "Eeschema cursor placement starts."
-                )
-            return original_native_handoff(*args, **kwargs)
-        except Exception as exc:
-            # Preserve the exact native chooser state for CI diagnosis. The
-            # failure artifact is uploaded with if: always() by the visual job.
-            _capture_desktop(output_dir / "add-component-chooser-failure.png")
-            focused = subprocess.run(
-                ["xdotool", "getwindowfocus"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=10,
-            ).stdout.strip()
-            title = subprocess.run(
-                ["xdotool", "getwindowname", focused],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=10,
-            ).stdout.strip() if focused else ""
-            chooser_search = subprocess.run(
-                [
-                    "xdotool", "search", "--onlyvisible", "--name", "Choose Symbol"
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=10,
-            )
-            window_details = []
-            for window_id in chooser_search.stdout.splitlines():
-                window_id = window_id.strip()
-                if not window_id:
-                    continue
-                details = []
-                for command in (
-                    ["xdotool", "getwindowname", window_id],
-                    ["xdotool", "getwindowpid", window_id],
-                    ["xdotool", "getwindowgeometry", "--shell", window_id],
-                ):
-                    result = subprocess.run(
-                        command,
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                        timeout=10,
-                    )
-                    details.append(result.stdout.strip())
-                window_details.append(
-                    f"window={window_id}\\n" + "\\n".join(details)
-                )
-            focused_geometry = subprocess.run(
-                ["xdotool", "getwindowgeometry", "--shell", focused],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=10,
-            ) if focused else None
-            chooser_tree = subprocess.run(
-                ["xwininfo", "-id", focused, "-tree"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=10,
-            ) if focused else None
-            mouse_location = subprocess.run(
-                ["xdotool", "getmouselocation", "--shell"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=10,
-            )
-            (output_dir / "add-component-chooser-failure.txt").write_text(
-                f"exception={type(exc).__name__}: {exc}\n"
-                f"mouse_location={getattr(mouse_location, 'stdout', '')}\n"
-                f"focused_window={focused!r}\n"
-                f"focused_title={title!r}\n"
-                f"focused_geometry={getattr(focused_geometry, 'stdout', '')}\n"
-                f"chooser_tree={getattr(chooser_tree, 'stdout', '')}\n"
-                f"chooser_search_rc={chooser_search.returncode}\n"
-                f"chooser_windows\\n" + "\\n---\\n".join(window_details) + "\\n",
-                encoding="utf-8",
-            )
-            raise
-
-    populator_module.start_native_symbol_placement = capture_failed_native_handoff
-    chooser_debug_capture = output_dir / "add-component-chooser-after-filter.png"
-    os.environ["KICAD_CHOOSER_DEBUG_CAPTURE"] = str(chooser_debug_capture)
-    try:
-        _drive_populator_form(
-            create,
-            output_dir,
-            proposal_asset="add-component-proposed.png",
-            light_asset="add-component-light.png",
-            dark_asset="add-component-dark.png",
-            confirmation_asset="add-component-confirmation.png",
-            completed_asset="add-component-cursor.png",
-            confirmation_title="Confirm new schematic component",
-            required_confirmation_text=(
-                "selected stock symbol's pin numbers, electrical types, units and graphics "
-                "are copied as-is"
-            ),
-            expected_lcsc=None,
-            expected_value="10k",
-            expected_footprint=None,
-            validate_result=validate_create_result,
-            assert_basic_shortlist=True,
-            avoid_lcsc="C60489",
-            capture_cursor=True,
-        )
-    finally:
-        populator_module.start_native_symbol_placement = original_native_handoff
-        os.environ.pop("KICAD_CHOOSER_DEBUG_CAPTURE", None)
+    _drive_populator_form(
+        create,
+        output_dir,
+        proposal_asset="add-component-proposed.png",
+        light_asset="add-component-light.png",
+        dark_asset="add-component-dark.png",
+        confirmation_asset="add-component-confirmation.png",
+        completed_asset="add-component-placed-selected.png",
+        confirmation_title="Confirm new schematic component",
+        required_confirmation_text=(
+            "insert it at the center of the current schematic sheet"
+        ),
+        expected_lcsc=None,
+        expected_value="10k",
+        expected_footprint=None,
+        validate_result=validate_create_result,
+        assert_basic_shortlist=True,
+        avoid_lcsc="C60489",
+    )
     print(
         "live-add-mode-ui=passed "
         f"query=10k selected={create.selected_details.lcsc} "
-        f"library_id={create.generated_library.library_id} native_cursor=true",
+        f"library_id={create.generated_library.library_id} "
+        "placement=page-center-and-selected",
         flush=True,
     )
 

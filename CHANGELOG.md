@@ -8,7 +8,7 @@
 - Add catalogue search by LCSC code, manufacturer part number and free-text keyword. Exact resistor/capacitor value searches show a five-item Basic-first shortlist and automatically configure the stock symbol, reference prefix, mapped footprint and supplier fields for the selected passive.
 - Generalize project-local symbol generation to copy standalone stock KiCad symbol definitions with their original pin numbers, electrical types, units and graphics. IC pin maps are never inferred from catalogue text. Footprints are optional and can be selected/edited manually when no reviewed mapping exists.
 - Make Value and Footprint editable during both update and add review. Preserve uncertain/unknown fields rather than fabricating symbol identities, footprints or pin assignments. Add tests for non-passive classification, arbitrary symbol metadata updates, and multi-pin IC symbol copies.
-- Use KiCad's native Place Symbol IPC action for Add-mode cursor handoff, with the Eeschema Add Symbol hotkey/xdotool compatibility path. Remove explicit X/Y placement and direct-coordinate insertion.
+- Use supported KiCad schematic IPC to insert generated symbols at the sheet center and select them for subsequent movement. Keep manual coordinate entry and direct-coordinate controls out of Add mode.
 - Scan LCSC-linked symbols across the complete schematic hierarchy.
 - Navigate to a symbol's sheet, zoom to it and select it through KiCad's `FocusOnItems` IPC command.
 - Use the configured cache TTL to distinguish recent offline cache results from stale catalogue data.
