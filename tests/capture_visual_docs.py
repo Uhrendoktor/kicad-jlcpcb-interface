@@ -1270,8 +1270,8 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
         )
 
     if (
-        populator.footprint_filter_entry.cget("state") != "normal"
-        or populator.tolerance_filter_entry.cget("state") != "normal"
+        str(populator.footprint_filter_entry.cget("state")) != "normal"
+        or str(populator.tolerance_filter_entry.cget("state")) != "normal"
         or "0402" not in populator.footprint_filter_entry.cget("values")
         or "5%" not in populator.tolerance_filter_entry.cget("values")
     ):
