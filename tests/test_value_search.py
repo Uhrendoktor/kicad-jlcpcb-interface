@@ -51,8 +51,10 @@ class PassiveValueSearchTests(unittest.TestCase):
             ("capacitor", Decimal("1e-7")),
         )
 
-    def test_parses_combined_value_footprint_and_tolerance_filters(self):
-        criteria = parse_passive_search_query("10k 0402 ±1%")
+    def test_parses_value_and_separate_advanced_filters(self):
+        criteria = parse_passive_search_query(
+            "10k", footprint="0402", tolerance="±1%"
+        )
         self.assertEqual(criteria.kind, "resistor")
         self.assertEqual(criteria.value, Decimal("10000"))
         self.assertEqual(criteria.footprint, "0402")
@@ -60,7 +62,9 @@ class PassiveValueSearchTests(unittest.TestCase):
         self.assertEqual(criteria.supplier_query, "10k")
 
         labelled = parse_passive_search_query(
-            "value=100nF footprint=Capacitor_SMD:C_0603_1608Metric tolerance=10%"
+            "100nF",
+            footprint="Capacitor_SMD:C_0603_1608Metric",
+            tolerance="10%",
         )
         self.assertEqual(labelled.kind, "capacitor")
         self.assertEqual(labelled.value, Decimal("1e-7"))
@@ -70,13 +74,25 @@ class PassiveValueSearchTests(unittest.TestCase):
         self.assertEqual(labelled.tolerance, Decimal("10"))
         self.assertEqual(labelled.supplier_query, "100nF")
 
-    def test_rejects_conflicting_tolerance_and_footprint_filters(self):
-        for query in (
-            "10k ±1% 5%",
-            "10k 0402 0603",
+    def test_accepts_common_tolerance_entry_formats(self):
+        for entry, expected in (
+            ("0.1%", Decimal("0.1")),
+            ("1", Decimal("1")),
+            ("+/-5%", Decimal("5")),
+            ("±10%", Decimal("10")),
         ):
-            with self.subTest(query=query), self.assertRaises(ValueError):
-                parse_passive_search_query(query)
+            with self.subTest(entry=entry):
+                self.assertEqual(
+                    parse_passive_search_query("10k", tolerance=entry).tolerance,
+                    expected,
+                )
+
+    def test_rejects_invalid_tolerance_filter_entries(self):
+        for entry in ("", "1k", "±", "0%", "101%"):
+            if not entry:
+                continue
+            with self.subTest(entry=entry), self.assertRaises(ValueError):
+                parse_passive_search_query("10k", tolerance=entry)
 
     def test_rejects_ambiguous_or_unsupported_queries(self):
         for query in ("", "1.2V", "10kHz", "inductor 10uH", "unknown"):
@@ -194,7 +210,9 @@ class PassiveValueSearchTests(unittest.TestCase):
             self.resistor("C20004", is_basic=True, package="0402", tolerance=None),
         ]
 
-        matches = exact_passive_candidates("10k 0402 ±1%", parts)
+        matches = exact_passive_candidates(
+            "10k", parts, footprint="0402", tolerance="±1%"
+        )
 
         self.assertEqual([details.lcsc for details, _draft in matches], ["C20001"])
         self.assertEqual(matches[0][1].footprint, "Resistor_SMD:R_0402_1005Metric")
@@ -203,8 +221,10 @@ class PassiveValueSearchTests(unittest.TestCase):
         part = self.resistor("C20005", is_basic=True)
 
         matches = exact_passive_candidates(
-            "10k footprint=Resistor_SMD:R_0402_1005Metric tolerance=1%",
+            "10k",
             [part],
+            footprint="Resistor_SMD:R_0402_1005Metric",
+            tolerance="1%",
         )
 
         self.assertEqual([details.lcsc for details, _draft in matches], ["C20005"])
