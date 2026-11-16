@@ -1271,7 +1271,11 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
         or clear.get("column") != 4
     ):
         raise RuntimeError(
-            "The filter toolbar or one-row advanced-filter strip is incorrectly arranged."
+            "The filter toolbar or one-row advanced-filter strip is incorrectly arranged: "
+            f"entry={entry!r}, basic_only={basic_only!r}, filters={filters!r}, "
+            f"summary={summary_position!r}, search={search!r}, section={section!r}, "
+            f"section_visible={section_is_visible!r}, package={package_label!r}, "
+            f"tolerance={tolerance!r}, clear={clear!r}."
         )
 
     root.update_idletasks()
