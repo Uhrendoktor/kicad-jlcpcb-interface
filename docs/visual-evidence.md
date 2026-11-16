@@ -84,24 +84,18 @@ There is one Eeschema command and one component workspace. Properties, Update an
 </table>
 
 <details>
-  <summary>Show confirmation and completion states</summary>
+  <summary>Show Update confirmation and completion states</summary>
 
   <table>
     <tr>
       <th>Update confirmation</th>
       <th>Update result</th>
+      <th>Add result · placed and selected</th>
     </tr>
     <tr>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png" alt="Confirmation explaining that the selected symbol's graphics, pins and electrical mapping remain unchanged" width="420"></td>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Updated schematic fields after confirming the review for an existing selected component" width="420"></td>
-    </tr>
-    <tr>
-      <th>Add confirmation</th>
-      <th>Add result</th>
-    </tr>
-    <tr>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png" alt="Confirmation describing project-local KiCad symbol generation and placement" width="420"></td>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed-selected.png" alt="Generated 10k resistor inserted at the schematic page center and selected in Eeschema" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png" alt="Confirmation explaining that the selected symbol's graphics, pins and electrical mapping remain unchanged" width="320"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Updated schematic fields after confirming the review for an existing selected component" width="320"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed-selected.png" alt="Generated 10k resistor inserted directly at the schematic page center and selected in Eeschema" width="320"></td>
     </tr>
   </table>
 </details>
@@ -130,8 +124,8 @@ The visual capture runs the production application windows, not separately drawn
 | Component Overview | Captures unfiltered, filtered and selected-row states. Verifies live JLCPCB detail source, product image, MPN alternatives and the completed cost/stock summary. |
 | Component Properties | Opens the focused properties window from a selected linked Eeschema symbol and captures its loaded catalogue view. |
 | Properties controls | Calls Select in schematic and Select same part on sheet; verifies the Eeschema selection; copies the LCSC ID and verifies the clipboard; invokes LCSC search, supplier product, datasheet and MPN-result actions and checks that each opens an HTTPS URL. |
-| Add or Update Component — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, verifies the shared match list and catalogue preview, waits for the asynchronous supplier image when present, captures the proposal and native confirmation, applies the reviewed update and reads the resulting fields back through IPC. |
-| Add or Update Component — add mode | Clears the Eeschema selection, searches for `10k`, verifies the shortlist is limited to five exact candidates and ranks Basic listings first, captures the selected catalogue preview and proposal, generates/reuses the selected project-local resistor symbol, verifies that the symbol is inserted at the schematic page center, focused and selected in Eeschema. |
+| Add or Update Component — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, verifies the shared match list and catalogue preview, waits for the asynchronous supplier image when present, captures the proposal and native Update confirmation, applies the reviewed update and reads the resulting fields back through IPC. |
+| Add or Update Component — add mode | Clears the Eeschema selection, searches for `10k`, verifies the shortlist is limited to five exact candidates and ranks Basic listings first, captures the selected catalogue preview and proposal, proceeds directly to generation without a second confirmation window, generates/reuses the selected project-local resistor symbol, and verifies that the symbol is inserted at the schematic page center, focused and selected in Eeschema. |
 | Theme pairs | Captures the overview, properties and both Add or Update Component modes in both light and dark palettes, reusing each live widget tree. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 
