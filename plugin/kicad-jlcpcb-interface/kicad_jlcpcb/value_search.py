@@ -1,4 +1,4 @@
-"""Exact-value discovery for supported JLCPCB passive parts."""
+"""Exact passive value discovery with optional footprint and tolerance filters."""
 
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ _PACKAGE_SIZE_RE = re.compile(
 )
 _TOLERANCE_ATTRIBUTE_NAMES = {
     "tolerance", "tol", "resistancetolerance", "capacitancetolerance",
+    "resistortolerance", "capacitortolerance",
     "tolerancepercent", "tolerancepct",
 }
 
@@ -128,8 +129,6 @@ def parse_passive_value_query(query: str) -> tuple[str, Decimal]:
             "Use an LCSC code or a passive value such as 10k, 4k7, 100nF or 4.7uF."
         )
     return kind, _decimal_value(normalized, kind)
-
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,6 +251,7 @@ def _matches_footprint(
     if not wanted:
         return False
     return any(wanted in normalize(candidate) for candidate in candidates if candidate)
+
 
 def exact_passive_candidates(
     query: str,
