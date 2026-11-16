@@ -154,9 +154,20 @@ class ComponentPopulator:
 
         current = component_from_symbol(symbol) if symbol is not None else None
         reference = str(getattr(symbol, "reference", "") or "selected symbol")
+        passive_library_id = self.library_id
+        if (
+            symbol is not None
+            and passive_library_id not in SUPPORTED_PLACEHOLDERS
+            and kicad is not None
+        ):
+            passive_library_id = resolve_passive_library_id(
+                symbol,
+                kicad,
+                document=getattr(schematic, "document", None),
+            )
         initial_search = (
             str(getattr(symbol, "value", "") or "").strip()
-            if symbol is not None and self.library_id in SUPPORTED_PLACEHOLDERS
+            if symbol is not None and passive_library_id in SUPPORTED_PLACEHOLDERS
             else current.part_code if current else ""
         )
         self.lcsc_var = tk.StringVar(value=initial_search)
