@@ -24,11 +24,6 @@ _SCALE = {
 }
 _RESISTANCE_WORDS = re.compile(r"\b(?:resistor|resistors|resistance)\b", re.IGNORECASE)
 _CAPACITANCE_WORDS = re.compile(r"\b(?:capacitor|capacitors|capacitance)\b", re.IGNORECASE)
-_TOLERANCE_RE = re.compile(
-    r"(?:(?:\b(?:tolerance|tol)\s*[:=]?\s*(?:±|\+/-)?\s*)"
-    r"|(?:±|\+/-)\s*|(?<=\s))(?P<value>\d+(?:\.\d+)?)\s*%",
-    re.IGNORECASE,
-)
 _PACKAGE_SIZE_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:0201|0402|0603|0805|1206|1210|1812|2010|2512)(?![A-Za-z0-9])",
     re.IGNORECASE,
@@ -142,69 +137,43 @@ class PassiveSearchCriteria:
     supplier_query: str = ""
 
 
-def parse_passive_search_query(query: str) -> PassiveSearchCriteria:
-    """Parse a value query with optional package/footprint and tolerance filters.
+def parse_passive_search_query(
+    query: str,
+    *,
+    footprint: str = "",
+    tolerance: str = "",
+) -> PassiveSearchCriteria:
+    """Normalize a passive value and its separate advanced search filters.
 
-    Examples include 10k 0402 ±1%, 100nF 0603 10%, and a labelled
-    KiCad footprint plus tolerance. The supplier search is deliberately issued
-    using only the value term; the remaining constraints are applied locally.
+    The primary query contains only the electrical value. Package/footprint and
+    tolerance are supplied independently by the advanced search controls.
     """
     raw = str(query or "").strip()
     if not raw:
         raise ValueError("Enter a passive value such as 10k or 100nF.")
 
-    tolerance_matches = list(_TOLERANCE_RE.finditer(raw))
-    tolerance_values = {
-        Decimal(match.group("value")) for match in tolerance_matches
-    }
-    if len(tolerance_values) > 1:
-        raise ValueError("Use only one tolerance value in a passive search.")
-    tolerance = next(iter(tolerance_values), None)
-    remaining = _TOLERANCE_RE.sub(" ", raw)
-
-    footprint = ""
-    labelled_footprint = re.search(
-        r"\b(?:footprint|fp|package|pkg)\s*[:=]\s*([^\s,;]+)",
-        remaining,
-        re.IGNORECASE,
-    )
-    if labelled_footprint:
-        footprint = labelled_footprint.group(1).strip().strip("\"'")
-        remaining = (
-            remaining[:labelled_footprint.start()]
-            + " "
-            + remaining[labelled_footprint.end():]
+    kind, value = parse_passive_value_query(raw)
+    requested_footprint = str(footprint or "").strip()
+    requested_tolerance = str(tolerance or "").strip()
+    tolerance_value = None
+    if requested_tolerance:
+        normalized_tolerance = requested_tolerance.replace("％", "%").strip()
+        match = re.fullmatch(
+            r"(?:±|\+/-)?\s*(\d+(?:\.\d+)?)\s*%?",
+            normalized_tolerance,
         )
-    else:
-        footprint_tokens = []
-        for token in re.finditer(r"\S+", remaining):
-            candidate = token.group().strip(",;()[]")
-            package_match = _PACKAGE_SIZE_RE.search(candidate)
-            if package_match:
-                footprint_tokens.append((token, candidate, package_match.group()))
-        if len(footprint_tokens) > 1:
-            raise ValueError("Use only one package or footprint filter.")
-        if footprint_tokens:
-            token, candidate, package_code = footprint_tokens[0]
-            # Preserve a full KiCad footprint ID when present. A bare package
-            # code or package-like token is compared against catalogue package data.
-            footprint = candidate if ":" in candidate else package_code
-            remaining = remaining[:token.start()] + " " + remaining[token.end():]
+        if not match:
+            raise ValueError("Enter a tolerance such as 1%, 5% or 10%.")
+        tolerance_value = Decimal(match.group(1))
+        if tolerance_value <= 0 or tolerance_value > 100:
+            raise ValueError("Tolerance must be greater than 0% and at most 100%.")
 
-    value_query = re.sub(
-        r"\bvalue\s*[:=]\s*", "", remaining, count=1, flags=re.IGNORECASE
-    ).strip(" \t,;")
-    if not value_query:
-        raise ValueError(
-            "Include a passive value, for example 10k 0402 ±1% or 100nF 0603 10%."
-        )
-    kind, value = parse_passive_value_query(value_query)
     return PassiveSearchCriteria(
         kind=kind,
         value=value,
-        footprint=footprint,
-        tolerance=tolerance,
-        supplier_query=value_query,
+        footprint=requested_footprint,
+        tolerance=tolerance_value,
+        supplier_query=raw,
     )
 
 
@@ -257,6 +226,8 @@ def exact_passive_candidates(
     query: str,
     results: Iterable[JlcPartDetails],
     *,
+    footprint: str = "",
+    tolerance: str = "",
     max_results: int = 5,
 ) -> list[tuple[JlcPartDetails, ComponentDraft]]:
     """Return a small exact-value shortlist, preferring Basic purchasable parts.
@@ -265,7 +236,9 @@ def exact_passive_candidates(
     Extended parts only fill the shortlist when fewer than five suitable Basic
     parts are available.
     """
-    criteria = parse_passive_search_query(query)
+    criteria = parse_passive_search_query(
+        query, footprint=footprint, tolerance=tolerance
+    )
     matches: dict[str, tuple[JlcPartDetails, ComponentDraft]] = {}
     for details in results:
         if details.is_buyable is False:
