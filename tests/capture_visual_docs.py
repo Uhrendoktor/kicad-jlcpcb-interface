@@ -1581,7 +1581,7 @@ def _capture_passive_component_workflows(
     schematic.add_to_selection([symbols["R1"]])
     selected = find_selected_component(schematic)
     if selected.reference != "R1":
-        raise RuntimeError("The populate UI fixture did not select R2.")
+        raise RuntimeError("The populate UI fixture did not select R1.")
 
     editable_symbol, resolved_library_id, create_mode = resolve_component_action_target(
         schematic, list(schematic.get_selection())
@@ -1648,7 +1648,7 @@ def _capture_passive_component_workflows(
             or updated.manufacturer_part_number != details.manufacturer_part_number
         ):
             raise RuntimeError(
-                "The confirmed Update-mode alternative was not written back to R2 "
+                "The confirmed Update-mode alternative was not written back to R1 "
                 "through KiCad IPC."
             )
 
