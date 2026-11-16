@@ -161,7 +161,7 @@ Both contexts use the same window size and information hierarchy: catalogue sear
 ### Shared review process
 
 1. Launch **JLCPCB Add or Update Component** from the active Schematic Editor.
-2. Look up the catalogue part. Update mode accepts an LCSC part number. Add mode accepts an LCSC code, manufacturer part number, device name or free-text keyword.
+2. Look up the catalogue part. Both modes accept an LCSC code or a catalogue search. For passives, combine the electrical value with an optional package/footprint and tolerance in one query, for example `10k 0402 ±1%` or `100nF 0603 10%`. A direct LCSC code loads that exact record.
 3. Review the proposed fields, inference confidence, catalogue source/freshness and warnings before applying anything.
 4. Edit the suggested **Value** and **Footprint** as needed. For passives, the stock **KiCad Library:Symbol** and **Reference prefix** are selected automatically; review the automatic mapping note. For other parts, manually review or edit the suggested symbol when required. A suggested value is a proposal, not a verified electrical equivalence.
 5. Confirm the update or generation action. Nothing is written or placed before confirmation.
@@ -176,7 +176,7 @@ The confidence label describes how complete the catalogue-to-symbol suggestion i
 - **Partial** — a component family was recognized, but the value or reviewed footprint may be incomplete, or the symbol is a generic template such as a diode, LED, fuse or crystal.
 - **Metadata only** — the catalogue record does not support a confident stock-symbol classification. In add mode, select a KiCad `Library:Symbol` manually.
 
-Exact-value resistor/capacitor searches return at most five high-confidence exact matches. Basic listings rank first; Extended or unclassified listings fill remaining slots only when fewer than five suitable Basic parts are available. Stock and price are secondary ranking factors, not a guarantee of purchase availability. General keyword results are catalogue candidates to inspect, not declared drop-in replacements.
+Exact-value resistor/capacitor searches return at most five high-confidence exact matches. Optional package/footprint and tolerance filters are applied together with the value, so every displayed match satisfies all supplied constraints; the candidate table also displays the supplier-stated tolerance. Basic listings rank first; Extended or unclassified listings fill remaining slots only when fewer than five suitable Basic parts are available. Stock and price are secondary ranking factors, not a guarantee of purchase availability. General keyword results are catalogue candidates to inspect, not declared drop-in replacements.
 
 ### Update an existing schematic symbol
 
@@ -184,7 +184,7 @@ Use update mode when exactly one editable symbol is selected in Eeschema. It is 
 
 1. Select exactly one schematic symbol.
 2. Launch **JLCPCB Add or Update Component**.
-3. Enter the LCSC part number and choose **Fetch and propose**.
+3. Enter the LCSC part number or search by a passive value with optional footprint/package and tolerance, then choose **Search**. When multiple matches are returned, select the intended alternative to load its proposal for the selected symbol.
 4. Review the proposed fields, source/freshness label and warnings. The **Value** and **Footprint** inputs are editable; replace a suggested footprint with the one verified for the selected part.
 5. Confirm **Apply reviewed fields to selected symbol** to write the proposal. Cancel the confirmation to leave the schematic unchanged.
 
@@ -197,7 +197,7 @@ Existing fields with matching names are updated; unrelated custom fields are pre
 Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a project-local symbol copied from a standalone KiCad stock-library symbol, inserts it at the current sheet center through KiCad IPC, and leaves it selected in the editor.
 
 1. Save the KiCad project and clear the Eeschema selection.
-2. Search by LCSC code, manufacturer part number, device name or another keyword. For a simple passive, just enter its value—for example `10k`, `4k7`, `470R`, `100nF` or `4.7uF`.
+2. Search by LCSC code, manufacturer part number, device name or another keyword. For a passive, combine its value with an optional package/footprint and tolerance—for example `10k 0402 ±1%`, `4k7 0603 5%` or `100nF 0603 10%`. Value matching is exact; every supplied package/footprint and tolerance constraint must also match.
 3. For a passive value search, choose from the shortlist of up to five exact matches. Basic parts are listed first. Selecting a candidate automatically fills the stock `Device:R` or `Device:C` symbol, reference prefix, Value, reviewed footprint mapping and catalogue metadata. The product preview shows the supplier photo and available specifications. You can still edit Value or Footprint before generation.
 4. For other part searches, select a catalogue row and review the suggested symbol, Value, package, Footprint, metadata, confidence and warnings. When no confident symbol mapping is available, enter a stock ID manually, for example `Amplifier_Operational:LM358`.
 5. Confirm **Generate & select component**. KiCad inserts the generated part at the center of the current sheet, brings it into view and selects it. Use the normal Move tool to move it to the desired location.
