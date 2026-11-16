@@ -1377,7 +1377,7 @@ class ComponentPopulator:
                 "Review the proposed properties, then generate the symbol and "
                 "place it at the sheet center."
                 if self.create_mode
-                else "Review the proposed properties. Nothing is written until you apply them."
+                else "Review the proposed properties, then update the selected symbol."
             )
         else:
             status = (
@@ -1486,20 +1486,8 @@ class ComponentPopulator:
             footprint=self.footprint_var.get().strip(),
         )
         reference = str(getattr(self.symbol, "reference", "") or "selected symbol")
-        warning = (
-            f"Apply {len(draft.proposed_fields)} proposed field(s) to {reference}?\n\n"
-            f"Value: {draft.value or '(keep existing)'}\n"
-            f"Footprint: {draft.footprint or '(keep existing)'}\n\n"
-            "Existing fields with the same names will be updated; unrelated custom fields "
-            "are preserved.\n\n"
-            "The selected symbol's graphics, pins, units and electrical pin mapping will "
-            "NOT be changed. Review the proposed Value and Footprint against the selected "
-            "symbol and part datasheet."
-        )
-        if not self.messagebox.askyesno(
-            "Confirm component property update", warning, parent=self.root
-        ):
-            return
+        # Clicking Update component is the user's explicit action. Apply the
+        # reviewed metadata immediately without an additional confirmation dialog.
         try:
             changed = apply_component_draft_fields(
                 self.symbol,

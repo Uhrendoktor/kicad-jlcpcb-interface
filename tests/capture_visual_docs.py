@@ -54,7 +54,6 @@ ASSET_NAMES = (
     "component-browser-selected.png",
     "component-properties-selected.png",
     "populate-component-proposed.png",
-    "populate-component-confirmation.png",
     "populate-component-applied.png",
     "add-component-proposed.png",
     "add-component-placed-selected.png",
@@ -1321,10 +1320,7 @@ def _drive_populator_form(
     proposal_asset: str,
     light_asset: str,
     dark_asset: str,
-    confirmation_asset: str | None,
     completed_asset: str,
-    confirmation_title: str | None,
-    required_confirmation_text: str | None,
     expected_lcsc: str | None,
     expected_value: str,
     expected_footprint: str | None,
@@ -1334,7 +1330,6 @@ def _drive_populator_form(
     require_alternatives: bool = False,
     preferred_lcsc: str | None = None,
     avoid_lcsc: str | None = None,
-    require_confirmation: bool = True,
 ) -> None:
     """Capture the production review form and verify the resulting KiCad IPC action."""
     root = populator.root
@@ -1496,141 +1491,16 @@ def _drive_populator_form(
             original_askyesno = populator.messagebox.askyesno
             original_showerror = populator.messagebox.showerror
 
-            def confirm(title: str, message: str, parent=None) -> bool:
-                if confirmation_title is None or confirmation_asset is None:
-                    raise RuntimeError("A confirmation was not expected for this workflow.")
-                if title != confirmation_title:
-                    raise RuntimeError(
-                        f"Unexpected confirmation title: {title!r}; "
-                        f"expected {confirmation_title!r}."
-                    )
-                if (
-                    required_confirmation_text is None
-                    or required_confirmation_text.casefold() not in message.casefold()
-                ):
-                    raise RuntimeError(
-                        "The confirmation text omitted its required safety/behavior "
-                        f"explanation: {message!r}"
-                    )
-
-                dismissal_errors: list[str] = []
-
-                def capture_and_accept() -> None:
-                    try:
-                        # Crop to the production form window. The native modal
-                        # remains layered over its parent, without the large Xvfb
-                        # desktop area or unrelated Eeschema controls.
-                        _capture_window(root, output_dir / confirmation_asset)
-                    except BaseException as exc:
-                        dismissal_errors.append(
-                            f"confirmation screenshot failed: {type(exc).__name__}: {exc}"
-                        )
-                    try:
-                        search = subprocess.run(
-                            [
-                                "xdotool",
-                                "search",
-                                "--onlyvisible",
-                                "--name",
-                                title,
-                            ],
-                            check=False,
-                            capture_output=True,
-                            text=True,
-                            timeout=10,
-                        )
-                        windows = [
-                            item.strip()
-                            for item in search.stdout.splitlines()
-                            if item.strip()
-                        ]
-                        if search.returncode == 0 and windows:
-                            # Message boxes are separate X11 windows. Focus the
-                            # exact title from askyesno, then send Return to that
-                            # window rather than whichever editor window happens
-                            # to own the global focus.
-                            window_id = windows[-1]
-                            focus = subprocess.run(
-                                ["xdotool", "windowfocus", "--sync", window_id],
-                                check=False,
-                                capture_output=True,
-                                text=True,
-                                timeout=10,
-                            )
-                            if focus.returncode:
-                                raise RuntimeError(
-                                    "could not focus confirmation window: "
-                                    + (focus.stderr.strip() or str(focus.returncode))
-                                )
-                            result = subprocess.run(
-                                [
-                                    "xdotool",
-                                    "key",
-                                    "--clearmodifiers",
-                                    "--window",
-                                    window_id,
-                                    "Return",
-                                ],
-                                check=False,
-                                capture_output=True,
-                                text=True,
-                                timeout=10,
-                            )
-                        else:
-                            result = subprocess.run(
-                                ["xdotool", "key", "--clearmodifiers", "Return"],
-                                check=False,
-                                capture_output=True,
-                                text=True,
-                                timeout=10,
-                            )
-                            if search.returncode:
-                                dismissal_errors.append(
-                                    "could not locate the confirmation window by title; "
-                                    "used the active-window fallback"
-                                )
-                        if result.returncode:
-                            dismissal_errors.append(
-                                "could not accept the confirmation dialog: "
-                                + (result.stderr.strip() or str(result.returncode))
-                            )
-                    except BaseException as exc:
-                        dismissal_errors.append(
-                            f"could not dismiss the confirmation dialog: "
-                            f"{type(exc).__name__}: {exc}"
-                        )
-
-                # askyesno runs a nested Tk event loop. A scheduled callback can
-                # capture the actual modal messagebox, then accept its Yes button.
-                root.after(500, capture_and_accept)
-                accepted = original_askyesno(
-                    title, message, parent=parent or root
-                )
-                if dismissal_errors:
-                    raise RuntimeError("; ".join(dismissal_errors))
-                if not accepted:
-                    raise RuntimeError("The automated visual fixture did not confirm the action.")
-                return accepted
-
             def unexpected_error(title: str, message: str, parent=None):
                 raise RuntimeError(f"{title}: {message}")
 
             def unexpected_confirmation(title: str, message: str, parent=None):
                 raise RuntimeError(
-                    "Add mode unexpectedly opened a confirmation dialog: "
+                    "Component actions must not open a confirmation dialog: "
                     f"{title}: {message}"
                 )
 
-            if require_confirmation:
-                if (
-                    confirmation_asset is None
-                    or confirmation_title is None
-                    or required_confirmation_text is None
-                ):
-                    raise RuntimeError("The confirmation fixture is incomplete.")
-                populator.messagebox.askyesno = confirm
-            else:
-                populator.messagebox.askyesno = unexpected_confirmation
+            populator.messagebox.askyesno = unexpected_confirmation
             populator.messagebox.showerror = unexpected_error
             try:
                 populator.apply()
@@ -1750,7 +1620,7 @@ def _capture_passive_component_workflows(
             or updated.manufacturer_part_number != details.manufacturer_part_number
         ):
             raise RuntimeError(
-                "The confirmed Update-mode alternative was not written back to R1 "
+                "The selected Update-mode alternative was not written back to R1 "
                 "through KiCad IPC."
             )
 
@@ -1760,12 +1630,7 @@ def _capture_passive_component_workflows(
         proposal_asset="populate-component-proposed.png",
         light_asset="populate-component-light.png",
         dark_asset="populate-component-dark.png",
-        confirmation_asset="populate-component-confirmation.png",
         completed_asset="populate-component-applied.png",
-        confirmation_title="Confirm component property update",
-        required_confirmation_text=(
-            "pins, units and electrical pin mapping will NOT be changed"
-        ),
         expected_lcsc=None,
         expected_value="10k",
         expected_footprint="Resistor_SMD:R_0402_1005Metric",
@@ -1892,11 +1757,7 @@ def _capture_passive_component_workflows(
         proposal_asset="add-component-proposed.png",
         light_asset="add-component-light.png",
         dark_asset="add-component-dark.png",
-        confirmation_asset=None,
         completed_asset="add-component-placed-selected.png",
-        confirmation_title=None,
-        required_confirmation_text=None,
-        require_confirmation=False,
         expected_lcsc=None,
         expected_value="10k",
         expected_footprint=None,

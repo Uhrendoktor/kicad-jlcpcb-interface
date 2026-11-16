@@ -164,7 +164,7 @@ Both contexts use the same window size and information hierarchy: catalogue sear
 2. Use the primary **Value or part number** field for a passive value, LCSC code, manufacturer part number or keyword. The primary search field remains simple by default. Expand **Advanced filters** to see package/footprint and tolerance controls arranged as two columns. Each dropdown is editable: its options are built-in common-value suggestions, not live catalogue data, and you can type another package, KiCad footprint ID or percentage. Choosing a preset does not run a search. Press **Search** or Enter to query the catalogue with the main field and apply the optional filters to the returned records.
 3. Review the proposed fields, inference confidence, catalogue source/freshness and warnings before applying anything.
 4. Edit the suggested **Value** and **Footprint** as needed. For passives, the stock **KiCad Library:Symbol** and **Reference prefix** are selected automatically; review the automatic mapping note. For other parts, manually review or edit the suggested symbol when required. A suggested value is a proposal, not a verified electrical equivalence.
-5. In Update mode, confirm **Apply reviewed fields to selected symbol** to save the proposal. In Add mode, **Generate & select component** immediately creates the project-local symbol and inserts it into the schematic; no second confirmation window appears.
+5. In Update mode, click **Update component** to write the reviewed fields directly to the selected symbol. In Add mode, **Generate & select component** immediately creates the project-local symbol and inserts it into the schematic. Neither action opens an extra confirmation window.
 
 The review controls are deliberately editable. An uncertain symbol or footprint is not silently treated as correct, and an optional footprint can be filled in later. Catalogue images load in the background; a missing or unavailable image uses an explicit placeholder and does not block the review workflow.
 
@@ -186,7 +186,7 @@ Use update mode when exactly one editable symbol is selected in Eeschema. It is 
 2. Launch **JLCPCB Add or Update Component**.
 3. The selected resistor/capacitor's Value is prefilled in the primary search field. Choose **Search** to show alternatives for that value, or enter an LCSC part number to load one exact record. Expand **Advanced filters** to narrow the passive alternatives by package/footprint or tolerance. Select a result to load its proposal for the selected symbol.
 4. Review the proposed fields, source/freshness label and warnings. The **Value** and **Footprint** inputs are editable; replace a suggested footprint with the one verified for the selected part.
-5. Confirm **Apply reviewed fields to selected symbol** to write the proposal. Cancel the confirmation to leave the schematic unchanged.
+5. Click **Update component** to write the reviewed fields directly. No additional confirmation dialog is shown.
 
 The proposal can include Value, Footprint, Datasheet, Description, LCSC, Manufacturer, MPN, JLCPCB Category and selected catalogue attributes. The selected symbol's library identity, graphics, pins, units and electrical pin types remain unchanged, even when the catalogue classification suggests another component family. A mismatch is surfaced in the review notes; check the proposed Value and Footprint against the datasheet before applying.
 
