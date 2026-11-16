@@ -15,6 +15,7 @@ from kicad_jlcpcb.value_search import (  # noqa: E402
     is_lcsc_lookup_query,
     parse_passive_search_query,
     parse_passive_value_query,
+    passive_tolerance_label,
 )
 
 
@@ -216,6 +217,46 @@ class PassiveValueSearchTests(unittest.TestCase):
 
         self.assertEqual([details.lcsc for details, _draft in matches], ["C20001"])
         self.assertEqual(matches[0][1].footprint, "Resistor_SMD:R_0402_1005Metric")
+
+    def test_tolerance_filter_uses_explicit_supplier_description_when_attribute_missing(self):
+        details = JlcPartDetails(
+            lcsc="C20006",
+            description=(
+                "-55°C~+155°C 10kΩ 50V 62.5mW Thick Film Resistor "
+                "±100ppm/°C ±5% 0402 Chip Resistor"
+            ),
+            manufacturer_part_number="RC0402-description-only-tolerance",
+            package="0402",
+            is_basic=True,
+            is_buyable=True,
+            category="Resistors",
+            attributes={"Resistance": "10KΩ"},
+        )
+
+        self.assertEqual(passive_tolerance_label(details), "±5%")
+        matches = exact_passive_candidates(
+            "10k", [details], footprint="0402", tolerance="5%"
+        )
+        self.assertEqual([part.lcsc for part, _draft in matches], ["C20006"])
+
+    def test_does_not_infer_tolerance_from_unmarked_description_percentage(self):
+        details = JlcPartDetails(
+            lcsc="C20007",
+            description="10kΩ resistor, 5% power derating, 0402",
+            package="0402",
+            is_basic=True,
+            is_buyable=True,
+            category="Resistors",
+            attributes={"Resistance": "10KΩ"},
+        )
+
+        self.assertEqual(passive_tolerance_label(details), "")
+        self.assertEqual(
+            exact_passive_candidates(
+                "10k", [details], footprint="0402", tolerance="5%"
+            ),
+            [],
+        )
 
     def test_candidates_accept_a_full_kicad_footprint_filter(self):
         part = self.resistor("C20005", is_basic=True)
