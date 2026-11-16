@@ -678,7 +678,7 @@ class CursorPlacementTests(unittest.TestCase):
         "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
         return_value=False,
     )
-    def test_uses_add_hotkey_when_ipc_action_is_unavailable(
+    def test_uses_add_hotkey_and_targets_native_search_window(
         self, _focus_search, _which, _read_search
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
@@ -709,9 +709,13 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "windowfocus", "--sync", "0x200"], runner.commands
         )
         filter_click = ["xdotool", "click", "1"]
-        clear_search = ["xdotool", "key", "--clearmodifiers", "ctrl+a"]
+        clear_search = [
+            "xdotool", "key", "--window", "0x200",
+            "--clearmodifiers", "ctrl+a",
+        ]
         type_search = [
-            "xdotool", "type", "--clearmodifiers", "--delay", "50", "c60489"
+            "xdotool", "type", "--window", "0x200", "--clearmodifiers",
+            "--delay", "50", "c60489",
         ]
         self.assertIn(filter_click, runner.commands)
         self.assertIn(clear_search, runner.commands)
@@ -724,6 +728,7 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(clear_search),
             runner.commands.index(type_search),
         )
+        _read_search.assert_called()
 
     @patch(
         "kicad_jlcpcb.cursor_placement.read_symbol_chooser_search_text_at_point",
