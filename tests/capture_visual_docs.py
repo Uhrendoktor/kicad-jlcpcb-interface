@@ -1578,9 +1578,9 @@ def _capture_passive_component_workflows(
     """Exercise both modes of the unified component action against live Eeschema."""
     # Populate: the entrypoint requires exactly one selected generic passive.
     schematic.clear_selection()
-    schematic.add_to_selection([symbols["R2"]])
+    schematic.add_to_selection([symbols["R1"]])
     selected = find_selected_component(schematic)
-    if selected.reference != "R2":
+    if selected.reference != "R1":
         raise RuntimeError("The populate UI fixture did not select R2.")
 
     editable_symbol, resolved_library_id, create_mode = resolve_component_action_target(
@@ -1607,7 +1607,7 @@ def _capture_passive_component_workflows(
     )
     if verified_fixture_library_id != "Device:R":
         raise RuntimeError(
-            "The selected R2 fixture is not the canonical stock Device:R definition: "
+            "The selected R1 fixture is not the canonical stock Device:R definition: "
             f"{verified_fixture_library_id!r}"
         )
     populate = ComponentPopulator(
@@ -1634,7 +1634,7 @@ def _capture_passive_component_workflows(
         details = populator.selected_details
         draft = populator.draft
         updated = next(
-            (item for item in find_linked_components(schematic) if item.reference == "R2"),
+            (item for item in find_linked_components(schematic) if item.reference == "R1"),
             None,
         )
         if (
@@ -1673,7 +1673,7 @@ def _capture_passive_component_workflows(
         avoid_lcsc="C60489",
     )
     print(
-        "live-update-mode-ui=passed selected=R2 "
+        "live-update-mode-ui=passed selected=R1 "
         f"lcsc={populate.selected_details.lcsc} result=updated-and-saved",
         flush=True,
     )
