@@ -32,7 +32,8 @@ from .theme import apply_tk_theme
 from .value_search import (
     exact_passive_candidates,
     is_lcsc_lookup_query,
-    parse_passive_value_query,
+    parse_passive_search_query,
+    passive_tolerance_label,
 )
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
@@ -163,9 +164,9 @@ class ComponentPopulator:
         self.reference_prefix_var = tk.StringVar(value="")
         self.status_var = tk.StringVar(
             value=(
-                "Search by LCSC code, MPN, component name or passive value."
+                "Search by LCSC code, MPN, component name or passive value, package and tolerance."
                 if self.create_mode
-                else "Enter the LCSC part number to load its catalogue record."
+                else "Search by LCSC code or a passive value with optional footprint and tolerance."
             )
         )
         self.catalogue_status_var = tk.StringVar(
@@ -318,7 +319,7 @@ class ComponentPopulator:
         self.candidate_title.grid(row=0, column=0, sticky="w", pady=(0, 5))
         self.candidate_tree = ttk.Treeview(
             self.candidate_section,
-            columns=("part", "mpn", "package", "library", "stock", "price"),
+            columns=("part", "mpn", "package", "tolerance", "library", "stock", "price"),
             show="headings",
             height=5,
             selectmode="browse",
@@ -327,6 +328,7 @@ class ComponentPopulator:
             "part": ("LCSC", 88),
             "mpn": ("MPN / value", 180),
             "package": ("Package", 88),
+            "tolerance": ("Tolerance", 76),
             "library": ("Class", 88),
             "stock": ("Stock", 110),
             "price": ("Unit price", 110),
@@ -499,13 +501,14 @@ class ComponentPopulator:
             return
         mode = "lcsc"
         request_value = query
-        if self.create_mode and not is_lcsc_lookup_query(query):
+        if not is_lcsc_lookup_query(query):
             try:
-                parse_passive_value_query(query)
+                criteria = parse_passive_search_query(query)
                 mode = "value"
+                request_value = criteria.supplier_query
             except ValueError:
-                # Generic keywords (MPNs, device names, electrical ratings) still
-                # return a reviewable candidate list instead of being rejected.
+                # Non-passive keywords (including MPNs and device names) remain
+                # reviewable catalogue searches in both Add and Update modes.
                 mode = "keyword"
         else:
             try:
@@ -549,7 +552,7 @@ class ComponentPopulator:
             *,
             result_queue=results_queue,
             search_mode=mode,
-            search_value=request_value,
+            search_value=query,
         ) -> None:
             # Keep the Tk dialog out of worker-thread completion callbacks.
             result_queue.put((completed, search_mode, search_value))
@@ -593,7 +596,7 @@ class ComponentPopulator:
                 if mode in {"value", "keyword"}:
                     self.candidate_title.configure(
                         text=(
-                            "Exact passive matches · Basic first"
+                            "Passive matches · Basic first"
                             if mode == "value"
                             else "Catalogue matches"
                         )
@@ -733,6 +736,7 @@ class ComponentPopulator:
                 details.lcsc,
                 details.manufacturer_part_number or draft.value or "—",
                 details.package or "—",
+                passive_tolerance_label(details) or "—",
                 library_class,
                 stock,
                 price,
