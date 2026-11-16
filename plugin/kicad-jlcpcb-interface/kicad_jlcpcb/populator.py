@@ -1297,8 +1297,8 @@ class ComponentPopulator:
         )
         if can_apply:
             status = (
-                "Review the proposed properties. Confirm to generate the part, "
-                "insert it at the sheet center and select it."
+                "Review the proposed properties, then generate the symbol and "
+                "place it at the sheet center."
                 if self.create_mode
                 else "Review the proposed properties. Nothing is written until you apply them."
             )
@@ -1355,7 +1355,7 @@ class ComponentPopulator:
             if ":" not in draft.symbol_hint or not draft.value:
                 self.messagebox.showerror(
                     "Component details incomplete",
-                    "Choose a KiCad Library:Symbol and confirm a component value or MPN. "
+                    "Choose a KiCad Library:Symbol and provide a component value or MPN. "
                     "Footprint is optional and can be added later.",
                     parent=self.root,
                 )
