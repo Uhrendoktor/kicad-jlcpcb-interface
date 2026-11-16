@@ -1613,7 +1613,10 @@ def _capture_passive_component_workflows(
     )
 
     populate.root.geometry("1024x768+780+30")
-    populate.lcsc_var.set("C60489")
+    populate.lcsc_var.set("10k")
+    populate.footprint_filter_var.set("0402")
+    populate.tolerance_filter_var.set("1%")
+    populate._toggle_advanced_filters()
     populate.lookup()
 
     def validate_populate_result(_populator: ComponentPopulator) -> None:
@@ -1645,10 +1648,12 @@ def _capture_passive_component_workflows(
         required_confirmation_text=(
             "pins, units and electrical pin mapping will NOT be changed"
         ),
-        expected_lcsc="C60489",
+        expected_lcsc=None,
         expected_value="10k",
         expected_footprint="Resistor_SMD:R_0402_1005Metric",
         validate_result=validate_populate_result,
+        assert_basic_shortlist=True,
+        preferred_lcsc="C60489",
     )
     print(
         "live-update-mode-ui=passed selected=R2 lcsc=C60489 "
