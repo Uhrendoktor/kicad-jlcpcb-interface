@@ -175,7 +175,10 @@ class ComponentPopulator:
             value=(
                 "Search by value, LCSC code, manufacturer part number or keyword."
                 if self.create_mode
-                else "Search by value or LCSC code; passive alternatives are available for the selected symbol."
+                else (
+                    "Search by value or LCSC code; passive alternatives are available "
+                    "for the selected symbol."
+                )
             )
         )
         self.catalogue_status_var = tk.StringVar(
