@@ -412,7 +412,10 @@ class ComponentPopulator:
         )
         ttk.Label(
             self.package_filter_column,
-            text="Common sizes are suggestions; custom package names or KiCad footprint IDs are accepted.",
+            text=(
+                "Common sizes are suggestions; custom package names or KiCad "
+                "footprint IDs are accepted."
+            ),
             style="Muted.TLabel",
             wraplength=340,
             justify="left",
