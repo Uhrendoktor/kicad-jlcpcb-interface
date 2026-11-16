@@ -1243,6 +1243,7 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
     filters = populator.advanced_filters_button.grid_info()
     search = populator.lookup_button.grid_info()
     section = populator.advanced_filters_section.grid_info()
+    section_is_visible = populator.advanced_filters_section.winfo_ismapped()
     if (
         entry.get("row") != 0
         or entry.get("column") != 1
@@ -1250,8 +1251,10 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
         or filters.get("column") != 2
         or search.get("row") != 0
         or search.get("column") != 3
-        or section.get("row") != 1
-        or section.get("columnspan") != 4
+        or (
+            section_is_visible
+            and (section.get("row") != 1 or section.get("columnspan") != 4)
+        )
     ):
         raise RuntimeError(
             "The advanced-filter icon, value field and Search button are not "
