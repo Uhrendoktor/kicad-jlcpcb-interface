@@ -1237,13 +1237,16 @@ def _capture_live_selection_workflow(
 
 
 def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
-    """Verify the icon toolbar placement and its real hover tooltip."""
+    """Verify the compact funnel toolbar and two-column filter panel."""
     root = populator.root
     entry = populator.lcsc_entry.grid_info()
     filters = populator.advanced_filters_button.grid_info()
     search = populator.lookup_button.grid_info()
     section = populator.advanced_filters_section.grid_info()
     section_is_visible = populator.advanced_filters_section.winfo_ismapped()
+    package_column = populator.package_filter_column.grid_info()
+    tolerance_column = populator.tolerance_filter_column.grid_info()
+    clear = populator.clear_filters_button.grid_info()
     if (
         entry.get("row") != 0
         or entry.get("column") != 1
@@ -1255,16 +1258,32 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
             section_is_visible
             and (section.get("row") != 1 or section.get("columnspan") != 4)
         )
+        or package_column.get("row") != 1
+        or package_column.get("column") != 0
+        or tolerance_column.get("row") != 1
+        or tolerance_column.get("column") != 1
+        or clear.get("row") != 0
+        or clear.get("column") != 1
     ):
         raise RuntimeError(
-            "The advanced-filter icon, value field and Search button are not "
-            "arranged in the expected single toolbar row."
+            "The filter icon toolbar or two-column advanced-filter layout is incorrect."
+        )
+
+    if (
+        populator.footprint_filter_entry.cget("state") != "normal"
+        or populator.tolerance_filter_entry.cget("state") != "normal"
+        or "0402" not in populator.footprint_filter_entry.cget("values")
+        or "5%" not in populator.tolerance_filter_entry.cget("values")
+    ):
+        raise RuntimeError(
+            "Advanced filter presets must remain editable package and tolerance suggestions."
         )
 
     active_count = populator._active_advanced_filter_count()
-    expected_icon = "⚙ •" if active_count else "⚙"
-    if populator.advanced_filters_button.cget("text") != expected_icon:
-        raise RuntimeError("The advanced-filter icon does not indicate active filters.")
+    if populator._filter_icon_active != bool(active_count):
+        raise RuntimeError("The funnel badge does not reflect whether filters are active.")
+    if not populator.advanced_filters_button.cget("image"):
+        raise RuntimeError("The compact filter button has no funnel icon image.")
 
     button = populator.advanced_filters_button
     button.event_generate("<Enter>")
@@ -1467,6 +1486,7 @@ def _drive_populator_form(
             _capture_window(root, output_dir / proposal_asset)
             _capture_window(root, output_dir / light_asset)
             apply_tk_theme(root, "dark")
+            populator._update_advanced_filter_button()
             root.update()
             _capture_window(root, output_dir / dark_asset)
             apply_tk_theme(root, "light")

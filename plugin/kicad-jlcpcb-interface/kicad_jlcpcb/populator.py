@@ -340,12 +340,15 @@ class ComponentPopulator:
         self.lcsc_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
         self.lcsc_entry.bind("<Return>", lambda _event: self.lookup())
 
+        self._filter_icon_active = False
+        self._filter_icon_image = self._create_advanced_filter_icon(active=False)
         self.advanced_filters_button = ttk.Button(
             search,
-            text="⚙",
-            width=4,
+            image=self._filter_icon_image,
             command=self._toggle_advanced_filters,
+            padding=(3, 3),
         )
+        self.advanced_filters_button.image = self._filter_icon_image
         self.advanced_filters_button.grid(
             row=0, column=2, sticky="e", padx=(0, 6)
         )
@@ -365,15 +368,37 @@ class ComponentPopulator:
         self.advanced_filters_section = ttk.LabelFrame(
             search, text="Advanced filters", padding=(10, 8)
         )
+        self.advanced_filters_section.columnconfigure(0, weight=1)
         self.advanced_filters_section.columnconfigure(1, weight=1)
-        self.advanced_filters_section.columnconfigure(3, weight=1)
+
+        self.advanced_filter_header = ttk.Frame(self.advanced_filters_section)
+        self.advanced_filter_header.grid(
+            row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6)
+        )
+        self.advanced_filter_header.columnconfigure(0, weight=1)
         ttk.Label(
+            self.advanced_filter_header,
+            text="Narrow results by",
+            style="Muted.TLabel",
+        ).grid(row=0, column=0, sticky="w")
+        self.clear_filters_button = ttk.Button(
+            self.advanced_filter_header,
+            text="Clear filters",
+            command=self._clear_advanced_filters,
+        )
+        self.clear_filters_button.grid(row=0, column=1, sticky="e")
+
+        self.package_filter_column = ttk.LabelFrame(
             self.advanced_filters_section,
             text="Package / footprint",
-            style="Muted.TLabel",
-        ).grid(row=0, column=0, sticky="w", padx=(0, 8), pady=2)
+            padding=(8, 6),
+        )
+        self.package_filter_column.columnconfigure(0, weight=1)
+        self.package_filter_column.grid(
+            row=1, column=0, sticky="nsew", padx=(0, 8)
+        )
         self.footprint_filter_entry = ttk.Combobox(
-            self.advanced_filters_section,
+            self.package_filter_column,
             textvariable=self.footprint_filter_var,
             values=(
                 "0201", "0402", "0603", "0805", "1206",
@@ -383,15 +408,27 @@ class ComponentPopulator:
             width=22,
         )
         self.footprint_filter_entry.grid(
-            row=0, column=1, sticky="ew", padx=(0, 18), pady=2
+            row=0, column=0, sticky="ew", pady=(0, 4)
         )
         ttk.Label(
+            self.package_filter_column,
+            text="Common sizes are suggestions; custom package names or KiCad footprint IDs are accepted.",
+            style="Muted.TLabel",
+            wraplength=340,
+            justify="left",
+        ).grid(row=1, column=0, sticky="w")
+
+        self.tolerance_filter_column = ttk.LabelFrame(
             self.advanced_filters_section,
             text="Tolerance",
-            style="Muted.TLabel",
-        ).grid(row=0, column=2, sticky="w", padx=(0, 8), pady=2)
+            padding=(8, 6),
+        )
+        self.tolerance_filter_column.columnconfigure(0, weight=1)
+        self.tolerance_filter_column.grid(
+            row=1, column=1, sticky="nsew", padx=(8, 0)
+        )
         self.tolerance_filter_entry = ttk.Combobox(
-            self.advanced_filters_section,
+            self.tolerance_filter_column,
             textvariable=self.tolerance_filter_var,
             values=(
                 "0.1%", "0.25%", "0.5%", "1%", "2%", "5%", "10%", "20%",
@@ -400,31 +437,21 @@ class ComponentPopulator:
             width=10,
         )
         self.tolerance_filter_entry.grid(
-            row=0, column=3, sticky="ew", pady=2
+            row=0, column=0, sticky="ew", pady=(0, 4)
         )
+        ttk.Label(
+            self.tolerance_filter_column,
+            text="Common percentages are suggestions; custom tolerance values are accepted.",
+            style="Muted.TLabel",
+            wraplength=340,
+            justify="left",
+        ).grid(row=1, column=0, sticky="w")
+
         self.footprint_filter_entry.bind(
             "<Return>", lambda _event: self.lookup()
         )
         self.tolerance_filter_entry.bind(
             "<Return>", lambda _event: self.lookup()
-        )
-        ttk.Label(
-            self.advanced_filters_section,
-            text="Use a package size (such as 0402) or a KiCad footprint ID.",
-            style="Muted.TLabel",
-        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(2, 0))
-        ttk.Label(
-            self.advanced_filters_section,
-            text="Enter a percentage, for example 1% or 5%.",
-            style="Muted.TLabel",
-        ).grid(row=1, column=2, columnspan=2, sticky="w", pady=(2, 0))
-        self.clear_filters_button = ttk.Button(
-            self.advanced_filters_section,
-            text="Clear filters",
-            command=self._clear_advanced_filters,
-        )
-        self.clear_filters_button.grid(
-            row=2, column=3, sticky="e", pady=(7, 0)
         )
         self.advanced_filters_section.grid(
             row=1, column=0, columnspan=4, sticky="ew", pady=(7, 0)
@@ -697,6 +724,46 @@ class ComponentPopulator:
             for variable in (self.footprint_filter_var, self.tolerance_filter_var)
         )
 
+    def _create_advanced_filter_icon(self, *, active: bool):
+        """Create a compact funnel icon with a theme-coloured active badge."""
+        image = self.tk.PhotoImage(width=22, height=20)
+        palette = getattr(self.root, "_kicad_jlcpcb_palette", self.palette)
+        foreground = palette.get("foreground", "#30343b")
+        surface = palette.get("surface", palette.get("background", "#f4f5f6"))
+        accent = palette.get("accent", "#4c789f")
+
+        funnel_rows = (
+            (2, 15),
+            (2, 15),
+            (3, 14),
+            (4, 13),
+            (5, 12),
+            (6, 11),
+            (7, 10),
+            (8, 9),
+        )
+        for y, (left, right) in enumerate(funnel_rows, start=2):
+            image.put(foreground, to=(left, y, right + 1, y + 1))
+        image.put(foreground, to=(8, 10, 10, 18))
+
+        if active:
+            center_x, center_y = 18, 3
+            for dy in range(-2, 3):
+                for dx in range(-2, 3):
+                    if dx * dx + dy * dy <= 5:
+                        image.put(
+                            surface,
+                            to=(center_x + dx, center_y + dy),
+                        )
+            for dy in range(-1, 2):
+                for dx in range(-1, 2):
+                    if dx * dx + dy * dy <= 2:
+                        image.put(
+                            accent,
+                            to=(center_x + dx, center_y + dy),
+                        )
+        return image
+
     def _advanced_filter_tooltip_text(self) -> str:
         """Describe the optional filters and report any active constraints."""
         active = []
@@ -707,17 +774,24 @@ class ComponentPopulator:
         if tolerance:
             active.append(f"Tolerance: {tolerance}")
         if active:
-            return "Advanced filters\n" + "\n".join(active)
+            count = len(active)
+            label = "filter" if count == 1 else "filters"
+            return (
+                f"Advanced filters · {count} active {label}\n"
+                + "\n".join(active)
+            )
         return (
             "Advanced filters\n"
             "Set Package / footprint and Tolerance constraints for passive value searches."
         )
 
     def _update_advanced_filter_button(self, *_args) -> None:
-        """Show a small active marker without expanding the primary search row."""
-        self.advanced_filters_button.configure(
-            text="⚙ •" if self._active_advanced_filter_count() else "⚙"
-        )
+        """Refresh the funnel badge when any advanced constraint changes."""
+        active = bool(self._active_advanced_filter_count())
+        self._filter_icon_active = active
+        self._filter_icon_image = self._create_advanced_filter_icon(active=active)
+        self.advanced_filters_button.configure(image=self._filter_icon_image)
+        self.advanced_filters_button.image = self._filter_icon_image
 
     def _toggle_advanced_filters(self) -> None:
         self.advanced_filters_visible = not self.advanced_filters_visible
