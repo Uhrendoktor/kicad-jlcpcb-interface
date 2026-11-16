@@ -1615,7 +1615,7 @@ def _capture_passive_component_workflows(
     populate.root.geometry("1024x768+780+30")
     populate.lcsc_var.set("10k")
     populate.footprint_filter_var.set("0402")
-    populate.tolerance_filter_var.set("1%")
+    populate.tolerance_filter_var.set("5%")
     populate._toggle_advanced_filters()
     populate.lookup()
 
