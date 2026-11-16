@@ -559,7 +559,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "getwindowfocus", "-f"], runner.commands
         )
-        self.assertIn(
+        self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x201"], runner.commands
         )
         self.assertNotIn(
@@ -587,10 +587,6 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertLess(
             max(i for i,c in enumerate(runner.commands) if c == pointer_check),
             runner.commands.index(filter_click),
-        )
-        self.assertLess(
-            runner.commands.index(["xdotool", "getwindowfocus", "-f"]),
-            runner.commands.index(["xdotool", "windowfocus", "--sync", "0x201"]),
         )
         _focus_search.assert_called_once_with(601, 449)
         _paste.assert_called_once()
@@ -654,7 +650,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "getwindowfocus", "-f"], runner.commands
         )
-        self.assertIn(
+        self.assertNotIn(
             ["xdotool", "windowfocus", "--sync", "0x201"], runner.commands
         )
         self.assertIn(

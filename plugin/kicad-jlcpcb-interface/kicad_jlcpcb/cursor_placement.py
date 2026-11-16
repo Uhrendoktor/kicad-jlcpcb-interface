@@ -1125,31 +1125,17 @@ def start_native_symbol_placement(
     # input. The child is often a 1x1 XIM window; XSendEvent to it was ignored,
     # but XTest events sent while it is the focused window are delivered via
     # the normal GTK input-method route.
+    # Record GTK's raw 1x1 input-method child for diagnostics and the
+    # final XSendEvent fallback, but do not call XSetInputFocus on it. The
+    # pointer click and AT-SPI already focused the Search widget; explicitly
+    # focusing its XIM child can steal keyboard focus from the wxGTK control.
     raw_focus = send("getwindowfocus", "-f")
-    child_focus_ready = False
     print(
         "chooser-x11-raw-focus="
-        f"raw={raw_focus!r} chooser={chooser_id!r}",
+        f"raw={raw_focus!r} chooser={chooser_id!r} "
+        "explicit-child-focus=skipped",
         flush=True,
     )
-    if raw_focus and raw_focus != chooser_id:
-        try:
-            send("windowfocus", "--sync", raw_focus)
-            pause(0.05)
-            focused_raw = send("getwindowfocus", "-f")
-            child_focus_ready = focused_raw == raw_focus
-            print(
-                "chooser-x11-child-focus="
-                f"requested={raw_focus!r} actual={focused_raw!r} "
-                f"ready={child_focus_ready}",
-                flush=True,
-            )
-        except subprocess.SubprocessError as exc:
-            print(
-                "chooser-x11-child-focus-failed "
-                f"target={raw_focus!r} error={type(exc).__name__}:{exc}",
-                flush=True,
-            )
 
     def verify_search_text(route: str) -> bool:
         pause(0.15)
