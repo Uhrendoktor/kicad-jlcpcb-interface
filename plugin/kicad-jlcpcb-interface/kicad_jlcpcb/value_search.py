@@ -213,25 +213,47 @@ def _passive_tolerance(details: JlcPartDetails) -> Decimal | None:
 def _matches_footprint(
     requested: str, details: JlcPartDetails, draft: ComponentDraft
 ) -> bool:
-    """Match a package shorthand or KiCad footprint ID without fuzzy guessing."""
+    """Match supplier package data first, then a mapped KiCad footprint.
+
+    An explicit supplier package is authoritative. In particular, a 0402x4
+    resistor network must not pass a 0402 discrete-resistor filter merely
+    because the generic symbol mapper inferred a single-resistor footprint.
+    """
     if not requested:
         return True
 
     def normalize(value: str) -> str:
         return re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
 
+    supplier_package = str(details.package or "").strip()
+    supplier_package_code = _PACKAGE_SIZE_RE.search(supplier_package)
     package_code = _PACKAGE_SIZE_RE.fullmatch(requested)
-    candidates = (details.package, draft.footprint)
     if package_code:
-        for candidate in candidates:
-            match = _PACKAGE_SIZE_RE.search(str(candidate or ""))
-            if match and match.group().casefold() == requested.casefold():
-                return True
-        return False
+        if supplier_package:
+            return bool(
+                supplier_package_code
+                and supplier_package_code.group().casefold() == requested.casefold()
+            )
+        mapped_package_code = _PACKAGE_SIZE_RE.search(draft.footprint or "")
+        return bool(
+            mapped_package_code
+            and mapped_package_code.group().casefold() == requested.casefold()
+        )
 
     wanted = normalize(requested)
     if not wanted:
         return False
+
+    requested_package_code = _PACKAGE_SIZE_RE.search(requested)
+    if supplier_package and requested_package_code:
+        if (
+            supplier_package_code is None
+            or supplier_package_code.group().casefold()
+            != requested_package_code.group().casefold()
+        ):
+            return False
+
+    candidates = (supplier_package, draft.footprint)
     return any(wanted in normalize(candidate) for candidate in candidates if candidate)
 
 
