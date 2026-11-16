@@ -319,7 +319,7 @@ class ComponentPopulator:
         self.candidate_title.grid(row=0, column=0, sticky="w", pady=(0, 5))
         self.candidate_tree = ttk.Treeview(
             self.candidate_section,
-            columns=("part", "mpn", "package", "tolerance", "library", "stock", "price"),
+            columns=("part", "mpn", "footprint", "tolerance", "library", "stock", "price"),
             show="headings",
             height=5,
             selectmode="browse",
@@ -327,7 +327,7 @@ class ComponentPopulator:
         candidate_headings = {
             "part": ("LCSC", 88),
             "mpn": ("MPN / value", 180),
-            "package": ("Package", 88),
+            "footprint": ("Footprint", 230),
             "tolerance": ("Tolerance", 76),
             "library": ("Class", 88),
             "stock": ("Stock", 110),
@@ -339,7 +339,7 @@ class ComponentPopulator:
                 key,
                 width=width,
                 minwidth=65,
-                stretch=key in {"mpn", "package"},
+                stretch=key in {"mpn", "footprint"},
             )
         self.candidate_tree.tag_configure(
             "stripe-alt", background=self.palette["surface_alt"]
@@ -736,7 +736,7 @@ class ComponentPopulator:
             values=(
                 details.lcsc,
                 details.manufacturer_part_number or draft.value or "—",
-                details.package or "—",
+                draft.footprint or details.package or "—",
                 passive_tolerance_label(details) or "—",
                 library_class,
                 stock,
