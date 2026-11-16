@@ -15,6 +15,7 @@ from kicad_jlcpcb.cursor_placement import (  # noqa: E402
     focus_symbol_chooser_search_at_point,
     paste_search_text_via_clipboard_shortcut,
     paste_search_text_via_context_menu,
+    read_symbol_chooser_search_text_at_point,
     send_text_to_focused_search,
     start_native_symbol_placement,
 )
@@ -397,6 +398,53 @@ class CursorPlacementTests(unittest.TestCase):
             capture_eeschema_window_id(xdotool="xdotool", command_runner=runner)
         )
 
+    def test_reads_text_from_the_actual_search_widget_under_point(self):
+        search_entry = FakeAccessible("Search")
+        search_entry.text = "c60489"
+        search_wrapper = FakeAccessible("")
+        search_wrapper.children = [search_entry]
+        chooser = FakeAccessible(
+            "Choose Symbol (22936 items loaded)",
+            children=[search_wrapper],
+        )
+        chooser.point_target = search_wrapper
+        desktop = FakeAccessible(children=[chooser])
+
+        class Registry:
+            @staticmethod
+            def getDesktop(_index):
+                return desktop
+
+        atspi = SimpleNamespace(Registry=Registry, DESKTOP_COORDS=0)
+        self.assertEqual(
+            read_symbol_chooser_search_text_at_point(
+                601, 449, atspi_module=atspi
+            ),
+            "c60489",
+        )
+
+    def test_search_readback_returns_empty_string_for_blank_filter(self):
+        search_entry = FakeAccessible("Search")
+        chooser = FakeAccessible(
+            "Choose Symbol (22936 items loaded)",
+            children=[search_entry],
+        )
+        chooser.point_target = search_entry
+        desktop = FakeAccessible(children=[chooser])
+
+        class Registry:
+            @staticmethod
+            def getDesktop(_index):
+                return desktop
+
+        atspi = SimpleNamespace(Registry=Registry, DESKTOP_COORDS=0)
+        self.assertEqual(
+            read_symbol_chooser_search_text_at_point(
+                601, 449, atspi_module=atspi
+            ),
+            "",
+        )
+
     def test_uses_libatspi_string_synthesis_for_focused_search(self):
         generated_events = []
 
@@ -452,6 +500,10 @@ class CursorPlacementTests(unittest.TestCase):
 
 
     @patch(
+        "kicad_jlcpcb.cursor_placement.read_symbol_chooser_search_text_at_point",
+        return_value="c60489",
+    )
+    @patch(
         "kicad_jlcpcb.cursor_placement.paste_search_text_via_clipboard_shortcut",
         return_value=True,
     )
@@ -465,7 +517,7 @@ class CursorPlacementTests(unittest.TestCase):
     )
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     def test_starts_native_chooser_through_ipc_and_returns_with_symbol_on_cursor(
-        self, _which, _focus_search, _send_text, _paste
+        self, _which, _focus_search, _send_text, _paste, _read_search
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
         runner.raw_focus_window = "0x201"
@@ -542,6 +594,7 @@ class CursorPlacementTests(unittest.TestCase):
         )
         _focus_search.assert_called_once_with(601, 449)
         _paste.assert_called_once()
+        _read_search.assert_called()
         _send_text.assert_not_called()
         self.assertNotIn(
             ["xdotool", "key", "--clearmodifiers", "ctrl+a"], runner.commands
@@ -565,6 +618,10 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands.index(restore_pointer),
         )
     @patch(
+        "kicad_jlcpcb.cursor_placement.read_symbol_chooser_search_text_at_point",
+        return_value="c60489",
+    )
+    @patch(
         "kicad_jlcpcb.cursor_placement.paste_search_text_via_context_menu",
         return_value=False,
     )
@@ -581,7 +638,8 @@ class CursorPlacementTests(unittest.TestCase):
         return_value=True,
     )
     def test_targets_raw_wxgtk_child_with_xsend_event_after_atspi_fails(
-        self, _focus_search, _send_text, _paste_clipboard, _paste_context
+        self, _focus_search, _send_text, _paste_clipboard,
+        _paste_context, _read_search
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
         runner.raw_focus_window = "0x201"
@@ -611,13 +669,17 @@ class CursorPlacementTests(unittest.TestCase):
             runner.commands,
         )
 
+    @patch(
+        "kicad_jlcpcb.cursor_placement.read_symbol_chooser_search_text_at_point",
+        return_value="c60489",
+    )
     @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
     @patch(
         "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
         return_value=False,
     )
     def test_uses_add_hotkey_when_ipc_action_is_unavailable(
-        self, _focus_search, _which
+        self, _focus_search, _which, _read_search
     ):
         runner = FakeRunner(["0x200", "0x200", "0x100"])
         kicad = FakeKiCad(raises=True)
@@ -664,11 +726,15 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     @patch(
+        "kicad_jlcpcb.cursor_placement.read_symbol_chooser_search_text_at_point",
+        return_value="c60489",
+    )
+    @patch(
         "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
         return_value=False,
     )
     def test_uses_native_place_menu_when_add_hotkey_does_not_open_chooser(
-        self, _focus_search
+        self, _focus_search, _read_search
     ):
         runner = FakeRunner(
             ["0x100"] * 50 + ["0x200", "0x200", "0x100"]
@@ -697,11 +763,15 @@ class CursorPlacementTests(unittest.TestCase):
         )
 
     @patch(
+        "kicad_jlcpcb.cursor_placement.read_symbol_chooser_search_text_at_point",
+        return_value="c60489",
+    )
+    @patch(
         "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
         return_value=False,
     )
     def test_accepts_focus_return_to_another_eeschema_child_window(
-        self, _focus_search
+        self, _focus_search, _read_search
     ):
         runner = FakeRunner(
             ["0x200", "0x200", "0x300"],
@@ -716,6 +786,48 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertIn(["xdotool", "getwindowpid", "0x300"], runner.commands)
         self.assertIn(["xdotool", "getwindowname", "0x300"], runner.commands)
+
+    @patch(
+        "kicad_jlcpcb.cursor_placement.read_symbol_chooser_search_text_at_point",
+        return_value="",
+    )
+    @patch(
+        "kicad_jlcpcb.cursor_placement.paste_search_text_via_context_menu",
+        return_value=False,
+    )
+    @patch(
+        "kicad_jlcpcb.cursor_placement.paste_search_text_via_clipboard_shortcut",
+        return_value=True,
+    )
+    @patch(
+        "kicad_jlcpcb.cursor_placement.send_text_to_focused_search",
+        return_value=False,
+    )
+    @patch(
+        "kicad_jlcpcb.cursor_placement.focus_symbol_chooser_search_at_point",
+        return_value=True,
+    )
+    @patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None)
+    def test_refuses_to_accept_unfiltered_chooser(
+        self, _which, _focus_search, _send_text,
+        _paste_clipboard, _paste_context, _read_search
+    ):
+        runner = FakeRunner(["0x200", "0x200", "0x100"])
+        with self.assertRaisesRegex(
+            RuntimeError, "refusing to accept an unfiltered"
+        ):
+            start_native_symbol_placement(
+                "0x100",
+                "R_C60489",
+                kicad=FakeKiCad(),
+                xdotool="xdotool",
+                command_runner=runner,
+                pause=lambda _seconds: None,
+            )
+        self.assertNotIn(
+            ["xdotool", "key", "--clearmodifiers", "Return"],
+            runner.commands,
+        )
 
     def test_reports_missing_native_chooser(self):
         runner = FakeRunner(["0x100"] * 120)

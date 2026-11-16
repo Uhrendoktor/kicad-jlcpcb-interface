@@ -493,6 +493,131 @@ def focus_symbol_chooser_search_at_point(
     return False
 
 
+def read_symbol_chooser_search_text_at_point(
+    x: int,
+    y: int,
+    *,
+    atspi_module=None,
+) -> str | None:
+    """Read the visible KiCad Search entry text at a screen coordinate."""
+    if atspi_module is None:
+        try:
+            import pyatspi as atspi_module
+        except Exception as exc:
+            print(
+                f"chooser-readback=unavailable error={type(exc).__name__}:{exc}",
+                flush=True,
+            )
+            return None
+
+    coord_type = getattr(
+        atspi_module,
+        "DESKTOP_COORDS",
+        getattr(atspi_module, "XY_SCREEN", 0),
+    )
+    try:
+        desktop = atspi_module.Registry.getDesktop(0)
+    except Exception as exc:
+        print(
+            f"chooser-readback=desktop-unavailable "
+            f"error={type(exc).__name__}:{exc}",
+            flush=True,
+        )
+        return None
+
+    stack = [desktop]
+    chooser = None
+    visited = 0
+    while stack and visited < 1200:
+        node = stack.pop()
+        visited += 1
+        try:
+            name = str(getattr(node, "name", "") or "")
+        except Exception:
+            name = ""
+        if "choose symbol" in name.casefold():
+            chooser = node
+            break
+        try:
+            child_count = min(int(node.childCount), 100)
+        except Exception:
+            child_count = 0
+        for index in range(child_count):
+            try:
+                stack.append(node.getChildAtIndex(index))
+            except Exception:
+                continue
+
+    if chooser is None:
+        print(
+            f"chooser-readback=dialog-not-found inspected={visited}",
+            flush=True,
+        )
+        return None
+
+    target = chooser
+    for _ in range(8):
+        try:
+            child = target.queryComponent().getAccessibleAtPoint(
+                int(x), int(y), coord_type
+            )
+        except Exception as exc:
+            print(
+                f"chooser-readback=hit-test-failed "
+                f"error={type(exc).__name__}:{exc}",
+                flush=True,
+            )
+            return None
+        if child is None or child is target:
+            break
+        target = child
+
+    candidates = [target]
+    stack = [(target, 0)]
+    visited = 0
+    while stack and visited < 120:
+        parent, depth = stack.pop()
+        visited += 1
+        try:
+            child_count = min(int(parent.childCount), 40)
+        except Exception:
+            child_count = 0
+        for index in range(child_count):
+            try:
+                child = parent.getChildAtIndex(index)
+                candidates.append(child)
+                if depth < 8:
+                    stack.append((child, depth + 1))
+            except Exception:
+                continue
+
+    for candidate in candidates:
+        try:
+            name = str(getattr(candidate, "name", "") or "")
+            role = str(candidate.getRoleName())
+        except Exception:
+            continue
+        if name.casefold() != "search" and role.casefold() not in {
+            "entry", "search box",
+        }:
+            continue
+        try:
+            return str(candidate.queryText().getText(0, -1) or "")
+        except Exception as exc:
+            print(
+                f"chooser-readback=text-interface-failed "
+                f"error={type(exc).__name__}:{exc}",
+                flush=True,
+            )
+            return None
+
+    print(
+        f"chooser-readback=search-entry-not-found x={x} y={y}",
+        flush=True,
+    )
+    return None
+
+
 def paste_search_text_via_clipboard_shortcut(
     text: str,
     *,
@@ -1026,19 +1151,35 @@ def start_native_symbol_placement(
                 flush=True,
             )
 
-    # Prefer a normal XTest Ctrl+V paste from the X11 CLIPBOARD after the
-    # native GTK input child has focus. Do not use --window (XSendEvent) for
-    # the paste keystrokes.
+    def verify_search_text(route: str) -> bool:
+        pause(0.15)
+        observed = read_symbol_chooser_search_text_at_point(
+            filter_x, filter_y
+        )
+        matches = observed == filter_text
+        print(
+            "chooser-search-readback="
+            f"route={route!r} expected={filter_text!r} "
+            f"observed={observed!r} matches={matches}",
+            flush=True,
+        )
+        return matches
+
+    # Never trust an input helper merely because it returned success. The
+    # native Search widget must report the exact query before Return is sent.
     pasted = False
     if atspi_focused:
-        pasted = paste_search_text_via_clipboard_shortcut(
+        attempted = paste_search_text_via_clipboard_shortcut(
             filter_text,
             send=send,
             command_runner=command_runner,
             pause=pause,
         )
+        if attempted:
+            pasted = verify_search_text("clipboard-shortcut")
+
     if not pasted and atspi_focused:
-        pasted = paste_search_text_via_context_menu(
+        attempted = paste_search_text_via_context_menu(
             filter_text,
             x=filter_x,
             y=filter_y,
@@ -1046,35 +1187,29 @@ def start_native_symbol_placement(
             command_runner=command_runner,
             pause=pause,
         )
-    if pasted:
-        print(
-            f"chooser-input=clipboard-or-native-paste text={filter_text!r}",
-            flush=True,
-        )
+        if attempted:
+            pasted = verify_search_text("context-menu-paste")
 
     synthesized = False
-    if not pasted:
-        synthesized = (
-            atspi_focused and send_text_to_focused_search(filter_text)
-        )
-        if synthesized:
-            print(
-                f"chooser-input=atspi-string text={filter_text!r}",
-                flush=True,
-            )
+    if not pasted and atspi_focused:
+        send("key", "--clearmodifiers", "ctrl+a")
+        attempted = send_text_to_focused_search(filter_text)
+        if attempted:
+            synthesized = verify_search_text("atspi-string")
 
-    if not pasted and raw_focus and raw_focus != chooser_id and child_focus_ready:
-        # Final child-targeted fallback if global XTest / native paste was not
-        # available; this is XSendEvent and is intentionally last.
+    if not pasted and not synthesized and raw_focus:
+        # Last-resort child-targeted XSendEvent route. It is accepted only when
+        # the accessibility read-back proves the visible query was changed.
         try:
             send("key", "--window", raw_focus, "--clearmodifiers", "ctrl+a")
             send(
                 "type", "--window", raw_focus, "--clearmodifiers",
                 "--delay", "50", filter_text,
             )
+            synthesized = verify_search_text("xsend-event-child")
             print(
                 "chooser-input=xsend-event-child "
-                f"window={raw_focus!r} text={filter_text!r}",
+                f"window={raw_focus!r} verified={synthesized}",
                 flush=True,
             )
         except subprocess.SubprocessError as exc:
@@ -1083,17 +1218,26 @@ def start_native_symbol_placement(
                 f"target={raw_focus!r} error={type(exc).__name__}:{exc}",
                 flush=True,
             )
-    elif not pasted and not synthesized:
-        # Last-resort global XTest typing when no native clipboard or child
-        # input route is available.
+
+    if not pasted and not synthesized:
+        # Final XTest attempt targets the currently focused GTK Search child.
         send("key", "--clearmodifiers", "ctrl+a")
         send("type", "--clearmodifiers", "--delay", "50", filter_text)
+        synthesized = verify_search_text("xtest-focused-window")
         print(
             "chooser-input=xtest-focused-window "
-            f"window={chooser_id!r} text={filter_text!r}",
+            f"window={chooser_id!r} verified={synthesized}",
             flush=True,
         )
-    pause(0.35)
+
+    if not pasted and not synthesized:
+        raise RuntimeError(
+            "KiCad's native Search field did not contain the requested "
+            f"symbol query {filter_text!r}; refusing to accept an unfiltered "
+            "symbol list. Check the native chooser's Search field and retry."
+        )
+
+    pause(0.2)
 
     debug_capture = os.environ.get("KICAD_CHOOSER_DEBUG_CAPTURE", "").strip()
     if debug_capture:
