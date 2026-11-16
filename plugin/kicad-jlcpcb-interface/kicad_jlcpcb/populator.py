@@ -356,6 +356,15 @@ class ComponentPopulator:
             self.advanced_filters_button,
             self._advanced_filter_tooltip_text,
         )
+        self.advanced_filter_summary = ttk.Label(
+            search,
+            text="",
+            style="Muted.TLabel",
+        )
+        self.advanced_filter_summary.grid(
+            row=0, column=3, sticky="w", padx=(0, 8)
+        )
+        self.advanced_filter_summary.grid_remove()
 
         self.lookup_button = ttk.Button(
             search,
@@ -363,92 +372,59 @@ class ComponentPopulator:
             command=self.lookup,
             style="Primary.TButton",
         )
-        self.lookup_button.grid(row=0, column=3, sticky="e")
+        self.lookup_button.grid(row=0, column=4, sticky="e")
 
-        self.advanced_filters_section = ttk.LabelFrame(
-            search, text="Advanced filters", padding=(10, 8)
+        # Keep the optional controls in one compact horizontal filter strip.
+        self.advanced_filters_section = ttk.Frame(
+            search, padding=(8, 4)
         )
-        self.advanced_filters_section.columnconfigure(0, weight=1)
-        self.advanced_filters_section.columnconfigure(1, weight=1)
-
-        self.advanced_filter_header = ttk.Frame(self.advanced_filters_section)
-        self.advanced_filter_header.grid(
-            row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6)
-        )
-        self.advanced_filter_header.columnconfigure(0, weight=1)
+        self.advanced_filters_section.columnconfigure(1, weight=2)
+        self.advanced_filters_section.columnconfigure(3, weight=1)
         ttk.Label(
-            self.advanced_filter_header,
-            text="Narrow results by",
-            style="Muted.TLabel",
-        ).grid(row=0, column=0, sticky="w")
-        self.clear_filters_button = ttk.Button(
-            self.advanced_filter_header,
-            text="Clear filters",
-            command=self._clear_advanced_filters,
-        )
-        self.clear_filters_button.grid(row=0, column=1, sticky="e")
-
-        self.package_filter_column = ttk.LabelFrame(
             self.advanced_filters_section,
             text="Package / footprint",
-            padding=(8, 6),
-        )
-        self.package_filter_column.columnconfigure(0, weight=1)
-        self.package_filter_column.grid(
-            row=1, column=0, sticky="nsew", padx=(0, 8)
-        )
+            style="Section.TLabel",
+        ).grid(row=0, column=0, sticky="w", padx=(0, 6))
         self.footprint_filter_entry = ttk.Combobox(
-            self.package_filter_column,
+            self.advanced_filters_section,
             textvariable=self.footprint_filter_var,
             values=(
                 "0201", "0402", "0603", "0805", "1206",
                 "1210", "1812", "2010", "2512",
             ),
             state="normal",
-            width=22,
+            width=19,
         )
         self.footprint_filter_entry.grid(
-            row=0, column=0, sticky="ew", pady=(0, 4)
+            row=0, column=1, sticky="ew", padx=(0, 18)
         )
         ttk.Label(
-            self.package_filter_column,
-            text=(
-                "Common sizes are suggestions; custom package names or KiCad "
-                "footprint IDs are accepted."
-            ),
-            style="Muted.TLabel",
-            wraplength=340,
-            justify="left",
-        ).grid(row=1, column=0, sticky="w")
-
-        self.tolerance_filter_column = ttk.LabelFrame(
             self.advanced_filters_section,
             text="Tolerance",
-            padding=(8, 6),
-        )
-        self.tolerance_filter_column.columnconfigure(0, weight=1)
-        self.tolerance_filter_column.grid(
-            row=1, column=1, sticky="nsew", padx=(8, 0)
-        )
+            style="Section.TLabel",
+        ).grid(row=0, column=2, sticky="w", padx=(0, 6))
         self.tolerance_filter_entry = ttk.Combobox(
-            self.tolerance_filter_column,
+            self.advanced_filters_section,
             textvariable=self.tolerance_filter_var,
             values=(
                 "0.1%", "0.25%", "0.5%", "1%", "2%", "5%", "10%", "20%",
             ),
             state="normal",
-            width=10,
+            width=9,
         )
         self.tolerance_filter_entry.grid(
-            row=0, column=0, sticky="ew", pady=(0, 4)
+            row=0, column=3, sticky="ew", padx=(0, 12)
         )
-        ttk.Label(
-            self.tolerance_filter_column,
-            text="Common percentages are suggestions; custom tolerance values are accepted.",
-            style="Muted.TLabel",
-            wraplength=340,
-            justify="left",
-        ).grid(row=1, column=0, sticky="w")
+        self.clear_filters_button = ttk.Button(
+            self.advanced_filters_section,
+            text="Clear",
+            command=self._clear_advanced_filters,
+            style="Link.TButton",
+            padding=(2, 2),
+        )
+        self.clear_filters_button.grid(
+            row=0, column=4, sticky="e"
+        )
 
         self.footprint_filter_entry.bind(
             "<Return>", lambda _event: self.lookup()
@@ -457,7 +433,7 @@ class ComponentPopulator:
             "<Return>", lambda _event: self.lookup()
         )
         self.advanced_filters_section.grid(
-            row=1, column=0, columnspan=4, sticky="ew", pady=(7, 0)
+            row=1, column=0, columnspan=5, sticky="ew", pady=(4, 0)
         )
         self.advanced_filters_section.grid_remove()
         self.footprint_filter_var.trace_add(
@@ -466,6 +442,7 @@ class ComponentPopulator:
         self.tolerance_filter_var.trace_add(
             "write", self._update_advanced_filter_button
         )
+        self._update_advanced_filter_button()
 
         scroll_shell = ttk.Frame(outer)
         scroll_shell.grid(row=2, column=0, sticky="nsew")
@@ -767,6 +744,26 @@ class ComponentPopulator:
                         )
         return image
 
+    @staticmethod
+    def _short_filter_summary_value(value: str, limit: int = 14) -> str:
+        """Keep the toolbar summary compact while the tooltip retains full values."""
+        display = value.strip().rsplit(":", 1)[-1]
+        if len(display) <= limit:
+            return display
+        return display[: limit - 1] + "…"
+
+    def _advanced_filter_summary_text(self) -> str:
+        """Show the active constraints next to the funnel without adding a row."""
+        summary = []
+        footprint = self.footprint_filter_var.get().strip()
+        tolerance = self.tolerance_filter_var.get().strip()
+        if footprint:
+            short_value = self._short_filter_summary_value(footprint)
+            summary.append(f"Pkg: {short_value}")
+        if tolerance:
+            summary.append(f"Tol: {tolerance}")
+        return "  ·  ".join(summary)
+
     def _advanced_filter_tooltip_text(self) -> str:
         """Describe the optional filters and report any active constraints."""
         active = []
@@ -782,19 +779,27 @@ class ComponentPopulator:
             return (
                 f"Advanced filters · {count} active {label}\n"
                 + "\n".join(active)
+                + "\nPress Search or Enter to use these values."
             )
         return (
             "Advanced filters\n"
-            "Set Package / footprint and Tolerance constraints for passive value searches."
+            "Optional package / footprint and tolerance constraints. "
+            "Press Search or Enter to use them."
         )
 
     def _update_advanced_filter_button(self, *_args) -> None:
-        """Refresh the funnel badge when any advanced constraint changes."""
+        """Refresh the funnel badge and compact active-filter summary."""
         active = bool(self._active_advanced_filter_count())
         self._filter_icon_active = active
         self._filter_icon_image = self._create_advanced_filter_icon(active=active)
         self.advanced_filters_button.configure(image=self._filter_icon_image)
         self.advanced_filters_button.image = self._filter_icon_image
+        summary = self._advanced_filter_summary_text()
+        self.advanced_filter_summary.configure(text=summary)
+        if summary:
+            self.advanced_filter_summary.grid()
+        else:
+            self.advanced_filter_summary.grid_remove()
 
     def _toggle_advanced_filters(self) -> None:
         self.advanced_filters_visible = not self.advanced_filters_visible

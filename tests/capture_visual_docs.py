@@ -1236,15 +1236,15 @@ def _capture_live_selection_workflow(
 
 
 def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
-    """Verify the compact funnel toolbar and two-column filter panel."""
+    """Verify the compact one-row filter strip and active-value summary."""
     root = populator.root
     entry = populator.lcsc_entry.grid_info()
     filters = populator.advanced_filters_button.grid_info()
     search = populator.lookup_button.grid_info()
     section = populator.advanced_filters_section.grid_info()
     section_is_visible = populator.advanced_filters_section.winfo_ismapped()
-    package_column = populator.package_filter_column.grid_info()
-    tolerance_column = populator.tolerance_filter_column.grid_info()
+    package_label = populator.footprint_filter_entry.grid_info()
+    tolerance = populator.tolerance_filter_entry.grid_info()
     clear = populator.clear_filters_button.grid_info()
     if (
         entry.get("row") != 0
@@ -1252,30 +1252,37 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
         or filters.get("row") != 0
         or filters.get("column") != 2
         or search.get("row") != 0
-        or search.get("column") != 3
+        or search.get("column") != 4
         or (
             section_is_visible
-            and (section.get("row") != 1 or section.get("columnspan") != 4)
+            and (section.get("row") != 1 or section.get("columnspan") != 5)
         )
-        or package_column.get("row") != 1
-        or package_column.get("column") != 0
-        or tolerance_column.get("row") != 1
-        or tolerance_column.get("column") != 1
+        or package_label.get("row") != 0
+        or package_label.get("column") != 1
+        or tolerance.get("row") != 0
+        or tolerance.get("column") != 3
         or clear.get("row") != 0
-        or clear.get("column") != 1
+        or clear.get("column") != 4
     ):
         raise RuntimeError(
-            "The filter icon toolbar or two-column advanced-filter layout is incorrect."
+            "The filter toolbar or one-row advanced-filter strip is incorrectly arranged."
         )
 
+    root.update_idletasks()
+    if populator.advanced_filters_section.winfo_reqheight() > 56:
+        raise RuntimeError(
+            "The advanced-filter strip is too tall for its two inline dropdowns: "
+            f"{populator.advanced_filters_section.winfo_reqheight()} px."
+        )
     if (
         str(populator.footprint_filter_entry.cget("state")) != "normal"
         or str(populator.tolerance_filter_entry.cget("state")) != "normal"
         or "0402" not in populator.footprint_filter_entry.cget("values")
         or "5%" not in populator.tolerance_filter_entry.cget("values")
+        or populator.clear_filters_button.cget("style") != "Link.TButton"
     ):
         raise RuntimeError(
-            "Advanced filter presets must remain editable package and tolerance suggestions."
+            "Filters must remain editable suggestions with a compact inline Clear link."
         )
 
     active_count = populator._active_advanced_filter_count()
@@ -1283,6 +1290,16 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
         raise RuntimeError("The funnel badge does not reflect whether filters are active.")
     if not populator.advanced_filters_button.cget("image"):
         raise RuntimeError("The compact filter button has no funnel icon image.")
+    summary = populator.advanced_filter_summary.cget("text")
+    if active_count:
+        if "Pkg:" not in summary or "Tol:" not in summary:
+            raise RuntimeError(
+                f"The search row does not summarize active filters: {summary!r}"
+            )
+        if not populator.advanced_filter_summary.winfo_ismapped():
+            raise RuntimeError("The active-filter summary is not visible next to the funnel.")
+    elif populator.advanced_filter_summary.winfo_ismapped():
+        raise RuntimeError("The active-filter summary should be hidden when no filter is set.")
 
     button = populator.advanced_filters_button
     button.event_generate("<Enter>")
@@ -1307,6 +1324,8 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
             raise RuntimeError(
                 f"The advanced-filter tooltip omits active constraint {value!r}."
             )
+    if active_count and "Press Search" not in tooltip_text:
+        raise RuntimeError("The advanced-filter tooltip does not explain how to run the query.")
     button.event_generate("<Leave>")
     root.update()
     if populator.advanced_filters_tooltip._window is not None:
