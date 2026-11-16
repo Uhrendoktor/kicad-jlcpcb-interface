@@ -710,7 +710,7 @@ class ComponentPopulator:
             return "Advanced filters\n" + "\n".join(active)
         return (
             "Advanced filters\n"
-            "Narrow passive value searches by package / footprint and tolerance."
+            "Set Package / footprint and Tolerance constraints for passive value searches."
         )
 
     def _update_advanced_filter_button(self, *_args) -> None:
