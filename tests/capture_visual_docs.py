@@ -1621,7 +1621,10 @@ def _capture_passive_component_workflows(
     )
 
     populate.root.geometry("1024x768+780+30")
-    populate.lcsc_var.set("10k")
+    if populate.lcsc_var.get() != "10k":
+        raise RuntimeError(
+            "Update mode did not prefill the selected generic passive's 10k value."
+        )
     populate.footprint_filter_var.set("0402")
     populate.tolerance_filter_var.set("5%")
     populate._toggle_advanced_filters()
