@@ -783,7 +783,7 @@ class ComponentPopulator:
             )
         return (
             "Advanced filters\n"
-            "Optional package / footprint and tolerance constraints. "
+            "Package / footprint and Tolerance constraints. "
             "Press Search or Enter to use them."
         )
 
