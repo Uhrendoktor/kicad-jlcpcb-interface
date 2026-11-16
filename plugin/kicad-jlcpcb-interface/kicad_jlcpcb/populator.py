@@ -130,7 +130,7 @@ class ComponentPopulator:
         self.executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="jlcpcb-populate"
         )
-        self.results: queue.Queue[tuple[Future, str, str]] = queue.Queue()
+        self.results: queue.Queue[tuple[Future, str, Any]] = queue.Queue()
         self.image_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="jlcpcb-product-image"
         )
@@ -154,7 +154,16 @@ class ComponentPopulator:
 
         current = component_from_symbol(symbol) if symbol is not None else None
         reference = str(getattr(symbol, "reference", "") or "selected symbol")
-        self.lcsc_var = tk.StringVar(value=current.part_code if current else "")
+        initial_search = (
+            current.value
+            if current and self.library_id in SUPPORTED_PLACEHOLDERS
+            else current.part_code if current else ""
+        )
+        self.lcsc_var = tk.StringVar(value=initial_search)
+        self.search_var = self.lcsc_var
+        self.footprint_filter_var = tk.StringVar(value="")
+        self.tolerance_filter_var = tk.StringVar(value="")
+        self.advanced_filters_visible = False
         self.symbol_hint_var = tk.StringVar(value="")
         self.value_var = tk.StringVar(value=getattr(symbol, "value", "") or "")
         self.footprint_var = tk.StringVar(
@@ -164,9 +173,9 @@ class ComponentPopulator:
         self.reference_prefix_var = tk.StringVar(value="")
         self.status_var = tk.StringVar(
             value=(
-                "Search by LCSC code, MPN, component name or passive value, package and tolerance."
+                "Search by value, LCSC code, manufacturer part number or keyword."
                 if self.create_mode
-                else "Search by LCSC code or a passive value with optional footprint and tolerance."
+                else "Search by value or LCSC code; passive alternatives are available for the selected symbol."
             )
         )
         self.catalogue_status_var = tk.StringVar(
@@ -218,7 +227,7 @@ class ComponentPopulator:
         search.columnconfigure(1, weight=1)
         ttk.Label(
             search,
-            text="Search parts",
+            text="Value or part number",
             style="Section.TLabel",
         ).grid(row=0, column=0, sticky="w", padx=(0, 12))
         self.lcsc_entry = ttk.Entry(search, textvariable=self.lcsc_var)
@@ -231,6 +240,84 @@ class ComponentPopulator:
             style="Primary.TButton",
         )
         self.lookup_button.grid(row=0, column=2, sticky="e")
+
+        self.advanced_filters_button = ttk.Button(
+            search,
+            text="Advanced filters  ▸",
+            command=self._toggle_advanced_filters,
+        )
+        self.advanced_filters_button.grid(
+            row=1, column=0, columnspan=3, sticky="w", pady=(5, 0)
+        )
+
+        self.advanced_filters_section = ttk.LabelFrame(
+            search, text="Advanced filters", padding=(10, 8)
+        )
+        self.advanced_filters_section.columnconfigure(1, weight=1)
+        self.advanced_filters_section.columnconfigure(3, weight=1)
+        ttk.Label(
+            self.advanced_filters_section,
+            text="Package / footprint",
+            style="Muted.TLabel",
+        ).grid(row=0, column=0, sticky="w", padx=(0, 8), pady=2)
+        self.footprint_filter_entry = ttk.Combobox(
+            self.advanced_filters_section,
+            textvariable=self.footprint_filter_var,
+            values=(
+                "0201", "0402", "0603", "0805", "1206",
+                "1210", "1812", "2010", "2512",
+            ),
+            state="normal",
+            width=22,
+        )
+        self.footprint_filter_entry.grid(
+            row=0, column=1, sticky="ew", padx=(0, 18), pady=2
+        )
+        ttk.Label(
+            self.advanced_filters_section,
+            text="Tolerance",
+            style="Muted.TLabel",
+        ).grid(row=0, column=2, sticky="w", padx=(0, 8), pady=2)
+        self.tolerance_filter_entry = ttk.Combobox(
+            self.advanced_filters_section,
+            textvariable=self.tolerance_filter_var,
+            values=(
+                "0.1%", "0.25%", "0.5%", "1%", "2%", "5%", "10%", "20%",
+            ),
+            state="normal",
+            width=10,
+        )
+        self.tolerance_filter_entry.grid(
+            row=0, column=3, sticky="ew", pady=2
+        )
+        ttk.Label(
+            self.advanced_filters_section,
+            text="Use a package size (such as 0402) or a KiCad footprint ID.",
+            style="Muted.TLabel",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        ttk.Label(
+            self.advanced_filters_section,
+            text="Enter a percentage, for example 1% or 5%.",
+            style="Muted.TLabel",
+        ).grid(row=1, column=2, columnspan=2, sticky="w", pady=(2, 0))
+        self.clear_filters_button = ttk.Button(
+            self.advanced_filters_section,
+            text="Clear filters",
+            command=self._clear_advanced_filters,
+        )
+        self.clear_filters_button.grid(
+            row=2, column=3, sticky="e", pady=(7, 0)
+        )
+        self.advanced_filters_section.grid(
+            row=2, column=0, columnspan=3, sticky="ew", pady=(7, 0)
+        )
+        self.advanced_filters_section.grid_remove()
+        self.footprint_filter_var.trace_add(
+            "write", self._update_advanced_filter_button
+        )
+        self.tolerance_filter_var.trace_add(
+            "write", self._update_advanced_filter_button
+        )
 
         scroll_shell = ttk.Frame(outer)
         scroll_shell.grid(row=2, column=0, sticky="nsew")
@@ -485,6 +572,35 @@ class ComponentPopulator:
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self._poll_id = self.root.after(100, self._poll_results)
 
+
+    def _active_advanced_filter_count(self) -> int:
+        return sum(
+            bool(variable.get().strip())
+            for variable in (self.footprint_filter_var, self.tolerance_filter_var)
+        )
+
+    def _update_advanced_filter_button(self, *_args) -> None:
+        """Keep the collapsed filter control explicit about active constraints."""
+        count = self._active_advanced_filter_count()
+        suffix = f" · {count} active" if count else ""
+        arrow = "▾" if self.advanced_filters_visible else "▸"
+        self.advanced_filters_button.configure(
+            text=f"Advanced filters{suffix}  {arrow}"
+        )
+
+    def _toggle_advanced_filters(self) -> None:
+        self.advanced_filters_visible = not self.advanced_filters_visible
+        if self.advanced_filters_visible:
+            self.advanced_filters_section.grid()
+        else:
+            self.advanced_filters_section.grid_remove()
+        self._update_advanced_filter_button()
+
+    def _clear_advanced_filters(self) -> None:
+        self.footprint_filter_var.set("")
+        self.tolerance_filter_var.set("")
+        self._update_advanced_filter_button()
+
     @staticmethod
     def _field_value(field: Any) -> str:
         text = getattr(field, "text", None)
@@ -501,16 +617,38 @@ class ComponentPopulator:
             return
         mode = "lcsc"
         request_value = query
+        footprint_filter = self.footprint_filter_var.get().strip()
+        tolerance_filter = self.tolerance_filter_var.get().strip()
+        has_advanced_filters = bool(footprint_filter or tolerance_filter)
         if not is_lcsc_lookup_query(query):
             try:
-                criteria = parse_passive_search_query(query)
+                criteria = parse_passive_search_query(
+                    query,
+                    footprint=footprint_filter,
+                    tolerance=tolerance_filter,
+                )
                 mode = "value"
                 request_value = criteria.supplier_query
-            except ValueError:
+            except ValueError as exc:
+                if has_advanced_filters:
+                    self.messagebox.showerror(
+                        "Invalid passive search",
+                        f"Advanced filters require a resistor or capacitor value. {exc}",
+                        parent=self.root,
+                    )
+                    return
                 # Non-passive keywords (including MPNs and device names) remain
                 # reviewable catalogue searches in both Add and Update modes.
                 mode = "keyword"
         else:
+            if has_advanced_filters:
+                self.messagebox.showerror(
+                    "Choose a passive value",
+                    "Package and tolerance filters apply to passive value searches. "
+                    "Enter a value such as 10k or 100nF instead of an LCSC part number.",
+                    parent=self.root,
+                )
+                return
             try:
                 request_value = normalize_lcsc_code(query)
             except ValueError as exc:
@@ -538,7 +676,12 @@ class ComponentPopulator:
         )
         self.lookup_button.configure(state="disabled")
         results_queue = self.results
-        result_query = query if mode in {"value", "keyword"} else request_value
+        result_query = (
+            (query, footprint_filter, tolerance_filter)
+            if mode == "value"
+            else query if mode == "keyword"
+            else request_value
+        )
         if mode in {"value", "keyword"}:
             future = self.executor.submit(
                 self.provider.search_by_keyword, request_value
@@ -604,7 +747,13 @@ class ComponentPopulator:
                     )
                     if mode == "value":
                         try:
-                            matches = exact_passive_candidates(query, result)
+                            passive_query, footprint_filter, tolerance_filter = query
+                            matches = exact_passive_candidates(
+                                passive_query,
+                                result,
+                                footprint=footprint_filter,
+                                tolerance=tolerance_filter,
+                            )
                         except ValueError as exc:
                             self.status_var.set(f"Could not interpret {query!r}: {exc}")
                             continue
@@ -632,7 +781,7 @@ class ComponentPopulator:
                     self._on_candidate_selected()
                     self.status_var.set(
                         (
-                            f"Showing {len(matches)} exact-value match(es) for {query} "
+                            f"Showing {len(matches)} passive match(es) for {query[0]} "
                             "(maximum five); Basic listings are ranked first."
                             if mode == "value"
                             else f"Found {len(matches)} catalogue candidate(s) for {query}."
