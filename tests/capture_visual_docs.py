@@ -1303,7 +1303,6 @@ def _drive_populator_form(
     completed_asset: str,
     confirmation_title: str | None,
     required_confirmation_text: str | None,
-    require_confirmation: bool = True,
     expected_lcsc: str | None,
     expected_value: str,
     expected_footprint: str | None,
@@ -1313,8 +1312,9 @@ def _drive_populator_form(
     require_alternatives: bool = False,
     preferred_lcsc: str | None = None,
     avoid_lcsc: str | None = None,
+    require_confirmation: bool = True,
 ) -> None:
-    """Capture the real LCSC proposal form, confirm it, and verify the IPC result."""
+    """Capture the production review form and verify the resulting KiCad IPC action."""
     root = populator.root
     failures: list[str] = []
     state = {"done": False, "deadline": time.monotonic() + 60.0}
