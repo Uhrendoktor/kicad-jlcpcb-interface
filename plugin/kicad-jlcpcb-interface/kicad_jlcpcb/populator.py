@@ -71,6 +71,98 @@ def _release_tk_gc_lease() -> None:
             _TK_GC_WAS_ENABLED = False
 
 
+class _HoverTooltip:
+    """Small delayed tooltip for compact controls whose purpose is icon-only."""
+
+    def __init__(self, widget: Any, text_provider: Any):
+        import tkinter as tk
+
+        self._tk = tk
+        self.widget = widget
+        self.text_provider = text_provider
+        self._after_id = None
+        self._window = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+        widget.bind("<Destroy>", self._on_destroy, add="+")
+
+    def _schedule(self, _event=None) -> None:
+        self._hide()
+        try:
+            self._after_id = self.widget.after(450, self._show)
+        except self._tk.TclError:
+            self._after_id = None
+
+    def _show(self) -> None:
+        self._after_id = None
+        try:
+            if not self.widget.winfo_exists() or self._window is not None:
+                return
+            text = str(self.text_provider() or "").strip()
+            if not text:
+                return
+            root = self.widget.winfo_toplevel()
+            palette = getattr(root, "_kicad_jlcpcb_palette", {})
+            window = self._tk.Toplevel(root)
+            self._window = window
+            window.withdraw()
+            window.wm_overrideredirect(True)
+            try:
+                window.attributes("-topmost", True)
+            except self._tk.TclError:
+                pass
+            background = palette.get("surface_alt", "#e1e4e7")
+            foreground = palette.get("foreground", "#20252a")
+            border = palette.get("border", "#b8c0c8")
+            label = self._tk.Label(
+                window,
+                text=text,
+                justify="left",
+                anchor="w",
+                wraplength=320,
+                background=background,
+                foreground=foreground,
+                padx=9,
+                pady=6,
+                borderwidth=1,
+                relief="solid",
+                highlightthickness=1,
+                highlightbackground=border,
+            )
+            label.pack()
+            window.update_idletasks()
+            x = self.widget.winfo_rootx()
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+            width = window.winfo_reqwidth()
+            height = window.winfo_reqheight()
+            x = max(8, min(x, window.winfo_screenwidth() - width - 8))
+            if y + height > window.winfo_screenheight() - 8:
+                y = max(8, self.widget.winfo_rooty() - height - 6)
+            window.wm_geometry(f"+{x}+{y}")
+            window.deiconify()
+        except self._tk.TclError:
+            self._window = None
+
+    def _hide(self, _event=None) -> None:
+        if self._after_id is not None:
+            try:
+                self.widget.after_cancel(self._after_id)
+            except self._tk.TclError:
+                pass
+            self._after_id = None
+        if self._window is not None:
+            try:
+                self._window.destroy()
+            except self._tk.TclError:
+                pass
+            self._window = None
+
+    def _on_destroy(self, event) -> None:
+        if event.widget is self.widget:
+            self._hide()
+
+
 def _is_automatically_mapped_passive(draft: ComponentDraft) -> bool:
     """Whether catalogue data unambiguously selects a stock R or C symbol."""
     return (
@@ -245,24 +337,30 @@ class ComponentPopulator:
             style="Section.TLabel",
         ).grid(row=0, column=0, sticky="w", padx=(0, 12))
         self.lcsc_entry = ttk.Entry(search, textvariable=self.lcsc_var)
-        self.lcsc_entry.grid(row=0, column=1, sticky="ew", padx=(0, 10))
+        self.lcsc_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
         self.lcsc_entry.bind("<Return>", lambda _event: self.lookup())
+
+        self.advanced_filters_button = ttk.Button(
+            search,
+            text="⚙",
+            width=4,
+            command=self._toggle_advanced_filters,
+        )
+        self.advanced_filters_button.grid(
+            row=0, column=2, sticky="e", padx=(0, 6)
+        )
+        self.advanced_filters_tooltip = _HoverTooltip(
+            self.advanced_filters_button,
+            self._advanced_filter_tooltip_text,
+        )
+
         self.lookup_button = ttk.Button(
             search,
             text="Search",
             command=self.lookup,
             style="Primary.TButton",
         )
-        self.lookup_button.grid(row=0, column=2, sticky="e")
-
-        self.advanced_filters_button = ttk.Button(
-            search,
-            text="Advanced filters  ▸",
-            command=self._toggle_advanced_filters,
-        )
-        self.advanced_filters_button.grid(
-            row=1, column=0, columnspan=3, sticky="w", pady=(5, 0)
-        )
+        self.lookup_button.grid(row=0, column=3, sticky="e")
 
         self.advanced_filters_section = ttk.LabelFrame(
             search, text="Advanced filters", padding=(10, 8)
@@ -329,7 +427,7 @@ class ComponentPopulator:
             row=2, column=3, sticky="e", pady=(7, 0)
         )
         self.advanced_filters_section.grid(
-            row=2, column=0, columnspan=3, sticky="ew", pady=(7, 0)
+            row=1, column=0, columnspan=4, sticky="ew", pady=(7, 0)
         )
         self.advanced_filters_section.grid_remove()
         self.footprint_filter_var.trace_add(
@@ -599,13 +697,26 @@ class ComponentPopulator:
             for variable in (self.footprint_filter_var, self.tolerance_filter_var)
         )
 
+    def _advanced_filter_tooltip_text(self) -> str:
+        """Describe the optional filters and report any active constraints."""
+        active = []
+        footprint = self.footprint_filter_var.get().strip()
+        tolerance = self.tolerance_filter_var.get().strip()
+        if footprint:
+            active.append(f"Package / footprint: {footprint}")
+        if tolerance:
+            active.append(f"Tolerance: {tolerance}")
+        if active:
+            return "Advanced filters\n" + "\n".join(active)
+        return (
+            "Advanced filters\n"
+            "Narrow passive value searches by package / footprint and tolerance."
+        )
+
     def _update_advanced_filter_button(self, *_args) -> None:
-        """Keep the collapsed filter control explicit about active constraints."""
-        count = self._active_advanced_filter_count()
-        suffix = f" · {count} active" if count else ""
-        arrow = "▾" if self.advanced_filters_visible else "▸"
+        """Show a small active marker without expanding the primary search row."""
         self.advanced_filters_button.configure(
-            text=f"Advanced filters{suffix}  {arrow}"
+            text="⚙ •" if self._active_advanced_filter_count() else "⚙"
         )
 
     def _toggle_advanced_filters(self) -> None:
@@ -1249,20 +1360,8 @@ class ComponentPopulator:
                     parent=self.root,
                 )
                 return
-            warning = (
-                f"Generate {draft.value} ({draft.lcsc}) as a project-local KiCad symbol "
-                "and insert it at the center of the current schematic sheet?\n\n"
-                "KiCad will bring the new symbol into view and select it. Use the "
-                "normal Move tool to position it where needed; no placement coordinates "
-                "are requested. The selected stock symbol's pin numbers, electrical "
-                "types, units and graphics are copied as-is; verify them against the "
-                "datasheet."
-            )
-            if not self.messagebox.askyesno(
-                "Confirm new schematic component", warning, parent=self.root
-            ):
-                return
-
+            # Clicking Generate & select component is the user's explicit action.
+            # Proceed directly to generation and placement without another modal.
             withdrawn = False
             try:
                 if self.kicad is None:
