@@ -54,7 +54,7 @@ def build_product_preview(
         height=108,
     )
     image_frame.grid(
-        row=0, column=0, rowspan=6, sticky="nw", padx=(0, 16)
+        row=0, column=0, rowspan=7, sticky="nw", padx=(0, 16)
     )
     image_frame.grid_propagate(False)
     image_label = ttk.Label(
