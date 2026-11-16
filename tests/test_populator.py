@@ -224,6 +224,9 @@ class ComponentUpdateApplyTests(unittest.TestCase):
             def get(self):
                 return self.value
 
+            def set(self, value):
+                self.value = value
+
         schematic = SimpleNamespace(save=Mock())
         selected_symbol = symbol("symbol-id", "R1")
         askyesno = Mock(
