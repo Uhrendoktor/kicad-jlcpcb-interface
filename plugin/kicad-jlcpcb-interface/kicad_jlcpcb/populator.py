@@ -293,6 +293,12 @@ class ComponentPopulator:
         self.tolerance_filter_entry.grid(
             row=0, column=3, sticky="ew", pady=2
         )
+        self.footprint_filter_entry.bind(
+            "<Return>", lambda _event: self.lookup()
+        )
+        self.tolerance_filter_entry.bind(
+            "<Return>", lambda _event: self.lookup()
+        )
         ttk.Label(
             self.advanced_filters_section,
             text="Use a package size (such as 0402) or a KiCad footprint ID.",
@@ -623,7 +629,10 @@ class ComponentPopulator:
         footprint_filter = self.footprint_filter_var.get().strip()
         tolerance_filter = self.tolerance_filter_var.get().strip()
         has_advanced_filters = bool(footprint_filter or tolerance_filter)
-        if not is_lcsc_lookup_query(query):
+        explicit_lcsc_lookup = is_lcsc_lookup_query(query) and not (
+            has_advanced_filters and query.isdigit()
+        )
+        if not explicit_lcsc_lookup:
             try:
                 criteria = parse_passive_search_query(
                     query,
