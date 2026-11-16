@@ -1254,6 +1254,7 @@ def _drive_populator_form(
     validate_result,
     require_image: bool = False,
     assert_basic_shortlist: bool = False,
+    require_alternatives: bool = False,
     preferred_lcsc: str | None = None,
     avoid_lcsc: str | None = None,
 ) -> None:
@@ -1325,6 +1326,13 @@ def _drive_populator_form(
                     f"{populator.catalogue_vars['lcsc'].get()!r} != {expected_lcsc!r}"
                 )
             candidate_iids = populator.candidate_tree.get_children()
+            if require_alternatives and (
+                len(candidate_iids) < 2
+                or not populator.candidate_section.winfo_ismapped()
+            ):
+                raise RuntimeError(
+                    "Update-mode passive search did not display multiple alternatives."
+                )
             if assert_basic_shortlist:
                 if len(candidate_iids) > 5:
                     raise RuntimeError(
@@ -1570,10 +1578,10 @@ def _capture_passive_component_workflows(
     """Exercise both modes of the unified component action against live Eeschema."""
     # Populate: the entrypoint requires exactly one selected generic passive.
     schematic.clear_selection()
-    schematic.add_to_selection([symbols["R2"]])
+    schematic.add_to_selection([symbols["R1"]])
     selected = find_selected_component(schematic)
-    if selected.reference != "R2":
-        raise RuntimeError("The populate UI fixture did not select R2.")
+    if selected.reference != "R1":
+        raise RuntimeError("The populate UI fixture did not select R1.")
 
     editable_symbol, resolved_library_id, create_mode = resolve_component_action_target(
         schematic, list(schematic.get_selection())
@@ -1599,7 +1607,7 @@ def _capture_passive_component_workflows(
     )
     if verified_fixture_library_id != "Device:R":
         raise RuntimeError(
-            "The selected R2 fixture is not the canonical stock Device:R definition: "
+            "The selected R1 fixture is not the canonical stock Device:R definition: "
             f"{verified_fixture_library_id!r}"
         )
     populate = ComponentPopulator(
@@ -1613,24 +1621,35 @@ def _capture_passive_component_workflows(
     )
 
     populate.root.geometry("1024x768+780+30")
-    populate.lcsc_var.set("C60489")
+    if populate.lcsc_var.get() != "10k":
+        raise RuntimeError(
+            "Update mode did not prefill the selected generic passive's 10k value."
+        )
+    populate.footprint_filter_var.set("0402")
+    populate.tolerance_filter_var.set("5%")
+    populate._toggle_advanced_filters()
     populate.lookup()
 
-    def validate_populate_result(_populator: ComponentPopulator) -> None:
+    def validate_populate_result(populator: ComponentPopulator) -> None:
+        details = populator.selected_details
+        draft = populator.draft
         updated = next(
-            (item for item in find_linked_components(schematic) if item.reference == "R2"),
+            (item for item in find_linked_components(schematic) if item.reference == "R1"),
             None,
         )
         if (
-            updated is None
-            or updated.part_code != "C60489"
-            or updated.value != "10k"
-            or updated.footprint != "Resistor_SMD:R_0402_1005Metric"
-            or updated.manufacturer_part_number != "RC0402JR-0710KL"
+            details is None
+            or draft is None
+            or details.lcsc == "C60489"
+            or updated is None
+            or updated.part_code != details.lcsc
+            or updated.value != draft.value
+            or updated.footprint != draft.footprint
+            or updated.manufacturer_part_number != details.manufacturer_part_number
         ):
             raise RuntimeError(
-                "The confirmed populate UI action did not write the reviewed LCSC fields "
-                "back into R2 through KiCad IPC."
+                "The confirmed Update-mode alternative was not written back to R1 "
+                "through KiCad IPC."
             )
 
     _drive_populator_form(
@@ -1645,14 +1664,17 @@ def _capture_passive_component_workflows(
         required_confirmation_text=(
             "pins, units and electrical pin mapping will NOT be changed"
         ),
-        expected_lcsc="C60489",
+        expected_lcsc=None,
         expected_value="10k",
         expected_footprint="Resistor_SMD:R_0402_1005Metric",
         validate_result=validate_populate_result,
+        assert_basic_shortlist=True,
+        require_alternatives=True,
+        avoid_lcsc="C60489",
     )
     print(
-        "live-update-mode-ui=passed selected=R2 lcsc=C60489 "
-        "result=updated-and-saved",
+        "live-update-mode-ui=passed selected=R1 "
+        f"lcsc={populate.selected_details.lcsc} result=updated-and-saved",
         flush=True,
     )
 

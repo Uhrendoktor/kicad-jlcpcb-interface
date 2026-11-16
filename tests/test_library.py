@@ -102,7 +102,7 @@ def resistor_draft(**overrides):
         "mpn": "RC0402JR-0710KL",
         "description": '10K "thick film" resistor',
         "category": "Resistors",
-        "attributes": (("Resistance", "10KΩ"), ("Tolerance", "±1%")),
+        "attributes": (("Resistance", "10KΩ"), ("Tolerance", "±5%")),
         "confidence": "high",
         "warnings": (),
         "source_label": "Unit test fixture",

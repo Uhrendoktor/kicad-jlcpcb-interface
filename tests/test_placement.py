@@ -50,7 +50,7 @@ def resistor_draft():
         package="0402",
         datasheet_url="https://example.test/resistor.pdf",
         category="Resistors",
-        attributes={"Resistance": "10KΩ", "Tolerance": "±1%"},
+        attributes={"Resistance": "10KΩ", "Tolerance": "±5%"},
     )
     return build_component_draft(details)
 

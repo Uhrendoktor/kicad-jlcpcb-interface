@@ -39,13 +39,13 @@ class RepeatedFields(list):
 def details(**overrides):
     values = {
         "lcsc": "C60489",
-        "description": "10KΩ ±1% 1/16W Thick Film Resistor",
+        "description": "10KΩ ±5% 1/16W Thick Film Resistor",
         "manufacturer": "YAGEO",
         "manufacturer_part_number": "RC0402JR-0710KL",
         "package": "0402",
         "datasheet_url": "https://example.test/resistor.pdf",
         "category": "Resistors",
-        "attributes": {"Resistance": "10KΩ", "Tolerance": "±1%", "Power": "1/16W"},
+        "attributes": {"Resistance": "10KΩ", "Tolerance": "±5%", "Power": "1/16W"},
     }
     values.update(overrides)
     return JlcPartDetails(**values)
@@ -64,7 +64,7 @@ class ComponentDraftTests(unittest.TestCase):
         self.assertEqual(fields["LCSC"], "C60489")
         self.assertEqual(fields["Manufacturer"], "YAGEO")
         self.assertEqual(fields["MPN"], "RC0402JR-0710KL")
-        self.assertEqual(fields["Tolerance"], "±1%")
+        self.assertEqual(fields["Tolerance"], "±5%")
         self.assertEqual(draft.confidence, "high")
 
     def test_records_basic_and_extended_class_as_hidden_generation_metadata(self):
