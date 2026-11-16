@@ -1254,6 +1254,7 @@ def _drive_populator_form(
     validate_result,
     require_image: bool = False,
     assert_basic_shortlist: bool = False,
+    require_alternatives: bool = False,
     preferred_lcsc: str | None = None,
     avoid_lcsc: str | None = None,
 ) -> None:
@@ -1325,6 +1326,13 @@ def _drive_populator_form(
                     f"{populator.catalogue_vars['lcsc'].get()!r} != {expected_lcsc!r}"
                 )
             candidate_iids = populator.candidate_tree.get_children()
+            if require_alternatives and (
+                len(candidate_iids) < 2
+                or not populator.candidate_section.winfo_ismapped()
+            ):
+                raise RuntimeError(
+                    "Update-mode passive search did not display multiple alternatives."
+                )
             if assert_basic_shortlist:
                 if len(candidate_iids) > 5:
                     raise RuntimeError(
@@ -1619,21 +1627,26 @@ def _capture_passive_component_workflows(
     populate._toggle_advanced_filters()
     populate.lookup()
 
-    def validate_populate_result(_populator: ComponentPopulator) -> None:
+    def validate_populate_result(populator: ComponentPopulator) -> None:
+        details = populator.selected_details
+        draft = populator.draft
         updated = next(
             (item for item in find_linked_components(schematic) if item.reference == "R2"),
             None,
         )
         if (
-            updated is None
-            or updated.part_code != "C60489"
-            or updated.value != "10k"
-            or updated.footprint != "Resistor_SMD:R_0402_1005Metric"
-            or updated.manufacturer_part_number != "RC0402JR-0710KL"
+            details is None
+            or draft is None
+            or details.lcsc == "C60489"
+            or updated is None
+            or updated.part_code != details.lcsc
+            or updated.value != draft.value
+            or updated.footprint != draft.footprint
+            or updated.manufacturer_part_number != details.manufacturer_part_number
         ):
             raise RuntimeError(
-                "The confirmed populate UI action did not write the reviewed LCSC fields "
-                "back into R2 through KiCad IPC."
+                "The confirmed Update-mode alternative was not written back to R2 "
+                "through KiCad IPC."
             )
 
     _drive_populator_form(
@@ -1653,11 +1666,12 @@ def _capture_passive_component_workflows(
         expected_footprint="Resistor_SMD:R_0402_1005Metric",
         validate_result=validate_populate_result,
         assert_basic_shortlist=True,
-        preferred_lcsc="C60489",
+        require_alternatives=True,
+        avoid_lcsc="C60489",
     )
     print(
-        "live-update-mode-ui=passed selected=R2 lcsc=C60489 "
-        "result=updated-and-saved",
+        "live-update-mode-ui=passed selected=R2 "
+        f"lcsc={populate.selected_details.lcsc} result=updated-and-saved",
         flush=True,
     )
 
