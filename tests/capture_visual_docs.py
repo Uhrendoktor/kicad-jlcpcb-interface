@@ -1239,7 +1239,9 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
     """Verify the compact one-row filter strip and active-value summary."""
     root = populator.root
     entry = populator.lcsc_entry.grid_info()
+    basic_only = populator.basic_only_checkbutton.grid_info()
     filters = populator.advanced_filters_button.grid_info()
+    summary_position = populator.advanced_filter_summary.grid_info()
     search = populator.lookup_button.grid_info()
     section = populator.advanced_filters_section.grid_info()
     section_is_visible = populator.advanced_filters_section.winfo_ismapped()
@@ -1249,13 +1251,17 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
     if (
         entry.get("row") != 0
         or entry.get("column") != 1
+        or basic_only.get("row") != 0
+        or basic_only.get("column") != 2
         or filters.get("row") != 0
-        or filters.get("column") != 2
+        or filters.get("column") != 3
+        or summary_position.get("row") != 0
+        or summary_position.get("column") != 4
         or search.get("row") != 0
-        or search.get("column") != 4
+        or search.get("column") != 5
         or (
             section_is_visible
-            and (section.get("row") != 1 or section.get("columnspan") != 5)
+            and (section.get("row") != 1 or section.get("columnspan") != 6)
         )
         or package_label.get("row") != 0
         or package_label.get("column") != 1
@@ -1279,11 +1285,24 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
         or str(populator.tolerance_filter_entry.cget("state")) != "normal"
         or "0402" not in populator.footprint_filter_entry.cget("values")
         or "5%" not in populator.tolerance_filter_entry.cget("values")
-        or populator.clear_filters_button.cget("style") != "Link.TButton"
+        or populator.clear_filters_button.cget("style") != "ToolbarLink.TButton"
+        or populator.basic_only_checkbutton.cget("text") != "Basic parts only"
     ):
         raise RuntimeError(
-            "Filters must remain editable suggestions with a compact inline Clear link."
+            "Search filters must remain editable, compact and clearly labelled."
         )
+
+    if populator.basic_only_var.get():
+        raise RuntimeError("Basic parts only should be off by default.")
+    basic_status = populator.status_var.get()
+    populator.basic_only_checkbutton.invoke()
+    root.update_idletasks()
+    if not populator.basic_only_var.get() or populator.status_var.get() != basic_status:
+        raise RuntimeError("The Basic-only checkbox must toggle without auto-searching.")
+    populator.basic_only_checkbutton.invoke()
+    root.update_idletasks()
+    if populator.basic_only_var.get():
+        raise RuntimeError("The Basic-only checkbox did not return to its off state.")
 
     active_count = populator._active_advanced_filter_count()
     if populator._filter_icon_active != bool(active_count):
@@ -1300,6 +1319,27 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
             raise RuntimeError("The active-filter summary is not visible next to the funnel.")
     elif populator.advanced_filter_summary.winfo_ismapped():
         raise RuntimeError("The active-filter summary should be hidden when no filter is set.")
+
+    basic_toggle = populator.basic_only_checkbutton
+    basic_toggle.event_generate("<Enter>")
+    root.update()
+    time.sleep(0.5)
+    root.update()
+    basic_tooltip = populator.basic_only_tooltip._window
+    basic_tooltip_text = " ".join(
+        str(child.cget("text"))
+        for child in basic_tooltip.winfo_children()
+        if child.winfo_class() == "Label"
+    ) if basic_tooltip is not None else ""
+    if (
+        basic_tooltip is None
+        or not basic_tooltip.winfo_exists()
+        or "Extended" not in basic_tooltip_text
+        or "rank first" not in basic_tooltip_text
+    ):
+        raise RuntimeError("The Basic-only checkbox tooltip does not explain its behavior.")
+    basic_toggle.event_generate("<Leave>")
+    root.update()
 
     button = populator.advanced_filters_button
     button.event_generate("<Enter>")
