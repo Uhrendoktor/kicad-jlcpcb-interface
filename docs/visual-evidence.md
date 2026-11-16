@@ -84,18 +84,16 @@ There is one Eeschema command and one component workspace. Properties, Update an
 </table>
 
 <details>
-  <summary>Show Update confirmation and completion states</summary>
+  <summary>Show Update and Add completion states</summary>
 
   <table>
     <tr>
-      <th>Update confirmation</th>
-      <th>Update result</th>
+      <th>Update result · fields written directly</th>
       <th>Add result · placed and selected</th>
     </tr>
     <tr>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png" alt="Confirmation explaining that the selected symbol's graphics, pins and electrical mapping remain unchanged" width="320"></td>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Updated schematic fields after confirming the review for an existing selected component" width="320"></td>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed-selected.png" alt="Generated 10k resistor inserted directly at the schematic page center and selected in Eeschema" width="320"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Reviewed fields written directly to the selected schematic symbol with no confirmation dialog" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-placed-selected.png" alt="Generated 10k resistor inserted directly at the schematic page center and selected in Eeschema" width="420"></td>
     </tr>
   </table>
 </details>
@@ -124,12 +122,12 @@ The visual capture runs the production application windows, not separately drawn
 | Component Overview | Captures unfiltered, filtered and selected-row states. Verifies live JLCPCB detail source, product image, MPN alternatives and the completed cost/stock summary. |
 | Component Properties | Opens the focused properties window from a selected linked Eeschema symbol and captures its loaded catalogue view. |
 | Properties controls | Calls Select in schematic and Select same part on sheet; verifies the Eeschema selection; copies the LCSC ID and verifies the clipboard; invokes LCSC search, supplier product, datasheet and MPN-result actions and checks that each opens an HTTPS URL. |
-| Add or Update Component — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, verifies the shared match list and catalogue preview, waits for the asynchronous supplier image when present, captures the proposal and native Update confirmation, applies the reviewed update and reads the resulting fields back through IPC. |
-| Add or Update Component — add mode | Clears the Eeschema selection, searches for `10k`, verifies the shortlist is limited to five exact candidates and ranks Basic listings first, captures the selected catalogue preview and proposal, proceeds directly to generation without a second confirmation window, generates/reuses the selected project-local resistor symbol, and verifies that the symbol is inserted at the schematic page center, focused and selected in Eeschema. |
+| Add or Update Component — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, verifies the shared match list and catalogue preview, waits for the asynchronous supplier image when present, captures the proposal, applies the reviewed update directly without a confirmation dialog and reads the resulting fields back through IPC. |
+| Add or Update Component — add mode | Clears the Eeschema selection, searches for `10k`, verifies the shortlist is limited to five exact candidates and ranks Basic listings first, captures the selected catalogue preview and proposal, proceeds directly to generation without a confirmation window, generates/reuses the selected project-local resistor symbol, and verifies that the symbol is inserted at the schematic page center, focused and selected in Eeschema. |
 | Theme pairs | Captures the overview, properties and both Add or Update Component modes in both light and dark palettes, reusing each live widget tree. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 
-The live GUI capture verifies both selection contexts of the shared workspace using resistor examples: update mode searches the value `10k` with separate advanced filters for the `0402` package and `5%` tolerance, verifies that multiple alternatives are visible, selects a different part from the original C60489 and verifies its reviewed fields are written to the selected symbol; add mode searches the nominal value `10k`, shows a maximum of five Basic-first exact candidates, selects a candidate not already present in the fixture library, and verifies page-center placement and selection. The form capture uses a compact 1024 × 768 window and checks that the action remains visible while the main content scrolls. The placed-and-selected screenshot documents the automatic starting position without adding coordinate controls. Unit tests additionally cover inductor/LED classification, arbitrary selected-symbol metadata updates, multi-pin IC symbol copying and manual KiCad symbol selection. The GUI capture does not yet exercise every non-passive family or the manual symbol-entry interaction. Both mode-specific screenshots fail closed rather than silently falling back to cached data. The proposal/result screenshots document those controlled examples; the actual supplier facts are those returned at capture time.
+The live GUI capture verifies both selection contexts of the shared workspace using resistor examples. It also checks that Advanced filters render as a compact single-row strip, Clear appears as a small inline link, both dropdowns remain editable despite their preset suggestions, active values are summarized next to the funnel, and the funnel badge reflects active constraints. Update mode searches the value `10k` with separate advanced filters for the `0402` package and `5%` tolerance, verifies that multiple alternatives are visible, selects a different part from the original C60489 and verifies its reviewed fields are written to the selected symbol; add mode searches the nominal value `10k`, shows a maximum of five Basic-first exact candidates, selects a candidate not already present in the fixture library, and verifies page-center placement and selection. The form capture uses a compact 1024 × 768 window and checks that the action remains visible while the main content scrolls. The placed-and-selected screenshot documents the automatic starting position without adding coordinate controls. Unit tests additionally cover inductor/LED classification, arbitrary selected-symbol metadata updates, multi-pin IC symbol copying and manual KiCad symbol selection. The GUI capture does not yet exercise every non-passive family or the manual symbol-entry interaction. Both mode-specific screenshots fail closed rather than silently falling back to cached data. The proposal/result screenshots document those controlled examples; the actual supplier facts are those returned at capture time.
 
 ## Capture design
 

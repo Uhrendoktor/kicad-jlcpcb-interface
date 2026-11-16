@@ -203,6 +203,73 @@ class ComponentCreationApplyTests(unittest.TestCase):
         populator.close.assert_called_once_with()
 
 
+class ComponentUpdateApplyTests(unittest.TestCase):
+    def test_update_action_writes_reviewed_fields_without_confirmation_dialog(self):
+        details = JlcPartDetails(
+            lcsc="C12345",
+            description="10kΩ thick film resistor",
+            manufacturer_part_number="RC0402-test",
+            package="0402",
+            is_basic=True,
+            is_buyable=True,
+            category="Resistors",
+            attributes={"Resistance": "10KΩ"},
+        )
+        draft = build_component_draft(details)
+
+        class Variable:
+            def __init__(self, value=""):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def set(self, value):
+                self.value = value
+
+        schematic = SimpleNamespace(save=Mock())
+        selected_symbol = symbol("symbol-id", "R1")
+        askyesno = Mock(
+            side_effect=AssertionError("Update mode must not show a confirmation dialog.")
+        )
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = False
+        populator.draft = draft
+        populator.value_var = Variable(draft.value)
+        populator.footprint_var = Variable("Resistor_SMD:R_0402_1005Metric")
+        populator.symbol = selected_symbol
+        populator.library_id = "Device:R"
+        populator.schematic = schematic
+        populator.messagebox = SimpleNamespace(
+            askyesno=askyesno,
+            showerror=Mock(),
+        )
+        populator.root = object()
+        populator.status_var = Variable()
+        populator.apply_button = SimpleNamespace(configure=Mock())
+
+        with (
+            patch.object(
+                populator_module,
+                "apply_component_draft_fields",
+                return_value=("Value", "Footprint"),
+            ) as apply_fields,
+            patch.object(populator_module, "update_schematic_symbol") as update_symbol,
+        ):
+            populator.apply()
+
+        askyesno.assert_not_called()
+        apply_fields.assert_called_once()
+        self.assertIs(apply_fields.call_args.args[0], selected_symbol)
+        self.assertEqual(
+            apply_fields.call_args.kwargs["expected_library_id"], "Device:R"
+        )
+        update_symbol.assert_called_once_with(schematic, selected_symbol)
+        schematic.save.assert_called_once_with()
+        self.assertIn("Updated and saved R1", populator.status_var.value)
+        populator.apply_button.configure.assert_called_once_with(state="disabled")
+
+
 class AutomaticPassiveMappingTests(unittest.TestCase):
     def test_recognizes_only_stock_resistor_and_capacitor_mappings(self):
         self.assertTrue(
