@@ -538,6 +538,7 @@ class ComponentPopulator:
         )
         self.lookup_button.configure(state="disabled")
         results_queue = self.results
+        result_query = query if mode in {"value", "keyword"} else request_value
         if mode in {"value", "keyword"}:
             future = self.executor.submit(
                 self.provider.search_by_keyword, request_value
@@ -552,7 +553,7 @@ class ComponentPopulator:
             *,
             result_queue=results_queue,
             search_mode=mode,
-            search_value=query,
+            search_value=result_query,
         ) -> None:
             # Keep the Tk dialog out of worker-thread completion callbacks.
             result_queue.put((completed, search_mode, search_value))
