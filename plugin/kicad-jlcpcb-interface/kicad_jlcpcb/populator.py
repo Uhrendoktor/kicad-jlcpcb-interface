@@ -435,7 +435,7 @@ class ComponentPopulator:
             "part": ("LCSC", 88),
             "mpn": ("MPN / value", 180),
             "footprint": ("Footprint", 230),
-            "tolerance": ("Tolerance", 76),
+            "tolerance": ("Tolerance", 96),
             "library": ("Class", 88),
             "stock": ("Stock", 110),
             "price": ("Unit price", 110),
