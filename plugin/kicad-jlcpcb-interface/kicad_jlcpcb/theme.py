@@ -12,34 +12,36 @@ THEME_ENVIRONMENT_VARIABLE = "KICAD_JLCPCB_THEME"
 
 _PALETTES: dict[str, dict[str, str]] = {
     "dark": {
-        "background": "#202326",
-        "surface": "#292d31",
-        "surface_alt": "#33383d",
-        "field": "#191c1f",
-        "hover": "#3b4249",
-        "selected": "#344b62",
-        "foreground": "#e6e9ec",
-        "muted": "#aab2ba",
-        "border": "#48515a",
-        "accent": "#78a9d4",
+        "background": "#171c21",
+        "surface": "#222a31",
+        "surface_alt": "#2b343d",
+        "field": "#171c21",
+        "hover": "#33404a",
+        "selected": "#355169",
+        "foreground": "#e8edf2",
+        "muted": "#a7b2bd",
+        "border": "#414c56",
+        "accent": "#79b8e4",
         "accent_foreground": "#17232e",
-        "scroll_thumb": "#505a64",
-        "scroll_trough": "#24282c",
+        "basic_foreground": "#9bd8b7",
+        "scroll_thumb": "#505d69",
+        "scroll_trough": "#1d242a",
     },
     "light": {
-        "background": "#e8eaed",
-        "surface": "#f4f5f6",
-        "surface_alt": "#e1e4e7",
+        "background": "#f1f4f7",
+        "surface": "#ffffff",
+        "surface_alt": "#edf1f5",
         "field": "#ffffff",
-        "hover": "#e8edf2",
-        "selected": "#c9d8e6",
-        "foreground": "#20252a",
-        "muted": "#5f6871",
-        "border": "#b8c0c8",
-        "accent": "#4c789f",
+        "hover": "#e7eff6",
+        "selected": "#d5e6f4",
+        "foreground": "#202934",
+        "muted": "#647180",
+        "border": "#d6dee6",
+        "accent": "#2f6f9f",
         "accent_foreground": "#ffffff",
-        "scroll_thumb": "#c0c7ce",
-        "scroll_trough": "#e4e7ea",
+        "basic_foreground": "#24684b",
+        "scroll_thumb": "#c1cbd5",
+        "scroll_trough": "#e8edf2",
     },
 }
 
@@ -181,6 +183,11 @@ def _configure_classic_widgets(root: Any, palette: dict[str, str]) -> None:
             elif widget_class == "Treeview":
                 # Row tags carry explicit colours, so refresh them on live theme changes.
                 widget.tag_configure("stripe-alt", background=palette["surface_alt"])
+                widget.tag_configure(
+                    "basic", foreground=palette["basic_foreground"]
+                )
+                widget.tag_configure("extended", foreground=palette["muted"])
+                widget.tag_configure("unknown", foreground=palette["muted"])
             stack.extend(widget.winfo_children())
         except Exception:
             # Some platform-specific widgets do not expose every classic option.
@@ -229,10 +236,74 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
     style.configure("TFrame", background=palette["background"])
     style.configure("TPanedwindow", background=palette["background"])
     style.configure(
+        "Toolbar.TFrame",
+        background=palette["surface_alt"],
+        borderwidth=0,
+        relief="flat",
+    )
+    style.configure(
+        "ToolbarLabel.TLabel",
+        background=palette["surface_alt"],
+        foreground=palette["foreground"],
+        font=("TkDefaultFont", 9, "bold"),
+    )
+    style.configure(
+        "ToolbarMeta.TLabel",
+        background=palette["surface_alt"],
+        foreground=palette["muted"],
+        font=("TkDefaultFont", 8),
+    )
+    style.configure(
+        "Toolbar.TCheckbutton",
+        background=palette["surface_alt"],
+        foreground=palette["foreground"],
+        padding=(3, 2),
+    )
+    style.map(
+        "Toolbar.TCheckbutton",
+        background=[("active", palette["surface_alt"])],
+        foreground=[("disabled", palette["muted"])],
+    )
+    style.configure(
+        "ToolbarLink.TButton",
+        background=palette["surface_alt"],
+        foreground=palette["accent"],
+        borderwidth=0,
+        bordercolor=palette["surface_alt"],
+        focuscolor=palette["accent"],
+        padding=(0, 3),
+        relief="flat",
+    )
+    style.map(
+        "ToolbarLink.TButton",
+        background=[("active", palette["hover"]), ("pressed", palette["selected"])],
+        foreground=[("disabled", palette["muted"]), ("!disabled", palette["accent"])],
+        bordercolor=[("focus", palette["accent"]), ("!focus", palette["surface_alt"])],
+    )
+    style.configure(
+        "ModeBadge.TLabel",
+        background=palette["accent"],
+        foreground=palette["accent_foreground"],
+        padding=(7, 2),
+        font=("TkDefaultFont", 8, "bold"),
+    )
+    style.configure(
+        "Note.TFrame",
+        background=palette["surface_alt"],
+        borderwidth=0,
+        relief="flat",
+    )
+    style.configure(
         "ProductPreview.TFrame",
         background=palette["surface"],
         borderwidth=0,
         relief="flat",
+    )
+    style.configure(
+        "ProductEyebrow.TLabel",
+        background=palette["surface"],
+        foreground=palette["accent"],
+        font=("TkDefaultFont", 8, "bold"),
     )
     style.configure(
         "ProductImage.TFrame",
