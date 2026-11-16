@@ -155,8 +155,8 @@ class ComponentPopulator:
         current = component_from_symbol(symbol) if symbol is not None else None
         reference = str(getattr(symbol, "reference", "") or "selected symbol")
         initial_search = (
-            current.value
-            if current and self.library_id in SUPPORTED_PLACEHOLDERS
+            str(getattr(symbol, "value", "") or "").strip()
+            if symbol is not None and self.library_id in SUPPORTED_PLACEHOLDERS
             else current.part_code if current else ""
         )
         self.lcsc_var = tk.StringVar(value=initial_search)
