@@ -57,7 +57,6 @@ ASSET_NAMES = (
     "populate-component-confirmation.png",
     "populate-component-applied.png",
     "add-component-proposed.png",
-    "add-component-confirmation.png",
     "add-component-placed-selected.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
@@ -1237,6 +1236,62 @@ def _capture_live_selection_workflow(
         raise RuntimeError("The selected-component properties window was not captured.")
 
 
+def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
+    """Verify the icon toolbar placement and its real hover tooltip."""
+    root = populator.root
+    entry = populator.lcsc_entry.grid_info()
+    filters = populator.advanced_filters_button.grid_info()
+    search = populator.lookup_button.grid_info()
+    section = populator.advanced_filters_section.grid_info()
+    if (
+        entry.get("row") != 0
+        or entry.get("column") != 1
+        or filters.get("row") != 0
+        or filters.get("column") != 2
+        or search.get("row") != 0
+        or search.get("column") != 3
+        or section.get("row") != 1
+        or section.get("columnspan") != 4
+    ):
+        raise RuntimeError(
+            "The advanced-filter icon, value field and Search button are not "
+            "arranged in the expected single toolbar row."
+        )
+
+    active_count = populator._active_advanced_filter_count()
+    expected_icon = "⚙ •" if active_count else "⚙"
+    if populator.advanced_filters_button.cget("text") != expected_icon:
+        raise RuntimeError("The advanced-filter icon does not indicate active filters.")
+
+    button = populator.advanced_filters_button
+    button.event_generate("<Enter>")
+    root.update()
+    time.sleep(0.5)
+    root.update()
+    tooltip = populator.advanced_filters_tooltip._window
+    if tooltip is None or not tooltip.winfo_exists():
+        raise RuntimeError("The advanced-filter hover tooltip did not appear.")
+    tooltip_text = " ".join(
+        str(child.cget("text"))
+        for child in tooltip.winfo_children()
+        if child.winfo_class() == "Label"
+    )
+    if "Advanced filters" not in tooltip_text or "Package / footprint" not in tooltip_text:
+        raise RuntimeError(f"The advanced-filter tooltip is incomplete: {tooltip_text!r}")
+    if "Tolerance" not in tooltip_text:
+        raise RuntimeError(f"The advanced-filter tooltip omits tolerance: {tooltip_text!r}")
+    for variable in (populator.footprint_filter_var, populator.tolerance_filter_var):
+        value = variable.get().strip()
+        if value and value not in tooltip_text:
+            raise RuntimeError(
+                f"The advanced-filter tooltip omits active constraint {value!r}."
+            )
+    button.event_generate("<Leave>")
+    root.update()
+    if populator.advanced_filters_tooltip._window is not None:
+        raise RuntimeError("The advanced-filter tooltip did not close when the pointer left.")
+
+
 def _drive_populator_form(
     populator: ComponentPopulator,
     output_dir: Path,
@@ -1244,10 +1299,11 @@ def _drive_populator_form(
     proposal_asset: str,
     light_asset: str,
     dark_asset: str,
-    confirmation_asset: str,
+    confirmation_asset: str | None,
     completed_asset: str,
-    confirmation_title: str,
-    required_confirmation_text: str,
+    confirmation_title: str | None,
+    required_confirmation_text: str | None,
+    require_confirmation: bool = True,
     expected_lcsc: str | None,
     expected_value: str,
     expected_footprint: str | None,
@@ -1403,6 +1459,8 @@ def _drive_populator_form(
                     "The component workspace did not create a scrollable content area."
                 )
 
+            _assert_advanced_filter_control(populator)
+
             _capture_window(root, output_dir / proposal_asset)
             _capture_window(root, output_dir / light_asset)
             apply_tk_theme(root, "dark")
@@ -1415,12 +1473,17 @@ def _drive_populator_form(
             original_showerror = populator.messagebox.showerror
 
             def confirm(title: str, message: str, parent=None) -> bool:
+                if confirmation_title is None or confirmation_asset is None:
+                    raise RuntimeError("A confirmation was not expected for this workflow.")
                 if title != confirmation_title:
                     raise RuntimeError(
                         f"Unexpected confirmation title: {title!r}; "
                         f"expected {confirmation_title!r}."
                     )
-                if required_confirmation_text.casefold() not in message.casefold():
+                if (
+                    required_confirmation_text is None
+                    or required_confirmation_text.casefold() not in message.casefold()
+                ):
                     raise RuntimeError(
                         "The confirmation text omitted its required safety/behavior "
                         f"explanation: {message!r}"
@@ -1528,7 +1591,22 @@ def _drive_populator_form(
             def unexpected_error(title: str, message: str, parent=None):
                 raise RuntimeError(f"{title}: {message}")
 
-            populator.messagebox.askyesno = confirm
+            def unexpected_confirmation(title: str, message: str, parent=None):
+                raise RuntimeError(
+                    "Add mode unexpectedly opened a confirmation dialog: "
+                    f"{title}: {message}"
+                )
+
+            if require_confirmation:
+                if (
+                    confirmation_asset is None
+                    or confirmation_title is None
+                    or required_confirmation_text is None
+                ):
+                    raise RuntimeError("The confirmation fixture is incomplete.")
+                populator.messagebox.askyesno = confirm
+            else:
+                populator.messagebox.askyesno = unexpected_confirmation
             populator.messagebox.showerror = unexpected_error
             try:
                 populator.apply()
@@ -1790,12 +1868,11 @@ def _capture_passive_component_workflows(
         proposal_asset="add-component-proposed.png",
         light_asset="add-component-light.png",
         dark_asset="add-component-dark.png",
-        confirmation_asset="add-component-confirmation.png",
+        confirmation_asset=None,
         completed_asset="add-component-placed-selected.png",
-        confirmation_title="Confirm new schematic component",
-        required_confirmation_text=(
-            "insert it at the center of the current schematic sheet"
-        ),
+        confirmation_title=None,
+        required_confirmation_text=None,
+        require_confirmation=False,
         expected_lcsc=None,
         expected_value="10k",
         expected_footprint=None,
