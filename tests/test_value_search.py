@@ -260,6 +260,37 @@ class PassiveValueSearchTests(unittest.TestCase):
             [],
         )
 
+    def test_supplier_array_package_cannot_pass_a_discrete_footprint_filter(self):
+        network = JlcPartDetails(
+            lcsc="C20008",
+            description=(
+                "10kΩ 4 62.5mW 8 ±200ppm/°C ±5% "
+                "0402x4 Resistor Networks, Arrays ROHS"
+            ),
+            manufacturer_part_number="4D02WGJ0103TCE",
+            package="0402x4",
+            is_basic=False,
+            is_buyable=True,
+            category="Resistors",
+            attributes={"Resistance": "10KΩ"},
+        )
+
+        self.assertEqual(
+            exact_passive_candidates(
+                "10k", [network], footprint="0402", tolerance="5%"
+            ),
+            [],
+        )
+        self.assertEqual(
+            exact_passive_candidates(
+                "10k",
+                [network],
+                footprint="Resistor_SMD:R_0402_1005Metric",
+                tolerance="5%",
+            ),
+            [],
+        )
+
     def test_candidates_accept_a_full_kicad_footprint_filter(self):
         part = self.resistor("C20005", is_basic=True)
 
