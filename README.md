@@ -86,7 +86,7 @@ When a catalogue row needs closer inspection, **Select in schematic** takes you 
 | Nothing selected | **Add** | Search the catalogue, review the suggested symbol and fields, then create and place a project-local copy of a KiCad stock symbol. |
 | Multiple items or a non-symbol object | — | The action stops and asks you to select one symbol or clear the selection. |
 
-Both contexts use the same review-first dialog, which shows inference confidence, catalogue source/freshness and warnings. Its heading and available controls adapt to the selection: update mode edits catalogue fields on the selected symbol; add mode also exposes the KiCad `Library:Symbol`, reference prefix and sheet-center placement instructions. Value and Footprint are editable, and Footprint is optional during symbol creation.
+Both contexts use the same review-first dialog, which shows inference confidence, catalogue source/freshness and warnings. Its heading and available controls adapt to the selection: update mode edits catalogue fields on the selected symbol; add mode exposes symbol overrides only when automatic mapping is uncertain. Routine resistor/capacitor value searches select the stock symbol and reference prefix automatically. Value and Footprint remain editable; Footprint is optional during symbol creation.
 
 The screenshots show the two contexts of that one action—not separate commands:
 
@@ -102,7 +102,7 @@ The screenshots show the two contexts of that one action—not separate commands
     </td>
     <td valign="top" width="50%">
       <strong>No symbol selected · add a project-local copy</strong>
-      <p>Search by LCSC code or free text, review the proposed KiCad symbol, Value and optional Footprint, then place the new symbol.</p>
+      <p>Search by a value such as <code>10k</code>, or use an LCSC code or free-text query. Pick a Basic-first passive candidate; the symbol, reference prefix and catalogue fields are filled in automatically. Then generate the project-local symbol; KiCad inserts it at the sheet center and selects it for moving.</p>
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
         <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Add context of the unified action, with no symbol selected and project-local symbol options visible." width="320">
@@ -111,9 +111,9 @@ The screenshots show the two contexts of that one action—not separate commands
   </tr>
 </table>
 
-In add mode, the tool suggests a generic stock symbol only when the catalogue description or attributes support a recognizable category. You can edit that suggestion or enter a KiCad identifier manually (for example, `Amplifier_Operational:LM358`) whenever the mapping is uncertain. The project-local library copies the chosen standalone symbol's original pins, units and graphics; it does not infer a manufacturer-specific pinout. Symbols that extend another library symbol must be replaced with a standalone choice.
+For exact resistor/capacitor values such as `10k`, `4k7` or `100nF`, Add mode shows at most five exact matches, ranking JLCPCB Basic listings first. Extended listings fill the shortlist only when fewer than five suitable Basic parts are available. Selecting a passive automatically chooses `Device:R` or `Device:C`, its reference prefix, a reviewed package-to-footprint mapping when available, and the catalogue fields. You can still edit Value and Footprint. For other part searches, the suggested generic stock symbol remains editable; enter a KiCad identifier manually (for example, `Amplifier_Operational:LM358`) whenever the mapping is uncertain. The project-local library copies the chosen standalone symbol's original pins, units and graphics; it does not infer a manufacturer-specific pinout.
 
-Add mode creates the generated project-local symbol at the center of the current sheet and selects it in Eeschema. The selected instance is brought into view so you can move it to its final position. A generated project-local symbol can be reused on subsequent runs.
+Add mode uses KiCad schematic IPC to insert the generated project-local symbol at the current sheet center, bring it into view and select it. Use KiCad's Move tool to position it where needed. No X/Y placement fields or coordinate entry are exposed.
 
 > **First use in a project:** when the generated-library table entry does not yet exist, the open Eeschema session may not recognize the new library immediately. The library and table entry are saved, but no instance is placed. Close and reopen the project, then repeat the same add-mode search; the existing generated symbol is reused.
 
@@ -122,8 +122,8 @@ For detailed field behavior and troubleshooting, see the **[User guide](docs/use
 
 - **Conservative symbol handling.** Update mode works on one editable selected symbol of any component family and never replaces its graphics, library identity or pin mapping. Add mode suggests common generic symbols (resistor, capacitor, inductor, diode, LED, fuse and crystal) and can clone a manually selected standalone KiCad symbol. A suggestion is not a verified manufacturer pinout.
 - **Reviewable footprints.** Reviewed mappings cover common SMD resistor/capacitor/inductor sizes, selected LED sizes and diode packages. Other packages remain blank until entered by the user. Footprints are optional for symbol generation, but required before normal PCB layout.
-- **Search behavior.** Add mode supports LCSC-code lookup, keyword search by MPN/device name, and exact nominal-value matching for supported resistor/capacitor values. Other keyword matches are candidates to review, not guaranteed electrical equivalents.
-- **Placement.** Add mode inserts the generated symbol at the current sheet center, snapped to KiCad's 50 mil grid, then focuses and selects it through schematic IPC. Move the selected symbol to its final position.
+- **Search behavior.** Add mode supports LCSC-code lookup, keyword search by MPN/device name, and a shortlist of up to five exact resistor/capacitor value matches with Basic listings first. Other keyword matches are candidates to review, not guaranteed electrical equivalents.
+- **Placement.** Add mode inserts the generated symbol at the schematic page center through IPC, focuses it in Eeschema and leaves it selected. Move it to its final position with KiCad's normal Move tool; no coordinates are requested.
 - **No pin-map or PCB asset generation.** The add-on does not infer IC pin assignments/electrical types, create copper footprints or generate 3D models. It copies the symbol pin definitions the user selected; verify symbol and footprint compatibility against the datasheet before board use or ordering.
 - **Supplier data.** Catalogue detail and search use JLCPCB website endpoints that are not a supported public components API and may change. Source/freshness labels distinguish direct JLCPCB results, community fallbacks and cached snapshots.
 - **Indicative availability.** Stock and unit prices are snapshots, not a quote, reservation or purchase guarantee. Related MPN-search results are comparison candidates, not guaranteed drop-in replacements.

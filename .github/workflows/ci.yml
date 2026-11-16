@@ -68,12 +68,12 @@ jobs:
           python3 -c 'import tkinter; from PIL import Image, ImageGrab, ImageTk; print("Tk/Pillow capture runtime=ready")'
           python3.12 -m venv --system-site-packages "${RUNNER_TEMP}/kicad-visual-venv"
           "${RUNNER_TEMP}/kicad-visual-venv/bin/python" -m pip install --disable-pip-version-check -r plugin/kicad-jlcpcb-interface/requirements.txt
-          "${RUNNER_TEMP}/kicad-visual-venv/bin/python" -c 'import kipy; import tkinter; from PIL import Image, ImageGrab, ImageTk; print("kicad-python/Tk/Pillow capture runtime=ready")'
+          "${RUNNER_TEMP}/kicad-visual-venv/bin/python" -c 'import kipy; import tkinter; from PIL import Image, ImageGrab, ImageTk; print("kicad-python/Tk/Pillow/AT-SPI runtime=ready")'
 
       - name: Test visual documentation asset provenance
         run: "${RUNNER_TEMP}/kicad-visual-venv/bin/python -m unittest discover -s tests -p test_visual_docs.py -v"
 
-      - name: Generate browser screenshots and native symbol SVGs
+      - name: Generate browser screenshots, native symbols and cursor-placement evidence
         shell: bash
         env:
           OUTPUT_DIR: ${{ runner.temp }}/kicad-jlcpcb-visual-docs
@@ -87,7 +87,7 @@ jobs:
             trap "kill $openbox_pid 2>/dev/null || true" EXIT
             wm_ready=0
             for attempt in $(seq 1 100); do
-              if xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -Fq "_NET_SUPPORTING_WM_CHECK(WINDOW)"; then
+              if xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q "_NET_SUPPORTING_WM_CHECK(WINDOW)"; then
                 wm_ready=1
                 break
               fi
@@ -102,7 +102,7 @@ jobs:
               exit 1
             fi
             xprop -root _NET_SUPPORTING_WM_CHECK
-            "$RUNNER_TEMP/kicad-visual-venv/bin/python" tests/capture_visual_docs.py --output-dir "$OUTPUT_DIR"
+            "${RUNNER_TEMP}/kicad-visual-venv/bin/python" tests/capture_visual_docs.py --output-dir "$OUTPUT_DIR"
           '
 
       - name: Upload generated visual documentation bundle
@@ -111,7 +111,7 @@ jobs:
         with:
           name: kicad-jlcpcb-visual-docs
           path: ${{ runner.temp }}/kicad-jlcpcb-visual-docs
-          if-no-files-found: ignore
+          if-no-files-found: warn
           compression-level: 1
 
   publish-visual-docs:

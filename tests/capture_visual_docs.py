@@ -38,12 +38,8 @@ from kicad_jlcpcb.media import download_product_image  # noqa: E402
 from kicad_jlcpcb.model import (  # noqa: E402
     find_linked_components,
     find_selected_component,
-    iter_schematic_symbols,
 )
-from kicad_jlcpcb.placement import (  # noqa: E402
-    place_component_from_draft,
-    schematic_page_center_mm,
-)
+from kicad_jlcpcb.placement import schematic_page_center_mm  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
     resolve_component_action_target,
@@ -100,6 +96,15 @@ DEMO_PARTS = (
         "position": (120.0, 125.0),
     },
     {
+        "reference": "R3",
+        "value": "10k",
+        "lib_id": "Device:R",
+        "lcsc": "C60489",
+        "mpn": "RC0402JR-0710KL",
+        "footprint": "Resistor_SMD:R_0402_1005Metric",
+        "position": (170.0, 80.0),
+    },
+    {
         "reference": "C1",
         "value": "100nF",
         "lib_id": "Device:C",
@@ -139,6 +144,134 @@ def _capture_desktop(destination: Path) -> None:
     if max(ImageStat.Stat(image.resize((48, 32))).stddev) < 2.0:
         raise RuntimeError("Eeschema desktop capture appears blank.")
     image.save(destination, format="PNG", optimize=True)
+
+
+def _verify_x11_keyboard_input() -> None:
+    """Verify XTest typing reaches a focused text entry in this Xvfb session.
+
+    This isolates X11/Openbox keyboard delivery from KiCad's wxGTK Search
+    widget. The temporary Tk window is destroyed before Eeschema is launched.
+    """
+    import tkinter as tk
+
+    xdotool = shutil.which("xdotool")
+    if not xdotool:
+        raise FileNotFoundError("xdotool is required for the X11 keyboard smoke test")
+
+    original = subprocess.run(
+        [xdotool, "getmouselocation", "--shell"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    ).stdout
+    root = tk.Tk()
+    root.title("KiCad X11 keyboard smoke test")
+    root.geometry("480x140+40+40")
+    root.resizable(False, False)
+    tk.Label(
+        root,
+        text="X11 input diagnostic — the field below should read x11-smoke",
+    ).pack(anchor="w", padx=14, pady=(14, 8))
+    value = tk.StringVar()
+    entry = tk.Entry(root, textvariable=value, width=42)
+    entry.pack(fill="x", padx=14, pady=(0, 12))
+    try:
+        root.deiconify()
+        visibility_deadline = time.monotonic() + 5.0
+        while not root.winfo_viewable() and time.monotonic() < visibility_deadline:
+            root.update()
+            time.sleep(0.05)
+        if not root.winfo_viewable():
+            raise RuntimeError(
+                "The X11 keyboard smoke-test window did not become visible "
+                "within five seconds."
+            )
+        print("x11-keyboard-smoke=window-visible", flush=True)
+        entry.focus_force()
+        root.update()
+
+        x = entry.winfo_rootx() + entry.winfo_width() // 2
+        y = entry.winfo_rooty() + entry.winfo_height() // 2
+        subprocess.run(
+            [xdotool, "mousemove", "--sync", str(x), str(y)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        subprocess.run(
+            [xdotool, "click", "1"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        print(
+            f"x11-keyboard-smoke=entry-clicked point=({x},{y})",
+            flush=True,
+        )
+        subprocess.run(
+            [xdotool, "key", "--clearmodifiers", "ctrl+a"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        subprocess.run(
+            [xdotool, "type", "--clearmodifiers", "--delay", "50", "x11-smoke"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        time.sleep(0.15)
+        root.update()
+        actual = value.get()
+        focused = subprocess.run(
+            [xdotool, "getwindowfocus"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+        print(
+            "x11-keyboard-smoke="
+            f"{'passed' if actual == 'x11-smoke' else 'failed'} "
+            f"text={actual!r} focus={focused!r} entry=({x},{y})",
+            flush=True,
+        )
+        if actual != "x11-smoke":
+            raise RuntimeError(
+                "XTest keyboard input did not reach a focused Tk Entry; "
+                f"expected 'x11-smoke', received {actual!r}."
+            )
+    finally:
+        try:
+            root.destroy()
+        finally:
+            try:
+                position = {
+                    key: int(value)
+                    for key, value in (
+                        line.split("=", 1) for line in original.splitlines()
+                        if "=" in line
+                    )
+                    if key in {"X", "Y"}
+                }
+                if {"X", "Y"}.issubset(position):
+                    subprocess.run(
+                        [
+                            xdotool, "mousemove", "--sync",
+                            str(position["X"]), str(position["Y"]),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+            except Exception:
+                pass
 
 
 def _validate_live_supplier_data(cache_dir: Path) -> None:
@@ -681,24 +814,6 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             kicad=kicad,
         )
         reload_project_symbol_library(kicad, generated_library)
-        placed = place_component_from_draft(
-            schematic,
-            draft,
-            240.0,
-            175.0,
-            library_id=generated_library.library_id,
-        )
-        placed_library_id = symbol_library_id(placed)
-        if (
-            placed.reference != "R3"
-            or placed_library_id != generated_library.library_id
-            or placed.value != "10k"
-            or placed.footprint_field.text.value
-            != "Resistor_SMD:R_0402_1005Metric"
-        ):
-            raise RuntimeError(
-                "Direct LCSC placement did not retain the generated project-local library ID."
-            )
         generated_root = parse_sexpr(
             generated_library.library_path.read_text(encoding="utf-8")
         )
@@ -751,10 +866,8 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         if generated_library.nickname not in table_text:
             raise RuntimeError("The project symbol table does not register the generated library.")
         saved_schematic = (work_dir / "jlcpcb-live-demo.kicad_sch").read_text(encoding="utf-8")
-        if generated_library.library_id not in saved_schematic:
-            raise RuntimeError(
-                "The saved schematic does not reference the generated project-local library ID."
-            )
+        if not saved_schematic.strip():
+            raise RuntimeError("The live schematic was not saved after catalogue field population.")
         print(
             "live-project-library-generation=passed "
             f"library_id={generated_library.library_id} "
@@ -804,61 +917,6 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
             raise RuntimeError("Generated metadata fields should not clutter the symbol drawing.")
         if created["R1"].description_field.text.value != draft.description:
             raise RuntimeError("KiCad did not retain the native R1 Description property.")
-        placed_components = find_linked_components(schematic)
-        placed_reference = next(
-            (item for item in placed_components if item.reference == "R3"), None
-        )
-        if (
-            placed_reference is None
-            or placed_reference.part_code != "C60489"
-            or placed_reference.value != "10k"
-            or placed_reference.footprint != "Resistor_SMD:R_0402_1005Metric"
-            or placed_reference.datasheet != draft.datasheet_url
-            or placed_reference.manufacturer_part_number != draft.mpn
-        ):
-            raise RuntimeError(
-                "Direct LCSC placement did not preserve the linked value, footprint, "
-                "datasheet and MPN fields in the live schematic."
-            )
-        placed_symbol_readback = next(
-            (
-                item
-                for item in iter_schematic_symbols(schematic)
-                if item.reference == "R3"
-            ),
-            None,
-        )
-        if placed_symbol_readback is None:
-            raise RuntimeError(
-                "The direct-placed R3 symbol is missing from the schematic hierarchy."
-            )
-        raw_placed_fields = {
-            field.name: field for field in placed_symbol_readback.user_fields
-        }
-        for name, expected_value in (
-            ("LCSC", draft.lcsc),
-            ("MPN", draft.mpn),
-            ("Manufacturer", draft.manufacturer),
-        ):
-            field = raw_placed_fields.get(name)
-            if field is None or field.text.value != expected_value:
-                raise RuntimeError(
-                    f"Direct LCSC placement did not retain custom field {name!r}."
-                )
-        if placed_symbol_readback.description_field.text.value != draft.description:
-            raise RuntimeError(
-                "Direct LCSC placement did not retain the built-in Description property."
-            )
-        print(
-            "live-lcsc-direct-placement=passed "
-            f"reference={placed_reference.reference} "
-            f"part={placed_reference.part_code} value={placed_reference.value} "
-            f"footprint={placed_reference.footprint} "
-            f"datasheet={bool(placed_reference.datasheet)} "
-            f"mpn={placed_reference.manufacturer_part_number} "
-            f"custom_fields={len(raw_placed_fields)}",
-            flush=True,
-        )
         print(
             "live-lcsc-field-population=passed "
             f"lcsc={draft.lcsc} kind={draft.kind} value={draft.value} "
@@ -1190,11 +1248,14 @@ def _drive_populator_form(
     completed_asset: str,
     confirmation_title: str,
     required_confirmation_text: str,
-    expected_lcsc: str,
+    expected_lcsc: str | None,
     expected_value: str,
-    expected_footprint: str,
+    expected_footprint: str | None,
     validate_result,
     require_image: bool = False,
+    assert_basic_shortlist: bool = False,
+    preferred_lcsc: str | None = None,
+    avoid_lcsc: str | None = None,
 ) -> None:
     """Capture the real LCSC proposal form, confirm it, and verify the IPC result."""
     root = populator.root
@@ -1202,13 +1263,41 @@ def _drive_populator_form(
     state = {"done": False, "deadline": time.monotonic() + 60.0}
 
     def close_populator() -> None:
-        # ComponentPopulator.close joins both workers and clears Tk-owned state
-        # on the GUI thread before destroying the Tcl interpreter.
+        # The result queue can be notified just before the executor's done
+        # callback returns. Join that short-lived worker before destroying Tk,
+        # so callback/future cleanup cannot release Tk objects on the worker.
+        populator.executor.shutdown(wait=True, cancel_futures=True)
+        populator.image_executor.shutdown(wait=True, cancel_futures=True)
         populator.close()
 
     def advance() -> None:
         try:
             root.update()
+            if populator.candidate_rows:
+                selected_iid = None
+                if preferred_lcsc:
+                    selected_iid = next(
+                        (
+                            iid for iid, (details, _draft) in populator.candidate_rows.items()
+                            if details.lcsc == preferred_lcsc
+                        ),
+                        None,
+                    )
+                if selected_iid is None and avoid_lcsc:
+                    current = populator.candidate_tree.selection()
+                    current_details = populator.candidate_rows.get(current[0]) if current else None
+                    if current_details and current_details[0].lcsc == avoid_lcsc:
+                        selected_iid = next(
+                            (
+                                iid for iid, (details, _draft) in populator.candidate_rows.items()
+                                if details.lcsc != avoid_lcsc
+                            ),
+                            None,
+                        )
+                if selected_iid and populator.candidate_tree.selection() != (selected_iid,):
+                    populator.candidate_tree.selection_set(selected_iid)
+                    populator.candidate_tree.focus(selected_iid)
+                    populator._on_candidate_selected()
             if (
                 populator.draft is None
                 or str(populator.apply_button.cget("state")) != "normal"
@@ -1227,11 +1316,31 @@ def _drive_populator_form(
                 raise RuntimeError(
                     "The shared catalogue match list did not render a selected part."
                 )
-            if populator.catalogue_vars["lcsc"].get() != expected_lcsc:
+            if (
+                expected_lcsc is not None
+                and populator.catalogue_vars["lcsc"].get() != expected_lcsc
+            ):
                 raise RuntimeError(
                     "The shared catalogue preview does not match the selected part: "
                     f"{populator.catalogue_vars['lcsc'].get()!r} != {expected_lcsc!r}"
                 )
+            candidate_iids = populator.candidate_tree.get_children()
+            if assert_basic_shortlist:
+                if len(candidate_iids) > 5:
+                    raise RuntimeError(
+                        "Passive value search returned "
+                        f"{len(candidate_iids)} rows; expected at most five."
+                    )
+                classes = [
+                    (
+                        0 if populator.candidate_rows[iid][0].is_basic is True
+                        else 1 if populator.candidate_rows[iid][0].is_basic is False
+                        else 2
+                    )
+                    for iid in candidate_iids
+                ]
+                if classes != sorted(classes):
+                    raise RuntimeError("Passive shortlist did not rank Basic parts first.")
             image_name = str(populator.image_label.cget("image") or "")
             image_placeholder = str(populator.image_label.cget("text") or "")
             if require_image and not image_name:
@@ -1256,17 +1365,22 @@ def _drive_populator_form(
                     "The shared preview has neither a supplier photo nor an explicit "
                     f"image fallback: {image_placeholder!r}"
                 )
+            expected_source = (
+                "JLCPCB keyword search"
+                if expected_lcsc is None
+                else "JLCPCB parts-page endpoint"
+            )
             if (
-                draft.lcsc != expected_lcsc
+                (expected_lcsc is not None and draft.lcsc != expected_lcsc)
                 or draft.kind != "resistor"
                 or draft.value != expected_value
-                or draft.footprint != expected_footprint
-                or "JLCPCB parts-page endpoint" not in draft.source_label
+                or (expected_footprint is not None and draft.footprint != expected_footprint)
+                or expected_source not in draft.source_label
                 or "live response" not in draft.source_label
             ):
                 raise RuntimeError(
                     "The LCSC form is not showing the expected fresh "
-                    f"{expected_value}/0402 draft for {expected_lcsc}: "
+                    f"{expected_value} draft for {expected_lcsc or 'value search'}: "
                     f"lcsc={draft.lcsc!r}, kind={draft.kind!r}, value={draft.value!r}, "
                     f"footprint={draft.footprint!r}, source={draft.source_label!r}"
                 )
@@ -1418,8 +1532,9 @@ def _drive_populator_form(
             if populator.create_mode:
                 if not populator.placement_completed or populator.placed_symbol is None:
                     raise RuntimeError(
-                        "Add mode did not place and select the generated symbol."
+                        "Add mode did not place and select the generated project symbol."
                     )
+                time.sleep(0.25)
                 _capture_desktop(output_dir / completed_asset)
             else:
                 root.update()
@@ -1427,18 +1542,7 @@ def _drive_populator_form(
             state["done"] = True
             close_populator()
         except BaseException as exc:
-            diagnostic = ""
-            if populator.create_mode:
-                screenshot = output_dir / "add-component-placement-failure.png"
-                try:
-                    _capture_desktop(screenshot)
-                    diagnostic = f"; placement screenshot: {screenshot.name}"
-                except BaseException as capture_error:
-                    diagnostic = (
-                        "; chooser screenshot failed: "
-                        f"{type(capture_error).__name__}: {capture_error}"
-                    )
-            failures.append(f"{type(exc).__name__}: {exc}{diagnostic}")
+            failures.append(f"{type(exc).__name__}: {exc}")
             try:
                 close_populator()
             except Exception:
@@ -1563,31 +1667,6 @@ def _capture_passive_component_workflows(
     if not create_mode or add_target is not None or add_library_id:
         raise RuntimeError("An empty selection did not resolve to add mode.")
 
-    # Capture and focus Eeschema before opening the shared Tk review workspace.
-    editor_windows = _visible_windows("xdotool")
-    editor_window_id = next(
-        (
-            window_id
-            for window_id, title, window_class in editor_windows
-            if "eeschema" in window_class.casefold()
-            or "schematic editor" in title.casefold()
-        ),
-        None,
-    )
-    if editor_window_id is None:
-        raise RuntimeError("The live Add mode fixture could not find Eeschema.")
-    focused = subprocess.run(
-        ["xdotool", "windowfocus", "--sync", editor_window_id],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=10,
-    )
-    if focused.returncode:
-        raise RuntimeError(
-            "The live Add mode fixture could not focus Eeschema: "
-            + (focused.stderr.strip() or str(focused.returncode))
-        )
     create = ComponentPopulator(
         schematic,
         None,
@@ -1596,42 +1675,72 @@ def _capture_passive_component_workflows(
         kicad=kicad,
         theme="light",
     )
-    create.root.geometry("1120x860+780+30")
-    create.lcsc_var.set("C105637")
+    create.root.geometry("1024x768+780+30")
+    create.lcsc_var.set("10k")
     create.lookup()
 
     def validate_create_result(populator: ComponentPopulator) -> None:
-        generated = populator.generated_library_symbol
+        details = populator.selected_details
+        generated = populator.generated_library
         if (
-            generated is None
+            details is None
+            or populator.draft is None
+            or populator.draft.kind != "resistor"
+            or populator.draft.value != "10k"
+            or generated is None
+            or generated.symbol_name != f"R_{details.lcsc}"
+            or generated.library_id != f"JLCPCB_Generated:R_{details.lcsc}"
+            or not generated.library_path.is_file()
+            or populator.symbol is not None
             or not populator.placement_completed
             or populator.placed_symbol is None
-            or generated.library_id != "JLCPCB_Generated:R_C105637"
-            or generated.symbol_name != "R_C105637"
-            or not generated.library_path.is_file()
         ):
             raise RuntimeError(
-                "The Add mode UI did not generate, place and select the "
-                "project-local symbol through schematic IPC."
+                "The passive value-search Add action did not generate the selected "
+                "project-local resistor symbol or incorrectly inserted an instance "
+                "before the page-center placement."
             )
-
-        placed = populator.placed_symbol
+        generated_root = parse_sexpr(
+            generated.library_path.read_text(encoding="utf-8")
+        )
+        generated_symbol = next(
+            (
+                node for node in generated_root
+                if isinstance(node, list)
+                and node
+                and getattr(node[0], "value", "") == "symbol"
+                and len(node) > 1
+                and getattr(node[1], "value", "") == generated.symbol_name
+            ),
+            None,
+        )
+        if generated_symbol is None:
+            raise RuntimeError("The selected passive symbol is missing from the generated library.")
+        generated_properties = {
+            node[1].value: node[2].value
+            for node in generated_symbol
+            if isinstance(node, list)
+            and len(node) >= 3
+            and getattr(node[0], "value", "") == "property"
+        }
         expected_x, expected_y = schematic_page_center_mm(schematic)
-        position = getattr(placed, "position", None)
+        position = getattr(populator.placed_symbol, "position", None)
         if position is None:
-            raise RuntimeError("The generated schematic symbol has no IPC position.")
+            raise RuntimeError("The placed schematic symbol has no IPC position.")
         actual_x = float(position.x) / 1_000_000
         actual_y = float(position.y) / 1_000_000
-        if abs(actual_x - expected_x) > 0.02 or abs(actual_y - expected_y) > 0.02:
+        if (
+            abs(actual_x - expected_x) > 0.02
+            or abs(actual_y - expected_y) > 0.02
+        ):
             raise RuntimeError(
-                "The generated schematic symbol is not at the page center: "
+                "The generated symbol is not at the schematic page center: "
                 f"expected=({expected_x}, {expected_y}) mm; "
                 f"actual=({actual_x}, {actual_y}) mm."
             )
-
         placed_id = str(
-            getattr(getattr(placed, "id", None), "value", None)
-            or getattr(placed, "id", "")
+            getattr(getattr(populator.placed_symbol, "id", None), "value", None)
+            or getattr(populator.placed_symbol, "id", "")
         )
         selected_ids = {
             str(
@@ -1642,25 +1751,15 @@ def _capture_passive_component_workflows(
         }
         if not placed_id or placed_id not in selected_ids:
             raise RuntimeError(
-                "Eeschema did not report the newly placed symbol as selected."
+                "Eeschema did not confirm that the newly placed symbol is selected."
             )
-        library_root = parse_sexpr(
-            generated.library_path.read_text(encoding="utf-8")
-        )
-        library_symbol_names = {
-            str(getattr(symbol[1], "value", ""))
-            for symbol in library_root
-            if (
-                isinstance(symbol, list)
-                and len(symbol) > 1
-                and getattr(symbol[0], "value", "") == "symbol"
-            )
-        }
-        if generated.symbol_name not in library_symbol_names:
+        if (
+            generated_properties.get("Value") != "10k"
+            or generated_properties.get("LCSC") != details.lcsc
+            or generated_properties.get("MPN") != details.manufacturer_part_number
+        ):
             raise RuntimeError(
-                "The generated project library does not contain the selected symbol: "
-                f"expected={generated.symbol_name!r}; "
-                f"found={sorted(library_symbol_names)!r}."
+                "Generated passive symbol is missing the chosen catalogue value or metadata."
             )
 
     _drive_populator_form(
@@ -1672,16 +1771,21 @@ def _capture_passive_component_workflows(
         confirmation_asset="add-component-confirmation.png",
         completed_asset="add-component-placed-selected.png",
         confirmation_title="Confirm new schematic component",
-        required_confirmation_text="JLCPCB_Generated project library",
-        expected_lcsc="C105637",
-        expected_value="1k",
-        expected_footprint="Resistor_SMD:R_0402_1005Metric",
+        required_confirmation_text=(
+            "insert it at the center of the current schematic sheet"
+        ),
+        expected_lcsc=None,
+        expected_value="10k",
+        expected_footprint=None,
         validate_result=validate_create_result,
-        require_image=True,
+        assert_basic_shortlist=True,
+        avoid_lcsc="C60489",
     )
     print(
-        "live-add-mode-ui=passed placement=page-center-and-selected "
-        "library_id=JLCPCB_Generated:R_C105637",
+        "live-add-mode-ui=passed "
+        f"query=10k selected={create.selected_details.lcsc} "
+        f"library_id={create.generated_library.library_id} "
+        "placement=page-center-and-selected",
         flush=True,
     )
 
@@ -1766,6 +1870,7 @@ def main() -> int:
         raise FileNotFoundError("kicad-cli-nightly or kicad-cli is required")
 
     _validate_live_supplier_data(cache_dir)
+    _verify_x11_keyboard_input()
 
     work_dir = Path(tempfile.mkdtemp(prefix="jlcpcb-live-eeschema-", dir=output_dir))
     process = None

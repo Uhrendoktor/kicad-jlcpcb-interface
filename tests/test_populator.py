@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,11 +10,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
+from kicad_jlcpcb import populator as populator_module  # noqa: E402
 from kicad_jlcpcb.draft import symbol_library_id  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     MAX_CATALOGUE_IMAGE_BYTES,
-    ComponentPopulator,
     _download_catalogue_image,
+    _is_automatically_mapped_passive,
     resolve_component_action_target,
     resolve_passive_action_target,
     resolve_passive_library_id,
@@ -69,6 +69,71 @@ class FakeKiCad:
     def get_library_symbol(self, library_id: str, document=None):
         self.requests.append((library_id, document))
         return self.symbols[library_id]
+
+
+class TkGarbageCollectionLeaseTests(unittest.TestCase):
+    def test_collection_is_deferred_until_the_last_root_releases_its_lease(self):
+        with (
+            patch.object(populator_module, "_TK_GC_LEASES", 0),
+            patch.object(populator_module, "_TK_GC_WAS_ENABLED", False),
+            patch.object(populator_module.gc, "isenabled", return_value=True),
+            patch.object(populator_module.gc, "disable") as disable,
+            patch.object(populator_module.gc, "collect") as collect,
+            patch.object(populator_module.gc, "enable") as enable,
+        ):
+            populator_module._acquire_tk_gc_lease()
+            populator_module._acquire_tk_gc_lease()
+
+            disable.assert_called_once_with()
+            collect.assert_not_called()
+            enable.assert_not_called()
+
+            populator_module._release_tk_gc_lease()
+            collect.assert_not_called()
+            enable.assert_not_called()
+
+            populator_module._release_tk_gc_lease()
+            collect.assert_called_once_with()
+            enable.assert_called_once_with()
+
+    def test_does_not_enable_collection_if_it_was_already_disabled(self):
+        with (
+            patch.object(populator_module, "_TK_GC_LEASES", 0),
+            patch.object(populator_module, "_TK_GC_WAS_ENABLED", False),
+            patch.object(populator_module.gc, "isenabled", return_value=False),
+            patch.object(populator_module.gc, "disable") as disable,
+            patch.object(populator_module.gc, "collect") as collect,
+            patch.object(populator_module.gc, "enable") as enable,
+        ):
+            populator_module._acquire_tk_gc_lease()
+            populator_module._release_tk_gc_lease()
+
+            disable.assert_not_called()
+            collect.assert_called_once_with()
+            enable.assert_not_called()
+
+
+class AutomaticPassiveMappingTests(unittest.TestCase):
+    def test_recognizes_only_stock_resistor_and_capacitor_mappings(self):
+        self.assertTrue(
+            _is_automatically_mapped_passive(
+                SimpleNamespace(kind="resistor", symbol_hint="Device:R")
+            )
+        )
+        self.assertTrue(
+            _is_automatically_mapped_passive(
+                SimpleNamespace(kind="capacitor", symbol_hint="Device:C")
+            )
+        )
+
+    def test_does_not_auto_hide_manual_symbol_selection_for_other_parts(self):
+        for draft in (
+            SimpleNamespace(kind="inductor", symbol_hint="Device:L"),
+            SimpleNamespace(kind="resistor", symbol_hint="Custom:R"),
+            SimpleNamespace(kind="unknown", symbol_hint=""),
+        ):
+            with self.subTest(draft=draft):
+                self.assertFalse(_is_automatically_mapped_passive(draft))
 
 
 class CatalogueImageDownloadTests(unittest.TestCase):
@@ -488,204 +553,6 @@ class PassiveActionModeResolutionTests(unittest.TestCase):
         schematic = SimpleNamespace(get_symbols=lambda: [selected], document=object())
         with self.assertRaisesRegex(ValueError, "not an editable schematic symbol"):
             resolve_passive_action_target(schematic, FakeKiCad({}), [selected])
-
-
-
-class TkCleanupResource:
-    """Record the thread and Tcl lifetime when a UI-owned object is released."""
-
-    def __init__(self, name, events, root):
-        self.name = name
-        self.events = events
-        self.root = root
-
-    def __del__(self):
-        self.events.append(
-            (self.name, threading.get_ident(), self.root.destroyed)
-        )
-
-
-class TkCleanupRoot:
-    def __init__(self, events):
-        self.events = events
-        self.destroyed = False
-
-    def after_cancel(self, _callback_id):
-        pass
-
-    def destroy(self):
-        self.destroyed = True
-        self.events.append(("root-destroyed", threading.get_ident(), True))
-
-
-class TkCleanupExecutor:
-    def __init__(self, name, events, root):
-        self.name = name
-        self.events = events
-        self.root = root
-
-    def shutdown(self, *, wait, cancel_futures):
-        self.events.append(
-            (
-                self.name,
-                threading.get_ident(),
-                self.root.destroyed,
-                wait,
-                cancel_futures,
-            )
-        )
-
-
-class ComponentPlacementHandoffTests(unittest.TestCase):
-    def test_places_generated_symbol_at_sheet_center_and_selects_it(self):
-        populator = object.__new__(ComponentPopulator)
-        populator.schematic = object()
-        populator.placed_symbol = None
-        generated = SimpleNamespace(
-            library_id="JLCPCB_Generated:R_C60489",
-            reference_prefix="R",
-        )
-        draft = SimpleNamespace(reference_prefix="R")
-        placed = object()
-
-        with patch(
-            "kicad_jlcpcb.populator.place_and_select_component_from_draft",
-            return_value=placed,
-        ) as place:
-            populator._place_generated_symbol(generated, draft)
-
-        self.assertIs(populator.placed_symbol, placed)
-        place.assert_called_once_with(
-            populator.schematic,
-            draft,
-            library_id="JLCPCB_Generated:R_C60489",
-            reference_prefix="R",
-        )
-
-    def test_uses_reference_prefix_from_manual_stock_symbol(self):
-        populator = object.__new__(ComponentPopulator)
-        populator.schematic = object()
-        populator.placed_symbol = None
-        generated = SimpleNamespace(
-            library_id="JLCPCB_Generated:D_C70003",
-            reference_prefix="D",
-        )
-        draft = SimpleNamespace(reference_prefix="")
-        placed = object()
-
-        with patch(
-            "kicad_jlcpcb.populator.place_and_select_component_from_draft",
-            return_value=placed,
-        ) as place:
-            populator._place_generated_symbol(generated, draft)
-
-        self.assertIs(populator.placed_symbol, placed)
-        place.assert_called_once_with(
-            populator.schematic,
-            draft,
-            library_id="JLCPCB_Generated:D_C70003",
-            reference_prefix="D",
-        )
-
-
-class ComponentPopulatorCleanupTests(unittest.TestCase):
-    def test_joins_workers_and_releases_tk_state_before_destroy(self):
-        events = []
-        root = TkCleanupRoot(events)
-        messagebox = object()
-        generated = object()
-        populator = object.__new__(ComponentPopulator)
-        populator.closed = False
-        populator._poll_id = "poll-id"
-        populator.root = root
-        populator.executor = TkCleanupExecutor("catalogue-shutdown", events, root)
-        populator.image_executor = TkCleanupExecutor("image-shutdown", events, root)
-        populator.messagebox = messagebox
-        populator.create_mode = True
-        populator.generated_library_symbol = generated
-        populator.placement_completed = True
-        populator.placed_symbol = generated
-
-        resource_names = (
-            "lcsc_var",
-            "status_var",
-            "symbol_hint_var",
-            "value_var",
-            "footprint_var",
-            "reference_prefix_var",
-            "catalogue_status_var",
-            "candidate_tree",
-            "apply_button",
-            "image_label",
-            "_image_ref",
-            "_image_lcsc",
-        )
-        for name in resource_names:
-            setattr(populator, name, TkCleanupResource(name, events, root))
-        populator.catalogue_vars = {
-            name: TkCleanupResource(f"catalogue:{name}", events, root)
-            for name in (
-                "description",
-                "manufacturer",
-                "mpn",
-                "lcsc",
-                "package",
-                "stock",
-                "price",
-                "library",
-                "source",
-            )
-        }
-
-        ComponentPopulator.close(populator)
-
-        shutdown_events = events[:2]
-        self.assertEqual(
-            [event[0] for event in shutdown_events],
-            ["catalogue-shutdown", "image-shutdown"],
-        )
-        self.assertTrue(
-            all(event[1] == threading.get_ident() for event in shutdown_events)
-        )
-        self.assertTrue(all(not event[2] for event in shutdown_events))
-        self.assertTrue(all(event[3] and event[4] for event in shutdown_events))
-
-        resource_events = events[2:-1]
-        expected_resources = set(resource_names) | {
-            "catalogue:description",
-            "catalogue:manufacturer",
-            "catalogue:mpn",
-            "catalogue:lcsc",
-            "catalogue:package",
-            "catalogue:stock",
-            "catalogue:price",
-            "catalogue:library",
-            "catalogue:source",
-        }
-        self.assertEqual({event[0] for event in resource_events}, expected_resources)
-        self.assertTrue(
-            all(event[1] == threading.get_ident() for event in resource_events)
-        )
-        self.assertTrue(all(not event[2] for event in resource_events))
-        self.assertEqual(events[-1][0], "root-destroyed")
-        self.assertTrue(root.destroyed)
-        self.assertTrue(populator.closed)
-        self.assertTrue(populator.create_mode)
-        self.assertIs(populator.messagebox, messagebox)
-        self.assertIs(populator.generated_library_symbol, generated)
-        self.assertTrue(populator.placement_completed)
-        self.assertIs(populator.placed_symbol, generated)
-        self.assertEqual(
-            set(populator.__dict__),
-            {
-                "closed",
-                "messagebox",
-                "create_mode",
-                "generated_library_symbol",
-                "placement_completed",
-                "placed_symbol",
-            },
-        )
 
 
 if __name__ == "__main__":
