@@ -42,16 +42,20 @@ def build_product_preview(
         "source": "source",
     }
     keys.update(variable_keys or {})
-    surface = ttk.Frame(parent, style="ProductPreview.TFrame", padding=(0, 4, 0, 14))
+    surface = ttk.Frame(
+        parent, style="ProductPreview.TFrame", padding=(12, 10)
+    )
     surface.columnconfigure(1, weight=1)
 
     image_frame = ttk.Frame(
         surface,
         style="ProductImage.TFrame",
-        width=164,
-        height=142,
+        width=132,
+        height=108,
     )
-    image_frame.grid(row=0, column=0, rowspan=5, sticky="nw", padx=(0, 18))
+    image_frame.grid(
+        row=0, column=0, rowspan=6, sticky="nw", padx=(0, 16)
+    )
     image_frame.grid_propagate(False)
     image_label = ttk.Label(
         image_frame,
@@ -60,7 +64,7 @@ def build_product_preview(
         justify="center",
         padding=8,
         style="ProductImage.TLabel",
-        wraplength=142,
+        wraplength=112,
     )
     image_label.pack(fill="both", expand=True)
 
@@ -68,6 +72,11 @@ def build_product_preview(
     details.grid(row=0, column=1, sticky="nsew")
     details.columnconfigure(0, weight=1)
 
+    ttk.Label(
+        details,
+        text="SELECTED PART",
+        style="ProductEyebrow.TLabel",
+    ).grid(row=0, column=0, sticky="w", pady=(0, 3))
     description_label = ttk.Label(
         details,
         textvariable=variables[keys["description"]],
@@ -75,10 +84,10 @@ def build_product_preview(
         wraplength=620,
         justify="left",
     )
-    description_label.grid(row=0, column=0, sticky="ew")
+    description_label.grid(row=1, column=0, sticky="ew")
 
     identity = ttk.Frame(details, style="ProductPreview.TFrame")
-    identity.grid(row=1, column=0, sticky="ew", pady=(4, 8))
+    identity.grid(row=2, column=0, sticky="ew", pady=(3, 6))
     identity.columnconfigure(1, weight=1)
     ttk.Label(
         identity,
@@ -98,7 +107,7 @@ def build_product_preview(
     mpn_label.grid(row=1, column=1, sticky="ew", pady=(2, 0))
 
     metrics = ttk.Frame(details, style="ProductPreview.TFrame")
-    metrics.grid(row=2, column=0, sticky="ew")
+    metrics.grid(row=3, column=0, sticky="ew")
     for column in range(5):
         metrics.columnconfigure(column, weight=1, uniform="product-metric")
     metric_specs = (
@@ -120,7 +129,7 @@ def build_product_preview(
         ).pack(anchor="w", pady=(3, 0))
 
     links = ttk.Frame(details, style="ProductPreview.TFrame")
-    links.grid(row=3, column=0, sticky="ew", pady=(8, 2))
+    links.grid(row=4, column=0, sticky="ew", pady=(6, 1))
     product_button = ttk.Button(
         links,
         text="JLCPCB product ↗",
@@ -145,7 +154,7 @@ def build_product_preview(
         wraplength=620,
         justify="left",
     )
-    source_label.grid(row=4, column=0, sticky="w", pady=(5, 0))
+    source_label.grid(row=5, column=0, sticky="w", pady=(4, 0))
     status_label = ttk.Label(
         details,
         textvariable=status_var,
@@ -153,7 +162,7 @@ def build_product_preview(
         wraplength=620,
         justify="left",
     )
-    status_label.grid(row=5, column=0, sticky="w", pady=(2, 0))
+    status_label.grid(row=6, column=0, sticky="w", pady=(1, 0))
 
     def fit_text(event) -> None:
         wrap = max(280, int(event.width) - 16)
