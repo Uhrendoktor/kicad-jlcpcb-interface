@@ -12,10 +12,9 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb import populator as populator_module  # noqa: E402
 from kicad_jlcpcb.draft import build_component_draft, symbol_library_id  # noqa: E402
-from kicad_jlcpcb.provider import JlcPartDetails  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
-    ComponentPopulator,
     MAX_CATALOGUE_IMAGE_BYTES,
+    ComponentPopulator,
     _download_catalogue_image,
     _is_automatically_mapped_passive,
     resolve_component_action_target,
@@ -23,6 +22,7 @@ from kicad_jlcpcb.populator import (  # noqa: E402
     resolve_passive_library_id,
     resolve_selected_symbol,
 )
+from kicad_jlcpcb.provider import JlcPartDetails  # noqa: E402
 
 
 def symbol(identifier: str, reference: str, library: str = "Device", name: str = "R"):
