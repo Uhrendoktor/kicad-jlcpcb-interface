@@ -178,12 +178,25 @@ def parse_passive_search_query(
 
 
 def passive_tolerance_label(details: JlcPartDetails) -> str:
-    """Return the supplier's stated passive tolerance, when available."""
+    """Return the supplier's stated passive tolerance, when available.
+
+    JLCPCB's search and detail payloads do not always expose a separate
+    Tolerance attribute. Some listings state tolerance only in the supplier's
+    product description (for example, "... resistor ±5% 0402 ..."). Accept
+    only an explicit ± or +/- percentage from that description; do not infer
+    tolerance from an MPN or an unstated numeric value.
+    """
     for name, raw_value in details.attributes.items():
         normalized = re.sub(r"[^a-z0-9]", "", str(name).casefold())
         if normalized in _TOLERANCE_ATTRIBUTE_NAMES and raw_value not in (None, ""):
             return str(raw_value).strip()
-    return ""
+
+    match = re.search(
+        r"(?:±|\+/-)\s*\d+(?:\.\d+)?\s*%",
+        details.description,
+        re.IGNORECASE,
+    )
+    return match.group(0).strip() if match else ""
 
 
 def _passive_tolerance(details: JlcPartDetails) -> Decimal | None:
