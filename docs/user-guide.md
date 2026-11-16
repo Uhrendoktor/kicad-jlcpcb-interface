@@ -176,7 +176,7 @@ The confidence label describes how complete the catalogue-to-symbol suggestion i
 - **Partial** — a component family was recognized, but the value or reviewed footprint may be incomplete, or the symbol is a generic template such as a diode, LED, fuse or crystal.
 - **Metadata only** — the catalogue record does not support a confident stock-symbol classification. In add mode, select a KiCad `Library:Symbol` manually.
 
-Exact-value resistor/capacitor searches return at most five high-confidence exact matches. Optional package/footprint and tolerance filters are applied together with the value, so every displayed match satisfies all supplied constraints; the candidate table also displays the supplier-stated tolerance. Basic listings rank first; Extended or unclassified listings fill remaining slots only when fewer than five suitable Basic parts are available. Stock and price are secondary ranking factors, not a guarantee of purchase availability. General keyword results are catalogue candidates to inspect, not declared drop-in replacements.
+Exact-value resistor/capacitor searches return at most five high-confidence exact matches. Optional package/footprint and tolerance filters are applied together with the value, so every displayed match satisfies all supplied constraints; the alternatives table shows the mapped KiCad footprint and supplier-stated tolerance. Basic listings rank first; Extended or unclassified listings fill remaining slots only when fewer than five suitable Basic parts are available. Stock and price are secondary ranking factors, not a guarantee of purchase availability. General keyword results are catalogue candidates to inspect, not declared drop-in replacements.
 
 ### Update an existing schematic symbol
 
