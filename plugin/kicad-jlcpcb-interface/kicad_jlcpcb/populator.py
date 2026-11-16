@@ -611,7 +611,7 @@ class ComponentPopulator:
         if not query:
             self.messagebox.showerror(
                 "Search term required",
-                "Enter an LCSC code, manufacturer part number, component name or passive value.",
+                "Enter a value, LCSC code, manufacturer part number or keyword.",
                 parent=self.root,
             )
             return
@@ -668,7 +668,7 @@ class ComponentPopulator:
         self._reset_catalogue_preview()
         self._set_notes(())
         self.status_var.set(
-            f"Searching JLCPCB for exact-value {query} matches…"
+            f"Searching JLCPCB for passive value {query}…"
             if mode == "value"
             else f"Searching JLCPCB catalogue for {query}…"
             if mode == "keyword"
@@ -755,7 +755,9 @@ class ComponentPopulator:
                                 tolerance=tolerance_filter,
                             )
                         except ValueError as exc:
-                            self.status_var.set(f"Could not interpret {query!r}: {exc}")
+                            self.status_var.set(
+                                f"Could not apply passive search filters: {exc}"
+                            )
                             continue
                     else:
                         matches_by_id = {}
@@ -770,9 +772,13 @@ class ComponentPopulator:
                         self._insert_candidate(index, details, draft)
                     self._set_candidates_visible(len(matches) > 1)
                     if not matches:
+                        search_label = query[0] if mode == "value" else query
                         self.status_var.set(
-                            f"No catalogue matches found for {query}. Try an LCSC code, "
-                            "manufacturer part number or broader search term."
+                            f"No matches found for {search_label}. "
+                            "Try clearing or relaxing the advanced filters."
+                            if mode == "value"
+                            else f"No catalogue matches found for {search_label}. "
+                            "Try an LCSC code, manufacturer part number or broader search term."
                         )
                         continue
                     first = self.candidate_tree.get_children()[0]
