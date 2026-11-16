@@ -34,6 +34,7 @@ from .value_search import (
     is_lcsc_lookup_query,
     parse_passive_search_query,
     passive_tolerance_label,
+    rank_basic_first,
 )
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
@@ -238,7 +239,7 @@ class ComponentPopulator:
         self.theme = self.root._kicad_jlcpcb_theme
         self.root.title("Component Workspace")
         self.root.geometry("1120x860")
-        self.root.minsize(880, 640)
+        self.root.minsize(900, 660)
         self._image_ref = None
         self._image_lcsc = ""
         self._image_pending = False
@@ -266,6 +267,7 @@ class ComponentPopulator:
         self.search_var = self.lcsc_var
         self.footprint_filter_var = tk.StringVar(value="")
         self.tolerance_filter_var = tk.StringVar(value="")
+        self.basic_only_var = tk.BooleanVar(value=False)
         self.advanced_filters_visible = False
         self.symbol_hint_var = tk.StringVar(value="")
         self.value_var = tk.StringVar(value=getattr(symbol, "value", "") or "")
@@ -303,21 +305,28 @@ class ComponentPopulator:
 
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        outer = ttk.Frame(self.root, padding=(16, 12))
+        outer = ttk.Frame(self.root, padding=(18, 14))
         outer.grid(row=0, column=0, sticky="nsew")
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(2, weight=1)
 
         header = ttk.Frame(outer)
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        header_title = ttk.Frame(header)
+        header_title.pack(anchor="w")
         ttk.Label(
-            header,
+            header_title,
             text=(
                 "Add component" if self.create_mode
                 else f"Update component · {reference}"
             ),
             style="Title.TLabel",
-        ).pack(anchor="w")
+        ).pack(side="left")
+        ttk.Label(
+            header_title,
+            text="ADD" if self.create_mode else "UPDATE",
+            style="ModeBadge.TLabel",
+        ).pack(side="left", padx=(10, 0), pady=(3, 0))
         ttk.Label(
             header,
             text=(
@@ -325,20 +334,41 @@ class ComponentPopulator:
                 if self.create_mode
                 else f"{self.library_id or 'Selected symbol'}"
             ),
-            style="Muted.TLabel",
-        ).pack(anchor="w", pady=(2, 0))
+            style="Subtitle.TLabel",
+        ).pack(anchor="w", pady=(3, 0))
 
-        search = ttk.Frame(outer)
-        search.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        search = ttk.Frame(
+            outer, style="Toolbar.TFrame", padding=(12, 9)
+        )
+        search.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         search.columnconfigure(1, weight=1)
         ttk.Label(
             search,
             text="Value or part number",
-            style="Section.TLabel",
+            style="ToolbarLabel.TLabel",
         ).grid(row=0, column=0, sticky="w", padx=(0, 12))
         self.lcsc_entry = ttk.Entry(search, textvariable=self.lcsc_var)
-        self.lcsc_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        self.lcsc_entry.grid(row=0, column=1, sticky="ew", padx=(0, 10))
         self.lcsc_entry.bind("<Return>", lambda _event: self.lookup())
+
+        self.basic_only_checkbutton = ttk.Checkbutton(
+            search,
+            text="Basic parts only",
+            variable=self.basic_only_var,
+            style="Toolbar.TCheckbutton",
+        )
+        self.basic_only_checkbutton.grid(
+            row=0, column=2, sticky="w", padx=(0, 8)
+        )
+        self.basic_only_tooltip = _HoverTooltip(
+            self.basic_only_checkbutton,
+            lambda: (
+                "Basic parts only\n"
+                "When enabled, Extended and unclassified listings are hidden. "
+                "When disabled, Basic parts still rank first. "
+                "Exact LCSC lookups always return the requested part."
+            ),
+        )
 
         self._filter_icon_active = False
         self._filter_icon_image = self._create_advanced_filter_icon(active=False)
@@ -350,7 +380,7 @@ class ComponentPopulator:
         )
         self.advanced_filters_button.image = self._filter_icon_image
         self.advanced_filters_button.grid(
-            row=0, column=2, sticky="e", padx=(0, 6)
+            row=0, column=3, sticky="e", padx=(0, 6)
         )
         self.advanced_filters_tooltip = _HoverTooltip(
             self.advanced_filters_button,
@@ -359,10 +389,10 @@ class ComponentPopulator:
         self.advanced_filter_summary = ttk.Label(
             search,
             text="",
-            style="Muted.TLabel",
+            style="ToolbarMeta.TLabel",
         )
         self.advanced_filter_summary.grid(
-            row=0, column=3, sticky="w", padx=(0, 8)
+            row=0, column=4, sticky="w", padx=(0, 8)
         )
         self.advanced_filter_summary.grid_remove()
 
@@ -372,18 +402,18 @@ class ComponentPopulator:
             command=self.lookup,
             style="Primary.TButton",
         )
-        self.lookup_button.grid(row=0, column=4, sticky="e")
+        self.lookup_button.grid(row=0, column=5, sticky="e")
 
-        # Keep the optional controls in one compact horizontal filter strip.
+        # Optional package and tolerance constraints stay on one compact row.
         self.advanced_filters_section = ttk.Frame(
-            search, padding=(8, 4)
+            search, style="Toolbar.TFrame", padding=(0, 8, 0, 0)
         )
         self.advanced_filters_section.columnconfigure(1, weight=2)
         self.advanced_filters_section.columnconfigure(3, weight=1)
         ttk.Label(
             self.advanced_filters_section,
             text="Package / footprint",
-            style="Section.TLabel",
+            style="ToolbarLabel.TLabel",
         ).grid(row=0, column=0, sticky="w", padx=(0, 6))
         self.footprint_filter_entry = ttk.Combobox(
             self.advanced_filters_section,
@@ -401,7 +431,7 @@ class ComponentPopulator:
         ttk.Label(
             self.advanced_filters_section,
             text="Tolerance",
-            style="Section.TLabel",
+            style="ToolbarLabel.TLabel",
         ).grid(row=0, column=2, sticky="w", padx=(0, 6))
         self.tolerance_filter_entry = ttk.Combobox(
             self.advanced_filters_section,
@@ -419,12 +449,10 @@ class ComponentPopulator:
             self.advanced_filters_section,
             text="Clear",
             command=self._clear_advanced_filters,
-            style="Link.TButton",
+            style="ToolbarLink.TButton",
             padding=(2, 2),
         )
-        self.clear_filters_button.grid(
-            row=0, column=4, sticky="e"
-        )
+        self.clear_filters_button.grid(row=0, column=4, sticky="e")
 
         self.footprint_filter_entry.bind(
             "<Return>", lambda _event: self.lookup()
@@ -433,7 +461,7 @@ class ComponentPopulator:
             "<Return>", lambda _event: self.lookup()
         )
         self.advanced_filters_section.grid(
-            row=1, column=0, columnspan=5, sticky="ew", pady=(4, 0)
+            row=1, column=0, columnspan=6, sticky="ew"
         )
         self.advanced_filters_section.grid_remove()
         self.footprint_filter_var.trace_add(
@@ -514,21 +542,36 @@ class ComponentPopulator:
             datasheet_command=self.open_datasheet,
         )
         self.product_preview.frame.grid(
-            row=0, column=0, sticky="ew", pady=(0, 12)
+            row=1, column=0, sticky="ew", pady=(0, 12)
         )
         self.image_label = self.product_preview.image_label
         self.product_button = self.product_preview.product_button
         self.datasheet_button = self.product_preview.datasheet_button
         self._image_ref = None
 
-        self.candidate_section = ttk.Frame(content)
-        self.candidate_section.columnconfigure(0, weight=1)
-        self.candidate_title = ttk.Label(
-            self.candidate_section,
-            text="Matching parts",
-            style="Section.TLabel",
+        self.candidate_section = ttk.Frame(
+            content, style="Card.TFrame", padding=12
         )
-        self.candidate_title.grid(row=0, column=0, sticky="w", pady=(0, 5))
+        self.candidate_section.columnconfigure(0, weight=1)
+        candidate_header = ttk.Frame(
+            self.candidate_section, style="Card.TFrame"
+        )
+        candidate_header.grid(
+            row=0, column=0, sticky="ew", pady=(0, 8)
+        )
+        candidate_header.columnconfigure(0, weight=1)
+        self.candidate_title = ttk.Label(
+            candidate_header,
+            text="Search results",
+            style="CardTitle.TLabel",
+        )
+        self.candidate_title.grid(row=0, column=0, sticky="w")
+        self.candidate_hint = ttk.Label(
+            candidate_header,
+            text="Basic parts are ranked first",
+            style="CardMeta.TLabel",
+        )
+        self.candidate_hint.grid(row=0, column=1, sticky="e", padx=(12, 0))
         self.candidate_tree = ttk.Treeview(
             self.candidate_section,
             columns=("part", "mpn", "footprint", "tolerance", "library", "stock", "price"),
@@ -556,6 +599,17 @@ class ComponentPopulator:
         self.candidate_tree.tag_configure(
             "stripe-alt", background=self.palette["surface_alt"]
         )
+        self.candidate_tree.tag_configure(
+            "basic",
+            foreground=self.palette["basic_foreground"],
+            font=("TkDefaultFont", 9, "bold"),
+        )
+        self.candidate_tree.tag_configure(
+            "extended", foreground=self.palette["muted"]
+        )
+        self.candidate_tree.tag_configure(
+            "unknown", foreground=self.palette["muted"]
+        )
         self.candidate_tree.grid(row=1, column=0, sticky="ew")
         candidate_scroll = ttk.Scrollbar(
             self.candidate_section,
@@ -568,18 +622,20 @@ class ComponentPopulator:
             "<<TreeviewSelect>>", self._on_candidate_selected
         )
         self.candidate_section.grid(
-            row=1, column=0, sticky="ew", pady=(0, 14)
+            row=0, column=0, sticky="ew", pady=(0, 12)
         )
         self.candidate_section.grid_remove()
 
-        component_section = ttk.Frame(content)
-        component_section.grid(row=2, column=0, sticky="ew", pady=(0, 14))
+        component_section = ttk.Frame(
+            content, style="Card.TFrame", padding=12
+        )
+        component_section.grid(row=2, column=0, sticky="ew", pady=(0, 12))
         component_section.columnconfigure(1, weight=1)
         ttk.Label(
             component_section,
             text="KiCad properties",
-            style="Section.TLabel",
-        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
+            style="CardTitle.TLabel",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
         row = 1
         self.symbol_hint_label = None
@@ -590,7 +646,7 @@ class ComponentPopulator:
             label_widget = ttk.Label(
                 component_section,
                 text=label,
-                style="Muted.TLabel",
+                style="CardMeta.TLabel",
             )
             label_widget.grid(
                 row=row, column=0, sticky="w", padx=(0, 14), pady=4
@@ -620,7 +676,7 @@ class ComponentPopulator:
             self.passive_mapping_label = ttk.Label(
                 component_section,
                 text="",
-                style="Muted.TLabel",
+                style="CardMeta.TLabel",
                 wraplength=760,
                 justify="left",
             )
@@ -636,34 +692,40 @@ class ComponentPopulator:
             ttk.Label(
                 component_section,
                 text=placement_note,
-                style="Muted.TLabel",
+                style="CardMeta.TLabel",
                 wraplength=760,
                 justify="left",
             ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(7, 2))
             row += 1
 
-        proposal_section = ttk.Frame(content)
+        proposal_section = ttk.Frame(
+            content, style="Card.TFrame", padding=12
+        )
         proposal_section.grid(row=3, column=0, sticky="ew", pady=(0, 12))
         proposal_section.columnconfigure(0, weight=1)
         ttk.Label(
             proposal_section,
             text="Fields to write",
-            style="Section.TLabel",
-        ).grid(row=0, column=0, sticky="w", pady=(0, 5))
-        self.proposal_rows = ttk.Frame(proposal_section)
+            style="CardTitle.TLabel",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 8))
+        self.proposal_rows = ttk.Frame(
+            proposal_section, style="Card.TFrame"
+        )
         self.proposal_rows.grid(row=1, column=0, sticky="ew")
         self.proposal_rows.columnconfigure(0, weight=1)
         self._proposal_value_labels = []
         self.proposal_section = proposal_section
         proposal_section.grid_remove()
 
-        self.notes_section = ttk.Frame(content)
+        self.notes_section = ttk.Frame(
+            content, style="Note.TFrame", padding=(10, 8)
+        )
         self.notes_section.grid(row=4, column=0, sticky="ew", pady=(0, 12))
         self.notes_section.columnconfigure(0, weight=1)
         self.notes = ttk.Label(
             self.notes_section,
             text="",
-            style="Warning.TLabel",
+            style="Note.TLabel",
             wraplength=900,
             justify="left",
         )
@@ -832,6 +894,7 @@ class ComponentPopulator:
         request_value = query
         footprint_filter = self.footprint_filter_var.get().strip()
         tolerance_filter = self.tolerance_filter_var.get().strip()
+        basic_only = bool(self.basic_only_var.get())
         has_advanced_filters = bool(footprint_filter or tolerance_filter)
         explicit_lcsc_lookup = is_lcsc_lookup_query(query) and not (
             has_advanced_filters and query.isdigit()
@@ -893,9 +956,9 @@ class ComponentPopulator:
         self.lookup_button.configure(state="disabled")
         results_queue = self.results
         result_query = (
-            (query, footprint_filter, tolerance_filter)
+            (query, footprint_filter, tolerance_filter, basic_only)
             if mode == "value"
-            else query if mode == "keyword"
+            else (query, basic_only) if mode == "keyword"
             else request_value
         )
         if mode in {"value", "keyword"}:
@@ -956,19 +1019,25 @@ class ComponentPopulator:
                 if mode in {"value", "keyword"}:
                     self.candidate_title.configure(
                         text=(
-                            "Passive matches · Basic first"
+                            "Passive matches"
                             if mode == "value"
                             else "Catalogue matches"
                         )
                     )
                     if mode == "value":
                         try:
-                            passive_query, footprint_filter, tolerance_filter = query
+                            (
+                                passive_query,
+                                footprint_filter,
+                                tolerance_filter,
+                                basic_only,
+                            ) = query
                             matches = exact_passive_candidates(
                                 passive_query,
                                 result,
                                 footprint=footprint_filter,
                                 tolerance=tolerance_filter,
+                                basic_only=basic_only,
                             )
                         except ValueError as exc:
                             self.status_var.set(
@@ -976,39 +1045,65 @@ class ComponentPopulator:
                             )
                             continue
                     else:
+                        basic_only = bool(query[1])
                         matches_by_id = {}
-                        for details in result:
+                        for details in rank_basic_first(
+                            result, basic_only=basic_only
+                        ):
                             if details.is_buyable is False:
                                 continue
                             candidate_draft = build_component_draft(details)
                             matches_by_id[details.lcsc] = (details, candidate_draft)
                         matches = list(matches_by_id.values())
 
+                    self.candidate_hint.configure(
+                        text=(
+                            "Basic parts only"
+                            if basic_only
+                            else "Basic parts ranked first"
+                        )
+                    )
+
                     for index, (details, draft) in enumerate(matches):
                         self._insert_candidate(index, details, draft)
                     self._set_candidates_visible(len(matches) > 1)
                     if not matches:
-                        search_label = query[0] if mode == "value" else query
-                        self.status_var.set(
-                            f"No matches found for {search_label}. "
-                            "Try clearing or relaxing the advanced filters."
-                            if mode == "value"
-                            else f"No catalogue matches found for {search_label}. "
-                            "Try an LCSC code, manufacturer part number or broader search term."
-                        )
+                        search_label = query[0]
+                        if basic_only:
+                            self.status_var.set(
+                                f"No Basic matches found for {search_label}. "
+                                "Turn off Basic parts only to include other listings."
+                            )
+                        elif mode == "value":
+                            self.status_var.set(
+                                f"No matches found for {search_label}. "
+                                "Try clearing or relaxing the package or tolerance filters."
+                            )
+                        else:
+                            self.status_var.set(
+                                f"No catalogue matches found for {search_label}. "
+                                "Try an LCSC code, manufacturer part number or broader search term."
+                            )
                         continue
                     first = self.candidate_tree.get_children()[0]
                     self.candidate_tree.selection_set(first)
                     self.candidate_tree.focus(first)
                     self._on_candidate_selected()
+                    search_label = query[0]
+                    match_summary = (
+                        f"Showing {len(matches)} passive match(es) for {search_label} "
+                        "(maximum five)."
+                        if mode == "value"
+                        else f"Found {len(matches)} catalogue candidate(s) for {search_label}."
+                    )
+                    ranking_summary = (
+                        "Only Basic listings are shown."
+                        if basic_only
+                        else "Basic listings are ranked first."
+                    )
                     self.status_var.set(
-                        (
-                            f"Showing {len(matches)} passive match(es) for {query[0]} "
-                            "(maximum five); Basic listings are ranked first."
-                            if mode == "value"
-                            else f"Found {len(matches)} catalogue candidate(s) for {query}."
-                        )
-                        + " Select a row to preview its image, specifications and KiCad proposal."
+                        f"{match_summary} {ranking_summary} "
+                        "Select a row to preview its details and KiCad proposal."
                     )
                     continue
 
@@ -1100,6 +1195,12 @@ class ComponentPopulator:
             else "—"
         )
         self.candidate_rows[iid] = (details, draft)
+        class_tag = (
+            "basic" if details.is_basic is True
+            else "extended" if details.is_basic is False
+            else "unknown"
+        )
+        tags = (class_tag, "stripe-alt") if index % 2 else (class_tag,)
         self.candidate_tree.insert(
             "",
             "end",
@@ -1113,7 +1214,7 @@ class ComponentPopulator:
                 stock,
                 price,
             ),
-            tags=("stripe-alt",) if index % 2 else (),
+            tags=tags,
         )
 
     def _reset_catalogue_preview(self) -> None:
@@ -1224,7 +1325,7 @@ class ComponentPopulator:
 
     def _show_product_image(self, image_data: bytes | None) -> None:
         self._image_ref = display_product_image(
-            self.image_label, image_data, self.root, size=(148, 118)
+            self.image_label, image_data, self.root, size=(116, 92)
         )
         if image_data is None and self._image_attempted and not self._image_pending:
             self.image_label.configure(text="Image unavailable")
@@ -1273,19 +1374,22 @@ class ComponentPopulator:
             if name.strip().casefold() not in {"value", "footprint"}
         )
         for index, (name, value) in enumerate(visible_fields):
-            row = self.ttk.Frame(self.proposal_rows)
-            row.grid(row=index, column=0, columnspan=2, sticky="ew", pady=2)
+            row = self.ttk.Frame(
+                self.proposal_rows, style="Card.TFrame"
+            )
+            row.grid(row=index, column=0, columnspan=2, sticky="ew", pady=3)
             row.columnconfigure(1, weight=1)
             self.ttk.Label(
                 row,
                 text=name,
-                style="Muted.TLabel",
+                style="CardMeta.TLabel",
                 width=20,
                 anchor="nw",
             ).grid(row=0, column=0, sticky="nw", padx=(0, 14))
             value_label = self.ttk.Label(
                 row,
                 text=self._proposal_display_value(name, value),
+                style="Card.TLabel",
                 wraplength=max(280, self.content_canvas.winfo_width() - 190),
                 justify="left",
             )

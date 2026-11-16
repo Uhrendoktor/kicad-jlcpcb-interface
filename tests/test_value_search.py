@@ -16,6 +16,7 @@ from kicad_jlcpcb.value_search import (  # noqa: E402
     parse_passive_search_query,
     parse_passive_value_query,
     passive_tolerance_label,
+    rank_basic_first,
 )
 
 
@@ -132,6 +133,36 @@ class PassiveValueSearchTests(unittest.TestCase):
             category="Resistors",
             attributes=attributes,
         )
+
+    def test_keyword_results_rank_basic_first_and_support_basic_only(self):
+        parts = [
+            self.resistor("C10002", is_basic=False),
+            self.resistor("C10003", is_basic=None),
+            self.resistor("C10001", is_basic=True),
+            self.resistor("C10004", is_basic=False),
+            self.resistor("C10005", is_basic=True),
+        ]
+
+        ranked = rank_basic_first(parts)
+        self.assertEqual(
+            [details.lcsc for details in ranked],
+            ["C10001", "C10005", "C10002", "C10004", "C10003"],
+        )
+        self.assertEqual(
+            [details.lcsc for details in rank_basic_first(parts, basic_only=True)],
+            ["C10001", "C10005"],
+        )
+
+    def test_exact_passive_search_can_limit_results_to_basic_parts(self):
+        parts = [
+            self.resistor("C11002", is_basic=False),
+            self.resistor("C11003", is_basic=None),
+            self.resistor("C11001", is_basic=True),
+        ]
+
+        matches = exact_passive_candidates("10k", parts, basic_only=True)
+
+        self.assertEqual([details.lcsc for details, _draft in matches], ["C11001"])
 
     def test_candidates_are_exact_supported_and_basic_first(self):
         parts = [
