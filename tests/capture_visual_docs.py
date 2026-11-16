@@ -1490,6 +1490,7 @@ def _drive_populator_form(
             root.update()
             _capture_window(root, output_dir / dark_asset)
             apply_tk_theme(root, "light")
+            populator._update_advanced_filter_button()
             root.update()
 
             original_askyesno = populator.messagebox.askyesno
