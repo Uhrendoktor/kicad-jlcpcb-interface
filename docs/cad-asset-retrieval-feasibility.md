@@ -16,6 +16,20 @@ The work is therefore an extension of the current architecture, not a redesign. 
 
 The recommended design is to **search local KiCad libraries first, then query an external CAD provider when no suitable local mapping is found**. Download candidates and previews in the background, populate editable proposals, and defer changing a project library or schematic until the user generates/imports the reviewed component.
 
+## Implementation status (2026-11-17)
+
+The initial credential-free implementation is now present in the plugin:
+
+- Existing reviewed KiCad mappings are checked first. A public EasyEDA lookup by normalized LCSC code runs only when Add mode has no usable local symbol or a symbol/footprint field remains unresolved; Update mode can look up CAD for an unresolved footprint without changing the selected symbol identity.
+- The EasyEDA `/api/products/{LCSC}/components` endpoint supplies component geometry and a public package-detail fallback; `/api/products/{LCSC}/svgs` supplies separate symbol and footprint previews when available. No API key, login, browser cookie or user credential is used.
+- Conversion uses the independent MIT-licensed `euc2k` package rather than vendoring the AGPL `easyeda2kicad` converter. SVG preview rasterization uses `resvg_py.svg_to_bytes`, the same renderer API used by the companion `kicad-blocks` repository.
+- CAD retrieval and rendering run in a worker. Results are scoped to the selected LCSC code, partial symbol-only results are retained, and dirty-field tracking prevents late responses overwriting manual edits.
+- Add mode proposes external `Library:Symbol` and `Library:Footprint` values in the existing editable inputs. External symbols are copied through the existing project-local symbol generator; retrieved footprints are registered in a per-LCSC project-local `.pretty` library and `fp-lib-table` only when the user runs Generate.
+- Update mode can preview both candidate assets and prefill a missing footprint, but never replaces the selected schematic symbol or pin mapping.
+- The CAD cache is size-bounded, HTTPS-host restricted, redirect-checked, SVG-sanitized and content-hash checked. Imported footprint libraries use ownership manifests and refuse to overwrite foreign, symlinked or modified content. Converter attribution/licence notes are kept in the CAD cache's `CREDITS.txt`.
+
+Coverage remains best-effort: some LCSC parts have no public CAD model, may have only one of symbol/footprint, or may return geometry that the converter rejects. In such cases the manual editable workflow remains available. The initial implementation imports 2D geometry only; it does not infer pin maps or retrieve 3D models.
+
 ## What the repository already provides
 
 The following existing components are natural integration points:
@@ -110,7 +124,7 @@ Do not replace the selected symbol's `Library:Symbol` identity in the ordinary U
 
 ## Import and project integration
 
-The symbol writer in `library.py` is a useful model for ownership checks, safe parsing, atomic file replacement and project-relative paths. A complete importer needs a parallel footprint implementation:
+The symbol writer in `library.py` provides ownership checks, safe parsing, atomic file replacement and project-relative paths. The importer now has a matching footprint-registration path:
 
 - Symbol: import/merge a selected definition into an owned project-local `.kicad_sym` library and register it in `sym-lib-table`.
 - Footprint: write the `.kicad_mod` into an owned project-local `.pretty/` directory and register it in `fp-lib-table`.
