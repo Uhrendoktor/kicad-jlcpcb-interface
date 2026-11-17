@@ -205,3 +205,73 @@ def display_product_image(
         return None
     label.configure(image=photo, text="", padding=0)
     return photo
+
+
+@dataclass(slots=True)
+class CadAssetPreviewControls:
+    """Independent preview surfaces for downloaded schematic and PCB CAD."""
+
+    frame: Any
+    symbol_label: Any
+    footprint_label: Any
+
+
+def build_cad_asset_preview(
+    parent: Any,
+    ttk: Any,
+    status_var: Any,
+) -> CadAssetPreviewControls:
+    """Build paired, optional SVG-derived previews beneath the supplier image."""
+    surface = ttk.Frame(parent, style="ProductPreview.TFrame", padding=(12, 10))
+    surface.columnconfigure(0, weight=1, uniform="cad-preview")
+    surface.columnconfigure(1, weight=1, uniform="cad-preview")
+
+    ttk.Label(
+        surface,
+        text="KI CAD CANDIDATES",
+        style="ProductEyebrow.TLabel",
+    ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 7))
+
+    labels = []
+    for column, (caption, placeholder) in enumerate(
+        (
+            ("SCHEMATIC SYMBOL", "No symbol preview"),
+            ("PCB FOOTPRINT", "No footprint preview"),
+        )
+    ):
+        cell = ttk.Frame(surface, style="ProductPreview.TFrame")
+        cell.grid(row=1, column=column, sticky="nsew", padx=(0, 10) if column == 0 else (10, 0))
+        cell.columnconfigure(0, weight=1)
+        ttk.Label(
+            cell, text=caption, style="ProductKey.TLabel"
+        ).grid(row=0, column=0, sticky="w", pady=(0, 5))
+        preview = ttk.Frame(
+            cell, style="ProductImage.TFrame", width=280, height=176
+        )
+        preview.grid(row=1, column=0, sticky="nsew")
+        preview.grid_propagate(False)
+        label = ttk.Label(
+            preview,
+            text=placeholder,
+            anchor="center",
+            justify="center",
+            padding=8,
+            style="ProductImage.TLabel",
+            wraplength=250,
+        )
+        label.pack(fill="both", expand=True)
+        labels.append(label)
+
+    ttk.Label(
+        surface,
+        textvariable=status_var,
+        style="ProductMeta.TLabel",
+        wraplength=700,
+        justify="left",
+    ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(7, 0))
+
+    return CadAssetPreviewControls(
+        frame=surface,
+        symbol_label=labels[0],
+        footprint_label=labels[1],
+    )
