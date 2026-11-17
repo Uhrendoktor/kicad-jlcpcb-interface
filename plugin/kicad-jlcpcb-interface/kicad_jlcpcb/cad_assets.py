@@ -112,7 +112,11 @@ def _safe_preview_svg(raw: str | bytes) -> str:
             lowered_value = value.casefold()
             if local_key.startswith("on"):
                 del parent.attrib[key]
-            elif local_key in {"href", "src"} and value and not lowered_value.startswith("data:image/"):
+            elif (
+                local_key in {"href", "src"}
+                and value
+                and not lowered_value.startswith("data:image/")
+            ):
                 del parent.attrib[key]
             elif "url(" in lowered_value and not re.search(
                 r"url\(\s*#[A-Za-z0-9_.:-]+\s*\)", lowered_value
@@ -216,7 +220,9 @@ class EasyEdaCadProvider:
                     "Wait before retrying."
                 ) from exc
             if exc.code == 404:
-                raise CadAssetError("No public EasyEDA CAD record exists for this LCSC part.") from exc
+                raise CadAssetError(
+                    "No public EasyEDA CAD record exists for this LCSC part."
+                ) from exc
             raise CadAssetError(f"EasyEDA CAD lookup failed (HTTP {exc.code}).") from exc
         except URLError as exc:
             raise CadAssetError(f"EasyEDA CAD lookup failed: {exc.reason}") from exc
@@ -279,7 +285,10 @@ class EasyEdaCadProvider:
                 return None
             symbol_name = str(manifest["symbol_name"])
             symbol_filename = str(manifest["symbol_filename"])
-            if Path(symbol_filename).name != symbol_filename or not symbol_filename.endswith(".kicad_sym"):
+            if (
+                Path(symbol_filename).name != symbol_filename
+                or not symbol_filename.endswith(".kicad_sym")
+            ):
                 return None
             symbol_path = folder / symbol_filename
             if not symbol_path.is_file() or symbol_path.is_symlink():
@@ -292,7 +301,10 @@ class EasyEdaCadProvider:
                 return None
             footprint_name = str(manifest.get("footprint_name") or "")
             footprint_filename = str(manifest.get("footprint_filename") or "")
-            footprint_path = folder / "source.pretty" / footprint_filename if footprint_filename else None
+            footprint_path = (
+                folder / "source.pretty" / footprint_filename
+                if footprint_filename else None
+            )
             if footprint_path and (
                 Path(footprint_filename).name != footprint_filename
                 or not footprint_path.is_file()
@@ -300,7 +312,10 @@ class EasyEdaCadProvider:
             ):
                 return None
             if footprint_path is not None and manifest.get("footprint_sha256"):
-                if hashlib.sha256(footprint_path.read_bytes()).hexdigest() != manifest["footprint_sha256"]:
+                if (
+                    hashlib.sha256(footprint_path.read_bytes()).hexdigest()
+                    != manifest["footprint_sha256"]
+                ):
                     return None
             symbol_png_path = folder / "symbol-preview.png"
             footprint_png_path = folder / "footprint-preview.png"
@@ -314,7 +329,9 @@ class EasyEdaCadProvider:
                 footprint_name=footprint_name,
                 footprint_library_id=str(manifest.get("footprint_library_id") or ""),
                 footprint_path=footprint_path,
-                symbol_preview_png=symbol_png_path.read_bytes() if symbol_png_path.is_file() else None,
+                symbol_preview_png=(
+                    symbol_png_path.read_bytes() if symbol_png_path.is_file() else None
+                ),
                 footprint_preview_png=(
                     footprint_png_path.read_bytes() if footprint_png_path.is_file() else None
                 ),
@@ -365,7 +382,8 @@ class EasyEdaCadProvider:
             from euc2k.converter import convert_response
         except ImportError as exc:
             raise CadAssetError(
-                "The EasyEDA-to-KiCad converter is unavailable. Recreate the KiCad plugin environment."
+                "The EasyEDA-to-KiCad converter is unavailable. "
+                "Recreate the KiCad plugin environment."
             ) from exc
 
         def symbol_only_payload() -> dict[str, Any]:
