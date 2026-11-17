@@ -742,7 +742,9 @@ def register_project_footprint_library(
         raise SymbolLibraryConflict("Refusing to modify a symlinked project fp-lib-table.")
 
     if library_path.is_symlink():
-        raise SymbolLibraryConflict(f"Refusing to write into symlinked footprint library {library_path}.")
+        raise SymbolLibraryConflict(
+            f"Refusing to write into symlinked footprint library {library_path}."
+        )
     created = False
     already_present = False
     if library_path.exists():
@@ -753,11 +755,17 @@ def register_project_footprint_library(
         try:
             marker = json.loads(marker_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-            raise SymbolLibraryConflict("The imported footprint ownership marker is unreadable.") from exc
+            raise SymbolLibraryConflict(
+                "The imported footprint ownership marker is unreadable."
+            ) from exc
         if marker.get("generator") != _GENERATOR or marker.get("lcsc") != code:
-            raise SymbolLibraryConflict("The footprint library ownership marker does not match this part.")
+            raise SymbolLibraryConflict(
+                "The footprint library ownership marker does not match this part."
+            )
         if not target_path.is_file() or target_path.is_symlink():
-            raise SymbolLibraryConflict("The owned footprint library is missing its expected footprint.")
+            raise SymbolLibraryConflict(
+                "The owned footprint library is missing its expected footprint."
+            )
         try:
             existing_digest = hashlib.sha256(target_path.read_bytes()).hexdigest()
         except OSError as exc:
@@ -777,7 +785,9 @@ def register_project_footprint_library(
         try:
             staged_pretty = staging / library_path.name
             staged_pretty.mkdir()
-            (staged_pretty / target_path.name).write_text(source_text, encoding="utf-8", newline="\n")
+            (staged_pretty / target_path.name).write_text(
+                source_text, encoding="utf-8", newline="\n"
+            )
             marker = {
                 "generator": _GENERATOR,
                 "lcsc": code,
@@ -808,11 +818,15 @@ def register_project_footprint_library(
         except (OSError, UnicodeError, SymbolLibraryError) as exc:
             if created:
                 shutil.rmtree(library_path, ignore_errors=True)
-            raise SymbolLibraryError(f"Could not read project footprint table {table_path}: {exc}") from exc
+            raise SymbolLibraryError(
+                f"Could not read project footprint table {table_path}: {exc}"
+            ) from exc
         if _head(table) != "fp_lib_table":
             if created:
                 shutil.rmtree(library_path, ignore_errors=True)
-            raise SymbolLibraryError(f"Project footprint table {table_path} has an invalid root node.")
+            raise SymbolLibraryError(
+                f"Project footprint table {table_path} has an invalid root node."
+            )
         if _find_direct(table, "version") is None:
             table.insert(1, [Atom("version"), Atom("7")])
 
@@ -836,7 +850,12 @@ def register_project_footprint_library(
                 [Atom("type"), Quoted("KiCad")],
                 [Atom("uri"), Quoted(f"${{KIPRJMOD}}/{library_path.name}")],
                 [Atom("options"), Quoted("")],
-                [Atom("descr"), Quoted(f"JLCPCB/EasyEDA import for {code}; review before fabrication")],
+                [
+                    Atom("descr"),
+                    Quoted(
+                        f"JLCPCB/EasyEDA import for {code}; review before fabrication"
+                    ),
+                ],
             ]
         )
         try:
