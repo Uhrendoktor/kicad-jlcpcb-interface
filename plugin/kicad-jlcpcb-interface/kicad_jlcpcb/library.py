@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import re
@@ -36,6 +37,18 @@ _RESERVED_NORMALIZED = {
     re.sub(r"[^a-z0-9]", "", name.casefold())
     for name in _RESERVED_PROPERTIES
 }
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratedLibraryFootprint:
+    project_directory: Path
+    nickname: str
+    footprint_name: str
+    footprint_id: str
+    library_path: Path
+    table_path: Path
+    created: bool
+    already_present: bool
 
 
 class SymbolLibraryError(RuntimeError):
@@ -674,6 +687,162 @@ def generate_project_library_symbol(
         reference_prefix=reference_prefix,
     )
 
+
+
+def register_project_footprint_library(
+    project_or_path,
+    source_file: str | Path,
+    *,
+    lcsc: str,
+) -> GeneratedLibraryFootprint:
+    """Install one converted footprint in an owned project-local .pretty library.
+
+    A per-LCSC library keeps imported assets isolated. Existing user libraries,
+    symlinks and modified imported files are never overwritten.
+    """
+    project_dir = _project_directory(project_or_path)
+    code = str(lcsc or "").strip().upper()
+    if not re.fullmatch(r"C\\d{3,}", code):
+        raise SymbolLibraryError("A validated LCSC number is required for footprint import.")
+
+    source_path = Path(source_file).expanduser().resolve(strict=True)
+    if not source_path.is_file() or source_path.suffix.casefold() != ".kicad_mod":
+        raise SymbolLibraryError("The EasyEDA converter did not produce a KiCad footprint file.")
+    try:
+        source_text = source_path.read_text(encoding="utf-8")
+        source_root = parse_sexpr(source_text)
+    except (OSError, UnicodeError, SymbolLibraryError) as exc:
+        raise SymbolLibraryError(f"Could not read the converted footprint: {exc}") from exc
+    if _head(source_root) != "footprint" or len(source_root) < 2:
+        raise SymbolLibraryError("The converted footprint has an invalid KiCad S-expression root.")
+    footprint_name = _string_value(source_root[1]).strip()
+    if not re.fullmatch(r"[A-Za-z0-9_+.-]{1,120}", footprint_name):
+        raise SymbolLibraryError("The converted footprint has an unsafe KiCad library name.")
+
+    nickname = f"JLCPCB_{code}"
+    library_path = project_dir / f"{nickname}.pretty"
+    target_path = library_path / f"{footprint_name}.kicad_mod"
+    marker_path = library_path / ".jlcpcb-generated.json"
+    digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+    table_path = project_dir / "fp-lib-table"
+    if table_path.is_symlink():
+        raise SymbolLibraryConflict("Refusing to modify a symlinked project fp-lib-table.")
+
+    if library_path.is_symlink():
+        raise SymbolLibraryConflict(f"Refusing to write into symlinked footprint library {library_path}.")
+    created = False
+    already_present = False
+    if library_path.exists():
+        if not library_path.is_dir() or marker_path.is_symlink() or not marker_path.is_file():
+            raise SymbolLibraryConflict(
+                f"Existing {library_path.name} is not an owned JLCPCB import; it was left untouched."
+            )
+        try:
+            marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise SymbolLibraryConflict("The imported footprint ownership marker is unreadable.") from exc
+        if marker.get("generator") != _GENERATOR or marker.get("lcsc") != code:
+            raise SymbolLibraryConflict("The footprint library ownership marker does not match this part.")
+        if not target_path.is_file() or target_path.is_symlink():
+            raise SymbolLibraryConflict("The owned footprint library is missing its expected footprint.")
+        try:
+            existing_digest = hashlib.sha256(target_path.read_bytes()).hexdigest()
+        except OSError as exc:
+            raise SymbolLibraryError(f"Could not inspect existing footprint: {exc}") from exc
+        if (
+            marker.get("footprint") != footprint_name
+            or marker.get("sha256") != existing_digest
+            or existing_digest != digest
+        ):
+            raise SymbolLibraryConflict(
+                "The imported footprint already exists but has been modified or differs from "
+                "the downloaded candidate. It was not overwritten."
+            )
+        already_present = True
+    else:
+        staging = Path(tempfile.mkdtemp(prefix=f".{nickname}.", dir=str(project_dir)))
+        try:
+            staged_pretty = staging / library_path.name
+            staged_pretty.mkdir()
+            (staged_pretty / target_path.name).write_text(source_text, encoding="utf-8", newline="\n")
+            marker = {
+                "generator": _GENERATOR,
+                "lcsc": code,
+                "footprint": footprint_name,
+                "sha256": digest,
+            }
+            (staged_pretty / marker_path.name).write_text(
+                json.dumps(marker, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            os.replace(staged_pretty, library_path)
+            created = True
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+
+    table = (
+        [Atom("fp_lib_table"), [Atom("version"), Atom("7")]]
+        if not table_path.exists()
+        else None
+    )
+    if table is None:
+        try:
+            table = parse_sexpr(table_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, SymbolLibraryError) as exc:
+            if created:
+                shutil.rmtree(library_path, ignore_errors=True)
+            raise SymbolLibraryError(f"Could not read project footprint table {table_path}: {exc}") from exc
+        if _head(table) != "fp_lib_table":
+            if created:
+                shutil.rmtree(library_path, ignore_errors=True)
+            raise SymbolLibraryError(f"Project footprint table {table_path} has an invalid root node.")
+        if _find_direct(table, "version") is None:
+            table.insert(1, [Atom("version"), Atom("7")])
+
+    entry = _table_entry(table, nickname)
+    if entry is not None:
+        if (
+            _entry_text(entry, "type") != "KiCad"
+            or _uri_path(project_dir, _entry_text(entry, "uri"))
+            != library_path.resolve(strict=False)
+        ):
+            if created:
+                shutil.rmtree(library_path, ignore_errors=True)
+            raise SymbolLibraryConflict(
+                f"Footprint library nickname {nickname!r} is already registered to another path."
+            )
+    else:
+        table.append(
+            [
+                Atom("lib"),
+                [Atom("name"), Quoted(nickname)],
+                [Atom("type"), Quoted("KiCad")],
+                [Atom("uri"), Quoted(f"${{KIPRJMOD}}/{library_path.name}")],
+                [Atom("options"), Quoted("")],
+                [Atom("descr"), Quoted(f"JLCPCB/EasyEDA import for {code}; review before fabrication")],
+            ]
+        )
+        try:
+            _atomic_write(table_path, dump_sexpr(table), backup=table_path.exists())
+        except Exception:
+            if created:
+                shutil.rmtree(library_path, ignore_errors=True)
+            raise
+
+    return GeneratedLibraryFootprint(
+        project_directory=project_dir,
+        nickname=nickname,
+        footprint_name=footprint_name,
+        footprint_id=f"{nickname}:{footprint_name}",
+        library_path=library_path,
+        table_path=table_path,
+        created=created,
+        already_present=already_present,
+    )
 
 
 def reload_project_symbol_library(kicad, generated: GeneratedLibrarySymbol) -> None:
