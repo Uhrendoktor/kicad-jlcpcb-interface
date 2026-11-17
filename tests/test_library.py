@@ -233,7 +233,7 @@ class ProjectLibraryTests(unittest.TestCase):
             self.assertIn("hide", [child.value for child in effects if hasattr(child, "value")])
 
         table_text = self.table.read_text(encoding="utf-8")
-        self.assertIn('"${KIPRJMOD}/JLCPCB_Generated.kicad_sym"', table_text)
+        self.assertIn("KIPRJMOD}/JLCPCB_C12345.pretty", entry.table_path.read_text(encoding="utf-8"))
 
 
     def test_copies_a_multi_pin_non_passive_symbol_and_allows_missing_footprint(self):
