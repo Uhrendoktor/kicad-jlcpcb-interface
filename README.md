@@ -10,7 +10,7 @@ Link schematic symbols to LCSC part numbers, check catalogue availability, and a
 
 [Install](#install) · [Quick start](#quick-start) · [User guide](docs/user-guide.md)
 
-> **Supported scope:** a selected editable schematic symbol of any component type can receive reviewed catalogue fields without changing its library symbol or pin mapping. For new parts, the tool suggests stock symbols and footprints where mappings are known; otherwise users can enter a KiCad Library:Symbol, Value and optional Footprint. Project-local copies preserve the chosen stock symbol's pins and graphics. The tool does not infer manufacturer-specific pin maps or generate PCB copper/3D assets.
+> **Supported scope:** a selected editable schematic symbol of any component type can receive reviewed catalogue fields without changing its library symbol or pin mapping. For new parts, the tool prefers reviewed/local KiCad mappings, then offers credential-free EasyEDA CAD discovery by LCSC number when a symbol or footprint is unresolved. Retrieved symbol and footprint candidates are previewed and proposed in editable fields before project-local import. The tool does not infer manufacturer-specific pin maps or generate 3D assets.
 
 ## What it helps you do
 
@@ -121,11 +121,11 @@ For detailed field behavior and troubleshooting, see the **[User guide](docs/use
 ## Data, accuracy and limitations
 
 - **Conservative symbol handling.** Update mode works on one editable selected symbol of any component family and never replaces its graphics, library identity or pin mapping. Add mode suggests common generic symbols (resistor, capacitor, inductor, diode, LED, fuse and crystal) and can clone a manually selected standalone KiCad symbol. A suggestion is not a verified manufacturer pinout.
-- **Reviewable footprints.** Reviewed mappings cover common SMD resistor/capacitor/inductor sizes, selected LED sizes and diode packages. Other packages remain blank until entered by the user. Footprints are optional for symbol generation, but required before normal PCB layout.
+- **Reviewable footprints.** Reviewed mappings cover common SMD resistor/capacitor/inductor sizes, selected LED sizes and diode packages. When no mapping is available, a best-effort public EasyEDA lookup can supply a footprint candidate and SVG preview. The Footprint field remains editable, and downloaded geometry is imported into a project-local `.pretty` library only when the user generates the component. Footprints are optional for symbol generation, but required before normal PCB layout.
 - **Search behavior.** Add and Update modes support LCSC-code and keyword searches. The primary search field accepts a passive value, part number or keyword. Basic listings are ranked first for both passive-value and general keyword searches. The **Basic parts only** checkbox can exclude Extended and unclassified listings; it is off by default so alternatives remain available. Exact LCSC-code lookups remain exact. Optional package/KiCad footprint and tolerance filters live in a collapsed, one-row Advanced filters strip. Its two editable dropdowns use built-in common-value suggestions, not live catalogue options; custom values can be typed. Active constraints are summarized beside the funnel icon. Choosing a preset does not search automatically: Search or Enter sends the main query to JLCPCB and applies the package/tolerance constraints to the returned records. Up to five matching passive candidates are shown; Update alternatives populate the proposal without replacing the selected symbol. Other keyword matches are candidates to review, not guaranteed electrical equivalents.
 - **Placement.** Add mode inserts the generated symbol at the schematic page center through IPC, focuses it in Eeschema and leaves it selected. Move it to its final position with KiCad's normal Move tool; no coordinates are requested.
-- **No pin-map or PCB asset generation.** The add-on does not infer IC pin assignments/electrical types, create copper footprints or generate 3D models. It copies the symbol pin definitions the user selected; verify symbol and footprint compatibility against the datasheet before board use or ordering.
-- **Supplier data.** Catalogue detail and search use JLCPCB website endpoints that are not a supported public components API and may change. Source/freshness labels distinguish direct JLCPCB results, community fallbacks and cached snapshots.
+- **No pin-map or 3D generation.** The add-on does not infer IC pin assignments/electrical types or generate 3D models. External symbols and footprints are copied from public EasyEDA CAD data; verify pin numbers, electrical types, pad geometry, package dimensions and ratings against the manufacturer datasheet before board use or ordering.
+- **Supplier and CAD data.** JLCPCB catalogue detail/search and EasyEDA CAD discovery use public website endpoints, not contracted public component APIs; they may change or rate-limit requests. EasyEDA CAD lookup requires no credentials. Source/freshness and CAD preview labels distinguish supplier catalogue data from external CAD candidates.
 - **Indicative availability.** Stock and unit prices are snapshots, not a quote, reservation or purchase guarantee. Related MPN-search results are comparison candidates, not guaranteed drop-in replacements.
 - **Separate properties window.** Component Properties is a separate add-on window; the KiCad IPC plugin API does not provide extension tabs inside KiCad's built-in Symbol Properties dialog.
 
@@ -145,6 +145,6 @@ CI checks Python 3.12–3.14 and runs a live visual job with KiCad nightly, Eesc
 
 - **[User guide](docs/user-guide.md)** — all three actions, linking fields, catalogue data, workflows and troubleshooting.
 - **[Visual evidence](docs/visual-evidence.md)** — screenshot inventory, real-GUI capture design, provenance and reproduction.
-- **[CAD asset retrieval feasibility](docs/cad-asset-retrieval-feasibility.md)** — feasibility, providers, licensing, preview UI and safe project-library import design.
+- **[CAD asset retrieval](docs/cad-asset-retrieval-feasibility.md)** — provider behavior, credential-free access, licensing, preview UI and safe project-library import design.
 - **[Changelog](CHANGELOG.md)** — implementation history.
 - **[License](LICENSE)** — MIT.
