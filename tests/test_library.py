@@ -137,7 +137,7 @@ class ProjectLibraryTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.project = Path(self.temp.name)
-        (self.project / "demo.kicad_pro").write_text("{}\\n", encoding="utf-8")
+        (self.project / "demo.kicad_pro").write_text("{}\n", encoding="utf-8")
         self.device = self.project / "Device.kicad_sym"
         self.device.write_text(DEVICE_LIBRARY, encoding="utf-8")
         self.table = self.project / "sym-lib-table"
@@ -233,7 +233,7 @@ class ProjectLibraryTests(unittest.TestCase):
             self.assertIn("hide", [child.value for child in effects if hasattr(child, "value")])
 
         table_text = self.table.read_text(encoding="utf-8")
-        self.assertIn("KIPRJMOD}/JLCPCB_C12345.pretty", entry.table_path.read_text(encoding="utf-8"))
+        self.assertIn("JLCPCB_Generated.kicad_sym", table_text)
 
 
     def test_copies_a_multi_pin_non_passive_symbol_and_allows_missing_footprint(self):
@@ -477,7 +477,7 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
         (self.project / "demo.kicad_pro").write_text("{}\\n", encoding="utf-8")
         self.source = self.project / "candidate.kicad_mod"
         self.source.write_text(
-            '(footprint "Example_0402" (version 20240108) (generator "euc2k"))\\n',
+            '(footprint "Example_0402" (version 20240108) (generator "euc2k"))\n',
             encoding="utf-8",
         )
 
@@ -512,7 +512,7 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
             lcsc="C12345",
         )
         target = entry.library_path / "Example_0402.kicad_mod"
-        target.write_text('(footprint "user-edited")\\n', encoding="utf-8")
+        target.write_text('(footprint "user-edited")\n', encoding="utf-8")
         before = target.read_bytes()
         with self.assertRaises(SymbolLibraryConflict):
             register_project_footprint_library(
@@ -526,7 +526,7 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
         library = self.project / "JLCPCB_C12345.pretty"
         library.mkdir()
         foreign = library / "user.kicad_mod"
-        foreign.write_text('(footprint "user")\\n', encoding="utf-8")
+        foreign.write_text('(footprint "user")\n', encoding="utf-8")
         with self.assertRaises(SymbolLibraryConflict):
             register_project_footprint_library(
                 self.project,
