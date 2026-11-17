@@ -145,5 +145,6 @@ CI checks Python 3.12–3.14 and runs a live visual job with KiCad nightly, Eesc
 
 - **[User guide](docs/user-guide.md)** — all three actions, linking fields, catalogue data, workflows and troubleshooting.
 - **[Visual evidence](docs/visual-evidence.md)** — screenshot inventory, real-GUI capture design, provenance and reproduction.
+- **[CAD asset retrieval feasibility](docs/cad-asset-retrieval-feasibility.md)** — feasibility, providers, licensing, preview UI and safe project-library import design.
 - **[Changelog](CHANGELOG.md)** — implementation history.
 - **[License](LICENSE)** — MIT.
