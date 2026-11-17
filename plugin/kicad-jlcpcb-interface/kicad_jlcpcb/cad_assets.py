@@ -6,6 +6,7 @@ contracted API. This adapter is deliberately best-effort, bounded and cached.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -283,6 +284,12 @@ class EasyEdaCadProvider:
             symbol_path = folder / symbol_filename
             if not symbol_path.is_file() or symbol_path.is_symlink():
                 return None
+            symbol_bytes = symbol_path.read_bytes()
+            if (
+                manifest.get("symbol_sha256")
+                and hashlib.sha256(symbol_bytes).hexdigest() != manifest["symbol_sha256"]
+            ):
+                return None
             footprint_name = str(manifest.get("footprint_name") or "")
             footprint_filename = str(manifest.get("footprint_filename") or "")
             footprint_path = folder / "source.pretty" / footprint_filename if footprint_filename else None
@@ -292,6 +299,9 @@ class EasyEdaCadProvider:
                 or footprint_path.is_symlink()
             ):
                 return None
+            if footprint_path is not None and manifest.get("footprint_sha256"):
+                if hashlib.sha256(footprint_path.read_bytes()).hexdigest() != manifest["footprint_sha256"]:
+                    return None
             symbol_png_path = folder / "symbol-preview.png"
             footprint_png_path = folder / "footprint-preview.png"
             return CadAssetResult(
@@ -339,14 +349,17 @@ class EasyEdaCadProvider:
                     package_url = _PACKAGE_URL.format(uuid=package_uuid) + "?" + urlencode(
                         {"version": "6.5.60", "uuid": package_uuid}
                     )
-                    package_payload = self._request_json(package_url)
-                    package_result = package_payload.get("result")
-                    if isinstance(package_result, dict) and isinstance(
-                        package_result.get("dataStr"), (dict, str)
-                    ):
-                        package = package_result
-                    else:
-                        warnings.append("EasyEDA supplied no convertible footprint geometry.")
+                    try:
+                        package_payload = self._request_json(package_url)
+                        package_result = package_payload.get("result")
+                        if isinstance(package_result, dict) and isinstance(
+                            package_result.get("dataStr"), (dict, str)
+                        ):
+                            package = package_result
+                        else:
+                            warnings.append("EasyEDA supplied no convertible footprint geometry.")
+                    except CadAssetError as exc:
+                        warnings.append(f"Footprint CAD could not be retrieved: {exc}")
 
         try:
             from euc2k.converter import convert_response
@@ -354,13 +367,40 @@ class EasyEdaCadProvider:
             raise CadAssetError(
                 "The EasyEDA-to-KiCad converter is unavailable. Recreate the KiCad plugin environment."
             ) from exc
+
+        def symbol_only_payload() -> dict[str, Any]:
+            """Remove the unresolved package pointer so the converter can retain the symbol."""
+            fallback = copy.deepcopy(payload)
+            fallback_result = fallback.get("result", {})
+            fallback_data = fallback_result.get("dataStr")
+            if isinstance(fallback_data, str):
+                fallback_data = json.loads(fallback_data)
+            if isinstance(fallback_data, dict):
+                fallback_data["head"] = dict(fallback_data.get("head") or {})
+                fallback_data["head"].pop("puuid", None)
+                fallback_result["dataStr"] = fallback_data
+            fallback_result.pop("packageDetail", None)
+            return fallback
+
+        conversion_payload = payload if package is not None else symbol_only_payload()
         try:
-            converted = convert_response(payload, package)
+            converted = convert_response(conversion_payload, package)
         except Exception as exc:
-            raise CadAssetError(
-                "EasyEDA returned CAD data, but its geometry could not be converted safely: "
-                f"{exc}"
-            ) from exc
+            if package is None:
+                raise CadAssetError(
+                    "EasyEDA returned CAD data, but its symbol geometry could not be converted: "
+                    f"{exc}"
+                ) from exc
+            warnings.append(
+                f"Footprint geometry could not be converted; retaining symbol only: {exc}"
+            )
+            try:
+                converted = convert_response(symbol_only_payload(), None)
+            except Exception as symbol_exc:
+                raise CadAssetError(
+                    "EasyEDA returned CAD data, but its symbol geometry could not be converted: "
+                    f"{symbol_exc}"
+                ) from symbol_exc
 
         folder = self.cache_directory / lcsc
         folder.mkdir(parents=True, exist_ok=True)
