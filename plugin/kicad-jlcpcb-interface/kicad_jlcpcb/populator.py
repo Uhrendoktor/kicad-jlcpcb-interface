@@ -591,6 +591,7 @@ class ComponentPopulator:
         self.cad_preview.frame.grid(
             row=2, column=0, sticky="ew", pady=(0, 12)
         )
+        self.cad_preview.frame.grid_remove()
 
         self.candidate_section = ttk.Frame(
             content, style="Card.TFrame", padding=12
@@ -1446,6 +1447,7 @@ class ComponentPopulator:
         self.cad_status_var.set(
             "External CAD is requested only when a local KiCad mapping is missing."
         )
+        self.cad_preview.frame.grid_remove()
 
     def _show_cad_assets(self, assets: CadAssetResult | None) -> None:
         """Display available symbol and footprint previews independently."""
@@ -1548,6 +1550,7 @@ class ComponentPopulator:
             return
         self._cad_pending = True
         self._cad_attempted = True
+        self.cad_preview.frame.grid()
         self.cad_status_var.set(
             "Searching public EasyEDA CAD by LCSC number (no credentials required)…"
         )
