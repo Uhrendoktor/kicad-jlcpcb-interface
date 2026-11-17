@@ -495,7 +495,8 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
         self.assertTrue((entry.library_path / "Example_0402.kicad_mod").is_file())
         table = parse_sexpr(entry.table_path.read_text(encoding="utf-8"))
         self.assertEqual(table[0].value, "fp_lib_table")
-        self.assertIn("KIPRJMOD}/JLCPCB_C12345.pretty", entry.table_path.read_text(encoding="utf-8"))
+        table_text = entry.table_path.read_text(encoding="utf-8")
+        self.assertIn("KIPRJMOD}/JLCPCB_C12345.pretty", table_text)
 
         again = register_project_footprint_library(
             self.project / "demo.kicad_pro",
