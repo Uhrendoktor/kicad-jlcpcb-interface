@@ -521,6 +521,19 @@ def find_symbol_library(
     )
 
 
+def symbol_library_entry_available(library_id: str, kicad=None) -> bool:
+    """Return whether a concrete Library:Symbol identifier exists in local KiCad libraries."""
+    parts = str(library_id or "").strip().split(":", 1)
+    if len(parts) != 2 or not all(parts):
+        return False
+    try:
+        path = find_symbol_library(parts[0], kicad)
+        root = parse_sexpr(path.read_text(encoding="utf-8"))
+        return _head(root) == "kicad_symbol_lib" and _root_symbol(root, parts[1]) is not None
+    except (OSError, UnicodeError, SymbolLibraryError, ValueError):
+        return False
+
+
 def find_device_symbol_library(kicad=None, explicit: str | Path | None = None) -> Path:
     """Backward-compatible Device library lookup."""
     return find_symbol_library("Device", kicad, explicit)
@@ -702,7 +715,7 @@ def register_project_footprint_library(
     """
     project_dir = _project_directory(project_or_path)
     code = str(lcsc or "").strip().upper()
-    if not re.fullmatch(r"C\\d{3,}", code):
+    if not re.fullmatch(r"C\d{3,}", code):
         raise SymbolLibraryError("A validated LCSC number is required for footprint import.")
 
     source_path = Path(source_file).expanduser().resolve(strict=True)
