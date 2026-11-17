@@ -11,6 +11,7 @@ PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb import populator as populator_module  # noqa: E402
+from kicad_jlcpcb.cad_assets import CadAssetResult  # noqa: E402
 from kicad_jlcpcb.draft import build_component_draft, symbol_library_id  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     MAX_CATALOGUE_IMAGE_BYTES,
@@ -710,6 +711,94 @@ class PassiveActionModeResolutionTests(unittest.TestCase):
         schematic = SimpleNamespace(get_symbols=lambda: [selected], document=object())
         with self.assertRaisesRegex(ValueError, "not an editable schematic symbol"):
             resolve_passive_action_target(schematic, FakeKiCad({}), [selected])
+
+
+
+class CadSuggestionTests(unittest.TestCase):
+    class Variable:
+        def __init__(self, value=""):
+            self.value = value
+
+        def get(self):
+            return self.value
+
+        def set(self, value):
+            self.value = value
+
+    def setUp(self):
+        import tempfile
+
+        self.temp = tempfile.TemporaryDirectory()
+        root = Path(self.temp.name)
+        symbol_file = root / "external.kicad_sym"
+        symbol_file.write_text('(kicad_symbol_lib (version 20231120))', encoding="utf-8")
+        footprint_dir = root / "source.pretty"
+        footprint_dir.mkdir()
+        footprint_file = footprint_dir / "external.kicad_mod"
+        footprint_file.write_text('(footprint "External_Package")', encoding="utf-8")
+        self.assets = CadAssetResult(
+            lcsc="C12345",
+            component_uuid="0123456789abcdef0123456789abcdef",
+            source="EasyEDA public LCSC CAD",
+            symbol_name="External",
+            symbol_library_id="EasyEDA_01234567:External",
+            symbol_library_path=symbol_file,
+            footprint_name="External_Package",
+            footprint_library_id="JLCPCB_C12345:External_Package",
+            footprint_path=footprint_file,
+            symbol_preview_png=None,
+            footprint_preview_png=None,
+        )
+        self.draft = build_component_draft(
+            JlcPartDetails(
+                lcsc="C12345",
+                description="Unclassified module",
+                manufacturer_part_number="MODULE-1",
+                category="Other",
+            )
+        )
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def populator(self, *, create_mode, manual_fields=()):
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = create_mode
+        populator.draft = self.draft
+        populator.symbol_hint_var = self.Variable(self.draft.symbol_hint)
+        populator.footprint_var = self.Variable("")
+        populator._manual_proposal_fields = set(manual_fields)
+        populator._setting_proposal_field = False
+        return populator
+
+    def test_add_mode_prefills_external_symbol_and_footprint(self):
+        populator = self.populator(create_mode=True)
+        populator._apply_cad_suggestions(self.assets)
+        self.assertEqual(
+            populator.symbol_hint_var.get(),
+            "EasyEDA_01234567:External",
+        )
+        self.assertEqual(
+            populator.footprint_var.get(),
+            "JLCPCB_C12345:External_Package",
+        )
+        self.assertEqual(populator.draft.symbol_hint, populator.symbol_hint_var.get())
+        self.assertEqual(populator.draft.footprint, populator.footprint_var.get())
+
+    def test_late_cad_result_does_not_replace_a_manually_edited_footprint(self):
+        populator = self.populator(create_mode=True, manual_fields={"footprint"})
+        populator.footprint_var.set("My_Footprints:Verified")
+        populator._apply_cad_suggestions(self.assets)
+        self.assertEqual(populator.symbol_hint_var.get(), self.assets.symbol_library_id)
+        self.assertEqual(populator.footprint_var.get(), "My_Footprints:Verified")
+        self.assertEqual(populator.draft.footprint, "")
+
+    def test_update_mode_only_prefills_footprint_and_never_symbol(self):
+        populator = self.populator(create_mode=False)
+        populator._apply_cad_suggestions(self.assets)
+        self.assertEqual(populator.footprint_var.get(), self.assets.footprint_library_id)
+        self.assertEqual(populator.draft.symbol_hint, "")
+
 
 
 if __name__ == "__main__":
