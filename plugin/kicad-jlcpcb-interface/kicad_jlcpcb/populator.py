@@ -1645,12 +1645,11 @@ class ComponentPopulator:
             self._set_proposal_field(
                 "reference_prefix", self.reference_prefix_var, draft.reference_prefix
             )
-            external_symbol_selected = bool(
-                self._cad_assets is not None
-                and draft.symbol_hint == self._cad_assets.symbol_library_id
+            external_symbol_available = bool(
+                self._cad_assets is not None and self._cad_assets.has_symbol
             )
             self._set_automatic_passive_mode(
-                _is_automatically_mapped_passive(draft) and not external_symbol_selected,
+                _is_automatically_mapped_passive(draft) and not external_symbol_available,
                 draft,
             )
         else:
