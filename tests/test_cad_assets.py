@@ -59,8 +59,20 @@ class FakeOpener:
             payload = {
                 "success": True,
                 "result": [
-                    {"docType": "2", "svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'/>"},
-                    {"docType": "4", "svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 10'/>"},
+                    {
+                        "docType": "2",
+                        "svg": (
+                            "<svg xmlns='http://www.w3.org/2000/svg' "
+                            "viewBox='0 0 10 10'/>"
+                        ),
+                    },
+                    {
+                        "docType": "4",
+                        "svg": (
+                            "<svg xmlns='http://www.w3.org/2000/svg' "
+                            "viewBox='0 0 20 10'/>"
+                        ),
+                    },
                 ],
             }
         else:
