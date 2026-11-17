@@ -63,7 +63,7 @@ The [`easyeda2kicad` project](https://github.com/uPesy/easyeda2kicad.py) demonst
 
 ### 4. Existing plugin precedent
 
-The third-party [KiCad LCSC Manager](https://github.com/openscopeproject/ kicad-lcsc-manager) demonstrates the intended user experience: LCSC/EasyEDA lookup, symbol and footprint SVG previews, selection of downloadable CAD and import into KiCad libraries. It is useful as a product/UX precedent, not as code to copy. Check its complete dependency and licence chain before reusing any implementation.
+The third-party [KiCad LCSC Manager](https://github.com/hulryung/kicad-lcsc-manager) demonstrates the intended user experience: LCSC/EasyEDA lookup, symbol and footprint SVG previews, selection of downloadable CAD and import into KiCad libraries. It is useful as a product/UX precedent, not as code to copy. Check its complete dependency and licence chain before reusing any implementation.
 
 ## Recommended behavior
 
@@ -153,7 +153,7 @@ The import process should validate archive/response type, KiCad S-expression roo
 ### Stage 3 — project import
 
 - Implement separate project-local symbol and footprint library writers and table registration.
-- Import assets atomically during the reviewed Add/Gene­rate action.
+- Import assets atomically during the reviewed Add/Generate action.
 - Populate Symbol and Footprint with the registered identifiers and allow manual override before completion.
 - Keep Update mode non-destructive; preview-only by default.
 
