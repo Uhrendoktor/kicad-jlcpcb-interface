@@ -750,7 +750,8 @@ def register_project_footprint_library(
     if library_path.exists():
         if not library_path.is_dir() or marker_path.is_symlink() or not marker_path.is_file():
             raise SymbolLibraryConflict(
-                f"Existing {library_path.name} is not an owned JLCPCB import; it was left untouched."
+                f"Existing {library_path.name} is not an owned JLCPCB import; "
+                "it was left untouched."
             )
         try:
             marker = json.loads(marker_path.read_text(encoding="utf-8"))
