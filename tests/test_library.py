@@ -20,7 +20,9 @@ from kicad_jlcpcb.library import (  # noqa: E402
     dump_sexpr,
     generate_project_library_symbol,
     parse_sexpr,
+    register_project_footprint_library,
     reload_project_symbol_library,
+    symbol_library_entry_available,
 )
 
 DEVICE_LIBRARY = r'''
@@ -470,3 +472,79 @@ class ProjectLibraryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProjectFootprintLibraryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.project = Path(self.temp.name)
+        (self.project / "demo.kicad_pro").write_text("{}\\n", encoding="utf-8")
+        self.source = self.project / "candidate.kicad_mod"
+        self.source.write_text(
+            '(footprint "Example_0402" (version 20240108) (generator "euc2k"))\\n',
+            encoding="utf-8",
+        )
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_registers_project_local_footprint_and_table_entry(self):
+        entry = register_project_footprint_library(
+            self.project / "demo.kicad_pro",
+            self.source,
+            lcsc="C12345",
+        )
+        self.assertEqual(entry.footprint_id, "JLCPCB_C12345:Example_0402")
+        self.assertTrue(entry.created)
+        self.assertTrue((entry.library_path / "Example_0402.kicad_mod").is_file())
+        table = parse_sexpr(entry.table_path.read_text(encoding="utf-8"))
+        self.assertEqual(table[0].value, "fp_lib_table")
+        self.assertIn('"\${KIPRJMOD}/JLCPCB_C12345.pretty"', entry.table_path.read_text(encoding="utf-8"))
+
+        again = register_project_footprint_library(
+            self.project / "demo.kicad_pro",
+            self.source,
+            lcsc="C12345",
+        )
+        self.assertTrue(again.already_present)
+        self.assertFalse(again.created)
+
+    def test_refuses_to_replace_a_modified_imported_footprint(self):
+        entry = register_project_footprint_library(
+            self.project,
+            self.source,
+            lcsc="C12345",
+        )
+        target = entry.library_path / "Example_0402.kicad_mod"
+        target.write_text('(footprint "user-edited")\\n', encoding="utf-8")
+        before = target.read_bytes()
+        with self.assertRaises(SymbolLibraryConflict):
+            register_project_footprint_library(
+                self.project,
+                self.source,
+                lcsc="C12345",
+            )
+        self.assertEqual(target.read_bytes(), before)
+
+    def test_refuses_foreign_or_symlinked_footprint_library(self):
+        library = self.project / "JLCPCB_C12345.pretty"
+        library.mkdir()
+        foreign = library / "user.kicad_mod"
+        foreign.write_text('(footprint "user")\\n', encoding="utf-8")
+        with self.assertRaises(SymbolLibraryConflict):
+            register_project_footprint_library(
+                self.project,
+                self.source,
+                lcsc="C12345",
+            )
+
+    def test_resolves_only_existing_symbol_library_entries(self):
+        symbols = self.project / "symbols"
+        symbols.mkdir()
+        (symbols / "Device.kicad_sym").write_text(DEVICE_LIBRARY, encoding="utf-8")
+        with patch.dict("os.environ", {"KICAD_SYMBOL_DIR": str(symbols)}):
+            self.assertTrue(symbol_library_entry_available("Device:R"))
+            self.assertFalse(symbol_library_entry_available("Device:Missing"))
+            self.assertFalse(symbol_library_entry_available("BadIdentifier"))
+
+
