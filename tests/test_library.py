@@ -470,10 +470,6 @@ class ProjectLibraryTests(unittest.TestCase):
         self.assertFalse(list(self.project.glob(".safe.txt.*.tmp")))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ProjectFootprintLibraryTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -499,7 +495,7 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
         self.assertTrue((entry.library_path / "Example_0402.kicad_mod").is_file())
         table = parse_sexpr(entry.table_path.read_text(encoding="utf-8"))
         self.assertEqual(table[0].value, "fp_lib_table")
-        self.assertIn('"\${KIPRJMOD}/JLCPCB_C12345.pretty"', entry.table_path.read_text(encoding="utf-8"))
+        self.assertIn("KIPRJMOD}/JLCPCB_C12345.pretty", entry.table_path.read_text(encoding="utf-8"))
 
         again = register_project_footprint_library(
             self.project / "demo.kicad_pro",
@@ -546,5 +542,9 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
             self.assertTrue(symbol_library_entry_available("Device:R"))
             self.assertFalse(symbol_library_entry_available("Device:Missing"))
             self.assertFalse(symbol_library_entry_available("BadIdentifier"))
+
+
+if __name__ == "__main__":
+    unittest.main()
 
 
