@@ -1786,21 +1786,22 @@ class ComponentPopulator:
                 if self.kicad is None:
                     raise RuntimeError("The KiCad project connection is unavailable.")
                 project = self.schematic.get_project()
+                cad_assets = getattr(self, "_cad_assets", None)
                 external_symbol_library = None
                 if (
-                    self._cad_assets is not None
-                    and draft.symbol_hint == self._cad_assets.symbol_library_id
-                    and self._cad_assets.has_symbol
+                    cad_assets is not None
+                    and draft.symbol_hint == cad_assets.symbol_library_id
+                    and cad_assets.has_symbol
                 ):
-                    external_symbol_library = self._cad_assets.symbol_library_path
+                    external_symbol_library = cad_assets.symbol_library_path
                 if (
-                    self._cad_assets is not None
-                    and draft.footprint == self._cad_assets.footprint_library_id
-                    and self._cad_assets.has_footprint
+                    cad_assets is not None
+                    and draft.footprint == cad_assets.footprint_library_id
+                    and cad_assets.has_footprint
                 ):
                     imported_footprint = register_project_footprint_library(
                         project,
-                        self._cad_assets.footprint_path,
+                        cad_assets.footprint_path,
                         lcsc=draft.lcsc,
                     )
                     if imported_footprint.footprint_id != draft.footprint:
@@ -1894,7 +1895,9 @@ class ComponentPopulator:
             pass
         state["executor"].shutdown(wait=True, cancel_futures=True)
         state["image_executor"].shutdown(wait=True, cancel_futures=True)
-        state["cad_executor"].shutdown(wait=True, cancel_futures=True)
+        cad_executor = state.get("cad_executor")
+        if cad_executor is not None:
+            cad_executor.shutdown(wait=True, cancel_futures=True)
 
         # Drop every widget, Tk variable, queue and callback reference on the
         # owning UI thread. Keep only the result metadata that the caller may
@@ -1914,6 +1917,7 @@ class ComponentPopulator:
                 "library_id",
                 "executor",
                 "image_executor",
+                "cad_executor",
             )
         }
         state.clear()
