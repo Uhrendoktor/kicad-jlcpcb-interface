@@ -224,6 +224,61 @@ class CadAssetProviderTests(unittest.TestCase):
             all(request.get_header("Authorization") is None for request in opener.requests)
         )
 
+
+    def test_svg_endpoint_order_supports_multiunit_symbols_without_doctype(self):
+        class OrderedSvgOpener(FakeOpener):
+            def __call__(inner_self, request, timeout):
+                inner_self.requests.append(request)
+                url = request.full_url
+                if urlparse(url).path.endswith("/components"):
+                    return FakeResponse(
+                        json.dumps(
+                            {
+                                "success": True,
+                                "result": {
+                                    "uuid": "0123456789abcdef0123456789abcdef",
+                                    "title": "Multi-unit device",
+                                    "dataStr": {"head": {}, "shape": []},
+                                    "packageDetail": {"dataStr": {"head": {}, "shape": []}},
+                                },
+                            }
+                        ).encode("utf-8"),
+                        url,
+                    )
+                if urlparse(url).path.endswith("/svgs"):
+                    return FakeResponse(
+                        json.dumps(
+                            {
+                                "success": True,
+                                "result": [
+                                    {"svg": "<svg>symbol-unit-one</svg>"},
+                                    {"svg": "<svg>symbol-unit-two</svg>"},
+                                    {"svg": "<svg>footprint</svg>"},
+                                ],
+                            }
+                        ).encode("utf-8"),
+                        url,
+                    )
+                raise AssertionError(f"Unexpected request: {url}")
+
+        provider = EasyEdaCadProvider(
+            self.cache,
+            opener=OrderedSvgOpener(),
+            minimum_request_interval=4,
+            sleep=lambda _seconds: None,
+        )
+        with (
+            self.install_converter_stub(self.converted()),
+            patch(
+                "kicad_jlcpcb.cad_assets.render_svg_preview",
+                side_effect=lambda svg, **_kwargs: svg.encode("utf-8"),
+            ),
+        ):
+            result = provider.lookup("C12345")
+
+        self.assertEqual(result.symbol_preview_png, b"<svg>symbol-unit-one</svg>")
+        self.assertEqual(result.footprint_preview_png, b"<svg>footprint</svg>")
+
     def test_symbol_only_component_keeps_footprint_independent(self):
         with (
             self.install_converter_stub(self.converted(with_footprint=False)),
