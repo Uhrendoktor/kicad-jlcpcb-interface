@@ -16,12 +16,12 @@ The work is therefore an extension of the current architecture, not a redesign. 
 
 The recommended design is to **search local KiCad libraries first, then query an external CAD provider when no suitable local mapping is found**. Download candidates and previews in the background, populate editable proposals, and defer changing a project library or schematic until the user generates/imports the reviewed component.
 
-## Implementation status (2026-11-17)
+## Implementation status (2026-11-18)
 
 The initial credential-free implementation is now present in the plugin:
 
-- Existing reviewed KiCad mappings are checked first. A public EasyEDA lookup by normalized LCSC code runs only when Add mode has no usable local symbol or a symbol/footprint field remains unresolved; Update mode can look up CAD for an unresolved footprint without changing the selected symbol identity.
-- The EasyEDA `/api/products/{LCSC}/components` endpoint supplies component geometry and a public package-detail fallback; `/api/products/{LCSC}/svgs` supplies separate symbol and footprint previews when available. No API key, login, browser cookie or user credential is used.
+- Existing KiCad mappings are checked first across installed stock directories, user-global `sym-lib-table` / `fp-lib-table` entries, and the active project's library tables. A public EasyEDA lookup by normalized LCSC code runs only when Add mode has no usable local symbol or a footprint field remains unresolved; Update mode looks up CAD only for an unresolved footprint without changing the selected symbol identity.
+- The EasyEDA `/api/products/{LCSC}/components` endpoint supplies component geometry and a public package-detail fallback; `/api/products/{LCSC}/svgs` supplies previews. The preview adapter handles explicit `docType` metadata or the common order of symbol-unit SVGs followed by the footprint SVG. No API key, login, browser cookie or user credential is used.
 - Conversion uses the independent MIT-licensed `euc2k` package rather than vendoring the AGPL `easyeda2kicad` converter. SVG preview rasterization uses `resvg_py.svg_to_bytes`, the same renderer API used by the companion `kicad-blocks` repository.
 - CAD retrieval and rendering run in a worker. Results are scoped to the selected LCSC code, partial symbol-only results are retained, and dirty-field tracking prevents late responses overwriting manual edits.
 - Add mode proposes external `Library:Symbol` and `Library:Footprint` values in the existing editable inputs. External symbols are copied through the existing project-local symbol generator; retrieved footprints are registered in a per-LCSC project-local `.pretty` library and `fp-lib-table` only when the user runs Generate.
@@ -100,7 +100,7 @@ Extend the shared catalogue preview workspace with a CAD-assets section containi
 
 Show each preview only when that asset is available. Include source attribution and a status such as “local KiCad library”, “EasyEDA candidate”, “preview unavailable” or “download/conversion failed”. Do not reuse the supplier product photo as a CAD preview.
 
-The EasyEDA endpoint returns SVG, while the current Tk preview path uses Pillow and expects raster image bytes. The implementation will need an SVG rendering step (for example, an optional, validated SVG renderer) or a KiCad-native render path. Sanitize/validate SVG before rendering; never load arbitrary external references/scripts. Run rendering off the Tk UI thread, enforce response-size and time limits, then update Tk widgets on the main thread. Keep Pillow-only installations functional when a CAD renderer is unavailable.
+The EasyEDA endpoint returns SVG, while the Tk preview path uses Pillow-backed raster image bytes. The implementation uses `resvg_py` (as in `kicad-blocks`) to rasterize sanitized SVG in the CAD worker, then updates Tk widgets on the main thread. When the renderer is unavailable or the SVG cannot be validated, the CAD panels show an explicit unavailable state and the manual workflow remains usable.
 
 ### Add mode
 
