@@ -18,9 +18,13 @@ from kicad_jlcpcb.library import (  # noqa: E402
     SymbolLibraryError,
     _atomic_write,
     dump_sexpr,
+    footprint_library_entry_available,
     generate_project_library_symbol,
     parse_sexpr,
+    register_project_cad_credits,
+    register_project_footprint_library,
     reload_project_symbol_library,
+    symbol_library_entry_available,
 )
 
 DEVICE_LIBRARY = r'''
@@ -135,7 +139,7 @@ class ProjectLibraryTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.project = Path(self.temp.name)
-        (self.project / "demo.kicad_pro").write_text("{}\\n", encoding="utf-8")
+        (self.project / "demo.kicad_pro").write_text("{}\n", encoding="utf-8")
         self.device = self.project / "Device.kicad_sym"
         self.device.write_text(DEVICE_LIBRARY, encoding="utf-8")
         self.table = self.project / "sym-lib-table"
@@ -231,7 +235,7 @@ class ProjectLibraryTests(unittest.TestCase):
             self.assertIn("hide", [child.value for child in effects if hasattr(child, "value")])
 
         table_text = self.table.read_text(encoding="utf-8")
-        self.assertIn('"${KIPRJMOD}/JLCPCB_Generated.kicad_sym"', table_text)
+        self.assertIn("JLCPCB_Generated.kicad_sym", table_text)
 
 
     def test_copies_a_multi_pin_non_passive_symbol_and_allows_missing_footprint(self):
@@ -468,5 +472,393 @@ class ProjectLibraryTests(unittest.TestCase):
         self.assertFalse(list(self.project.glob(".safe.txt.*.tmp")))
 
 
+class ProjectFootprintLibraryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.project = Path(self.temp.name)
+        (self.project / "demo.kicad_pro").write_text("{}\\n", encoding="utf-8")
+        self.source = self.project / "candidate.kicad_mod"
+        self.source.write_text(
+            '(footprint "Example_0402" (version 20240108) (generator "euc2k"))\n',
+            encoding="utf-8",
+        )
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_registers_project_local_footprint_and_table_entry(self):
+        entry = register_project_footprint_library(
+            self.project / "demo.kicad_pro",
+            self.source,
+            lcsc="C12345",
+        )
+        self.assertEqual(entry.footprint_id, "JLCPCB_C12345:Example_0402")
+        self.assertTrue(entry.created)
+        self.assertTrue((entry.library_path / "Example_0402.kicad_mod").is_file())
+        table = parse_sexpr(entry.table_path.read_text(encoding="utf-8"))
+        self.assertEqual(table[0].value, "fp_lib_table")
+        table_text = entry.table_path.read_text(encoding="utf-8")
+        self.assertIn("KIPRJMOD}/JLCPCB_C12345.pretty", table_text)
+
+        again = register_project_footprint_library(
+            self.project / "demo.kicad_pro",
+            self.source,
+            lcsc="C12345",
+        )
+        self.assertTrue(again.already_present)
+        self.assertFalse(again.created)
+
+    def test_refuses_to_replace_a_modified_imported_footprint(self):
+        entry = register_project_footprint_library(
+            self.project,
+            self.source,
+            lcsc="C12345",
+        )
+        target = entry.library_path / "Example_0402.kicad_mod"
+        target.write_text('(footprint "user-edited")\n', encoding="utf-8")
+        before = target.read_bytes()
+        with self.assertRaises(SymbolLibraryConflict):
+            register_project_footprint_library(
+                self.project,
+                self.source,
+                lcsc="C12345",
+            )
+        self.assertEqual(target.read_bytes(), before)
+
+    def test_refuses_foreign_or_symlinked_footprint_library(self):
+        library = self.project / "JLCPCB_C12345.pretty"
+        library.mkdir()
+        foreign = library / "user.kicad_mod"
+        foreign.write_text('(footprint "user")\n', encoding="utf-8")
+        with self.assertRaises(SymbolLibraryConflict):
+            register_project_footprint_library(
+                self.project,
+                self.source,
+                lcsc="C12345",
+            )
+
+    def test_resolves_only_existing_symbol_library_entries(self):
+        symbols = self.project / "symbols"
+        symbols.mkdir()
+        (symbols / "Device.kicad_sym").write_text(DEVICE_LIBRARY, encoding="utf-8")
+        with patch.dict("os.environ", {"KICAD_SYMBOL_DIR": str(symbols)}):
+            self.assertTrue(symbol_library_entry_available("Device:R"))
+            self.assertFalse(symbol_library_entry_available("Device:Missing"))
+            self.assertFalse(symbol_library_entry_available("BadIdentifier"))
+
+
+
+
+class ProjectCadCreditsTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.project = Path(self.temp.name)
+        self.source = self.project / "CREDITS.txt"
+        self.source.write_text(
+            "Source: https://easyeda.com/component/example\n"
+            "Author: Example contributor\n",
+            encoding="utf-8",
+        )
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_registers_attribution_as_project_sidecar_idempotently(self):
+        target = register_project_cad_credits(
+            self.project,
+            self.source,
+            lcsc="C12345",
+        )
+        self.assertEqual(target.name, "JLCPCB_C12345_CREDITS.txt")
+        self.assertEqual(
+            target.read_text(encoding="utf-8"),
+            self.source.read_text(encoding="utf-8"),
+        )
+        again = register_project_cad_credits(
+            self.project,
+            self.source,
+            lcsc="C12345",
+        )
+        self.assertEqual(again, target)
+
+    def test_refuses_to_replace_existing_user_attribution(self):
+        target = self.project / "JLCPCB_C12345_CREDITS.txt"
+        target.write_text("User-owned notes\n", encoding="utf-8")
+        before = target.read_bytes()
+        with self.assertRaises(SymbolLibraryConflict):
+            register_project_cad_credits(
+                self.project,
+                self.source,
+                lcsc="C12345",
+            )
+        self.assertEqual(target.read_bytes(), before)
+
+
+
+
+class ProjectLibraryAvailabilityTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.project = Path(self.temp.name)
+        (self.project / "demo.kicad_pro").write_text("{}\n", encoding="utf-8")
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_recognizes_project_registered_footprint_library_entries(self):
+        library = self.project / "MyParts.pretty"
+        library.mkdir()
+        (library / "Example_0402.kicad_mod").write_text(
+            '(footprint "Example_0402")\n',
+            encoding="utf-8",
+        )
+        (self.project / "fp-lib-table").write_text(
+            '(fp_lib_table (version 7) '
+            '(lib (name "MyParts") (type "KiCad") '
+            '(uri "${KIPRJMOD}/MyParts.pretty") (options "") (descr "")))\n',
+            encoding="utf-8",
+        )
+        self.assertTrue(
+            footprint_library_entry_available(
+                "MyParts:Example_0402",
+                project_or_path=self.project,
+            )
+        )
+        self.assertFalse(
+            footprint_library_entry_available(
+                "MyParts:Missing",
+                project_or_path=self.project,
+            )
+        )
+
+    def test_recognizes_installed_footprints_from_kicad_directory(self):
+        root = self.project / "installed"
+        library = root / "Package.pretty"
+        library.mkdir(parents=True)
+        (library / "Part.kicad_mod").write_text(
+            '(footprint "Part")\n',
+            encoding="utf-8",
+        )
+        with patch.dict("os.environ", {"KICAD_FOOTPRINT_DIR": str(root)}):
+            self.assertTrue(footprint_library_entry_available("Package:Part"))
+            self.assertFalse(footprint_library_entry_available("Package:Missing"))
+        kicad = SimpleNamespace(get_paths=lambda: {"KICAD_FOOTPRINT_DIR": str(root)})
+        self.assertTrue(
+            footprint_library_entry_available("Package:Part", kicad=kicad)
+        )
+        self.assertFalse(
+            footprint_library_entry_available("Package:Missing", kicad=kicad)
+        )
+
+
+    def test_generator_prefers_project_symbol_table_over_stock_nickname(self):
+        library = self.project / "Custom.kicad_sym"
+        library.write_text(
+            DEVICE_LIBRARY.replace('(symbol "C"', '(symbol "C_UNUSED"', 1),
+            encoding="utf-8",
+        )
+        stock_dir = self.project / "stock"
+        stock_dir.mkdir()
+        (stock_dir / "Device.kicad_sym").write_text(
+            DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "R_UNUSED"', 1),
+            encoding="utf-8",
+        )
+        (self.project / "sym-lib-table").write_text(
+            '(sym_lib_table (version 7) '
+            '(lib (name "Device") (type "KiCad") '
+            '(uri "${KIPRJMOD}/Custom.kicad_sym") (options "") (descr "")))\n',
+            encoding="utf-8",
+        )
+        with patch.dict("os.environ", {"KICAD_SYMBOL_DIR": str(stock_dir)}):
+            generated = generate_project_library_symbol(
+                self.project / "demo.kicad_pro",
+                resistor_draft(symbol_hint="Device:R"),
+            )
+        self.assertTrue(generated.created)
+        self.assertTrue(generated.library_path.is_file())
+        root = parse_sexpr(generated.library_path.read_text(encoding="utf-8"))
+        self.assertIsNotNone(
+            next(
+                (
+                    node
+                    for node in root
+                    if isinstance(node, list)
+                    and len(node) > 1
+                    and getattr(node[0], "value", None) == "symbol"
+                    and getattr(node[1], "value", None) == generated.symbol_name
+                ),
+                None,
+            )
+        )
+
+
+    def test_symbol_availability_uses_project_table_before_same_named_stock_library(self):
+        library = self.project / "ProjectDevice.kicad_sym"
+        library.write_text(
+            DEVICE_LIBRARY.replace('(symbol "C"', '(symbol "C_UNUSED"', 1),
+            encoding="utf-8",
+        )
+        stock_dir = self.project / "stock"
+        stock_dir.mkdir()
+        (stock_dir / "Device.kicad_sym").write_text(
+            DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "R_UNUSED"', 1),
+            encoding="utf-8",
+        )
+        (self.project / "sym-lib-table").write_text(
+            '(sym_lib_table (version 7) '
+            '(lib (name "Device") (type "KiCad") '
+            '(uri "${KIPRJMOD}/ProjectDevice.kicad_sym") (options "") (descr "")))\n',
+            encoding="utf-8",
+        )
+        with patch.dict("os.environ", {"KICAD_SYMBOL_DIR": str(stock_dir)}):
+            self.assertTrue(
+                symbol_library_entry_available(
+                    "Device:R",
+                    project_or_path=self.project,
+                )
+            )
+            self.assertFalse(
+                symbol_library_entry_available(
+                    "Device:C",
+                    project_or_path=self.project,
+                )
+            )
+
+
+    def test_missing_project_symbol_table_entry_does_not_fall_back_to_stock(self):
+        stock_dir = self.project / "stock"
+        stock_dir.mkdir()
+        (stock_dir / "Device.kicad_sym").write_text(
+            DEVICE_LIBRARY,
+            encoding="utf-8",
+        )
+        (self.project / "sym-lib-table").write_text(
+            '(sym_lib_table (version 7) '
+            '(lib (name "Device") (type "KiCad") '
+            '(uri "${KIPRJMOD}/missing.kicad_sym") (options "") (descr "")))\n',
+            encoding="utf-8",
+        )
+        with patch.dict("os.environ", {"KICAD_SYMBOL_DIR": str(stock_dir)}):
+            self.assertFalse(
+                symbol_library_entry_available(
+                    "Device:R",
+                    project_or_path=self.project,
+                )
+            )
+
+    def test_recognizes_project_symbols_even_when_stock_nickname_is_present(self):
+        library = self.project / "Custom.kicad_sym"
+        library.write_text(DEVICE_LIBRARY, encoding="utf-8")
+        (self.project / "sym-lib-table").write_text(
+            '(sym_lib_table (version 7) '
+            '(lib (name "ProjectOnly") (type "KiCad") '
+            '(uri "${KIPRJMOD}/Custom.kicad_sym") (options "") (descr "")))\n',
+            encoding="utf-8",
+        )
+        self.assertTrue(
+            symbol_library_entry_available(
+                "ProjectOnly:R",
+                project_or_path=self.project,
+            )
+        )
+
+
+
+
+    def test_project_symbol_table_overrides_matching_stock_nickname(self):
+        project_library = self.project / "ProjectDevice.kicad_sym"
+        project_library.write_text(
+            DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "R_UNUSED"', 1),
+            encoding="utf-8",
+        )
+        stock_directory = self.project / "stock"
+        stock_directory.mkdir()
+        (stock_directory / "Device.kicad_sym").write_text(
+            DEVICE_LIBRARY.replace('(symbol "C"', '(symbol "C_UNUSED"', 1),
+            encoding="utf-8",
+        )
+        (self.project / "sym-lib-table").write_text(
+            '(sym_lib_table (version 7) '
+            '(lib (name "Device") (type "KiCad") '
+            '(uri "${KIPRJMOD}/ProjectDevice.kicad_sym") (options "") (descr "")))\n',
+            encoding="utf-8",
+        )
+        with patch.dict("os.environ", {"KICAD_SYMBOL_DIR": str(stock_directory)}):
+            self.assertFalse(
+                symbol_library_entry_available(
+                    "Device:R",
+                    project_or_path=self.project,
+                )
+            )
+            self.assertTrue(
+                symbol_library_entry_available(
+                    "Device:C",
+                    project_or_path=self.project,
+                )
+            )
+
+
+    def test_project_footprint_table_shadows_same_named_global_library(self):
+        home = self.project / "home"
+        config = home / ".config" / "kicad" / "10.0"
+        config.mkdir(parents=True)
+        project_library = self.project / "ProjectParts.pretty"
+        project_library.mkdir()
+        global_library = self.project / "GlobalParts.pretty"
+        global_library.mkdir()
+        (global_library / "Part.kicad_mod").write_text(
+            '(footprint "Part")\\n',
+            encoding="utf-8",
+        )
+        (self.project / "fp-lib-table").write_text(
+            '(fp_lib_table (version 7) '
+            '(lib (name "SharedParts") (type "KiCad") '
+            '(uri "${KIPRJMOD}/ProjectParts.pretty") (options "") (descr "")))\\n',
+            encoding="utf-8",
+        )
+        (config / "fp-lib-table").write_text(
+            '(fp_lib_table (version 7) '
+            '(lib (name "SharedParts") (type "KiCad") '
+            f'(uri "{global_library.as_posix()}") (options "") (descr "")))\\n',
+            encoding="utf-8",
+        )
+        with patch.object(Path, "home", return_value=home):
+            self.assertFalse(
+                footprint_library_entry_available(
+                    "SharedParts:Part",
+                    project_or_path=self.project,
+                )
+            )
+
+    def test_recognizes_user_global_symbol_and_footprint_tables(self):
+        home = self.project / "home"
+        config = home / ".config" / "kicad" / "10.0"
+        config.mkdir(parents=True)
+        symbol_library = self.project / "GlobalSymbols.kicad_sym"
+        symbol_library.write_text(DEVICE_LIBRARY, encoding="utf-8")
+        footprint_library = self.project / "GlobalFootprints.pretty"
+        footprint_library.mkdir()
+        (footprint_library / "Part.kicad_mod").write_text(
+            '(footprint "Part")\n',
+            encoding="utf-8",
+        )
+        (config / "sym-lib-table").write_text(
+            '(sym_lib_table (version 7) '
+            '(lib (name "GlobalSymbols") (type "KiCad") '
+            f'(uri "{symbol_library.as_posix()}") (options "") (descr "")))\n',
+            encoding="utf-8",
+        )
+        (config / "fp-lib-table").write_text(
+            '(fp_lib_table (version 7) '
+            '(lib (name "GlobalFootprints") (type "KiCad") '
+            f'(uri "{footprint_library.as_posix()}") (options "") (descr "")))\n',
+            encoding="utf-8",
+        )
+        with patch.object(Path, "home", return_value=home):
+            self.assertTrue(symbol_library_entry_available("GlobalSymbols:R"))
+            self.assertTrue(footprint_library_entry_available("GlobalFootprints:Part"))
+
 if __name__ == "__main__":
     unittest.main()
+
+

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -11,6 +12,7 @@ PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb import populator as populator_module  # noqa: E402
+from kicad_jlcpcb.cad_assets import CadAssetResult  # noqa: E402
 from kicad_jlcpcb.draft import build_component_draft, symbol_library_id  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     MAX_CATALOGUE_IMAGE_BYTES,
@@ -268,6 +270,81 @@ class ComponentUpdateApplyTests(unittest.TestCase):
         schematic.save.assert_called_once_with()
         self.assertIn("Updated and saved R1", populator.status_var.value)
         populator.apply_button.configure.assert_called_once_with(state="disabled")
+
+
+    def test_update_imports_reviewed_external_footprint_before_writeback(self):
+        details = JlcPartDetails(
+            lcsc="C12345",
+            description="Unclassified component",
+            manufacturer_part_number="MODULE-1",
+            category="Other",
+        )
+        draft = build_component_draft(details)
+        external_footprint = "JLCPCB_C12345:External_Package"
+        draft = replace(draft, footprint=external_footprint)
+
+        class Variable:
+            def __init__(self, value=""):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def set(self, value):
+                self.value = value
+
+        project = object()
+        schematic = SimpleNamespace(get_project=Mock(return_value=project), save=Mock())
+        selected_symbol = symbol("symbol-id", "U1", library="Amplifier_Operational", name="LM358")
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = False
+        populator.draft = draft
+        populator.value_var = Variable(draft.value)
+        populator.footprint_var = Variable(external_footprint)
+        populator.symbol = selected_symbol
+        populator.library_id = "Amplifier_Operational:LM358"
+        populator.schematic = schematic
+        populator.messagebox = SimpleNamespace(showerror=Mock())
+        populator.root = object()
+        populator.status_var = Variable()
+        populator.apply_button = SimpleNamespace(configure=Mock())
+        cad_path = Path("/cache/C12345/source.pretty/External_Package.kicad_mod")
+        populator._cad_assets = SimpleNamespace(
+            footprint_library_id=external_footprint,
+            footprint_path=cad_path,
+            has_footprint=True,
+        )
+        generated_footprint = SimpleNamespace(footprint_id=external_footprint)
+
+        with (
+            patch.object(
+                populator_module,
+                "register_project_footprint_library",
+                return_value=generated_footprint,
+            ) as register_footprint,
+            patch.object(
+                populator_module,
+                "apply_component_draft_fields",
+                return_value=("Value", "Footprint"),
+            ) as apply_fields,
+            patch.object(populator_module, "update_schematic_symbol") as update_symbol,
+        ):
+            populator.apply()
+
+        register_footprint.assert_called_once_with(
+            project,
+            cad_path,
+            lcsc="C12345",
+        )
+        apply_fields.assert_called_once()
+        self.assertIs(apply_fields.call_args.args[0], selected_symbol)
+        self.assertEqual(
+            apply_fields.call_args.kwargs["expected_library_id"],
+            "Amplifier_Operational:LM358",
+        )
+        self.assertEqual(symbol_library_id(selected_symbol), "Amplifier_Operational:LM358")
+        update_symbol.assert_called_once_with(schematic, selected_symbol)
+        schematic.save.assert_called_once_with()
 
 
 class AutomaticPassiveMappingTests(unittest.TestCase):
@@ -710,6 +787,117 @@ class PassiveActionModeResolutionTests(unittest.TestCase):
         schematic = SimpleNamespace(get_symbols=lambda: [selected], document=object())
         with self.assertRaisesRegex(ValueError, "not an editable schematic symbol"):
             resolve_passive_action_target(schematic, FakeKiCad({}), [selected])
+
+
+
+class CadSuggestionTests(unittest.TestCase):
+    class Variable:
+        def __init__(self, value=""):
+            self.value = value
+
+        def get(self):
+            return self.value
+
+        def set(self, value):
+            self.value = value
+
+    def setUp(self):
+        import tempfile
+
+        self.temp = tempfile.TemporaryDirectory()
+        root = Path(self.temp.name)
+        symbol_file = root / "external.kicad_sym"
+        symbol_file.write_text('(kicad_symbol_lib (version 20231120))', encoding="utf-8")
+        footprint_dir = root / "source.pretty"
+        footprint_dir.mkdir()
+        footprint_file = footprint_dir / "external.kicad_mod"
+        footprint_file.write_text('(footprint "External_Package")', encoding="utf-8")
+        self.assets = CadAssetResult(
+            lcsc="C12345",
+            component_uuid="0123456789abcdef0123456789abcdef",
+            source="EasyEDA public LCSC CAD",
+            symbol_name="External",
+            symbol_library_id="EasyEDA_01234567:External",
+            symbol_library_path=symbol_file,
+            footprint_name="External_Package",
+            footprint_library_id="JLCPCB_C12345:External_Package",
+            footprint_path=footprint_file,
+            symbol_preview_png=None,
+            footprint_preview_png=None,
+        )
+        self.draft = build_component_draft(
+            JlcPartDetails(
+                lcsc="C12345",
+                description="Unclassified module",
+                manufacturer_part_number="MODULE-1",
+                category="Other",
+            )
+        )
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def populator(self, *, create_mode, manual_fields=()):
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = create_mode
+        populator.draft = self.draft
+        populator.symbol_hint_var = self.Variable(self.draft.symbol_hint)
+        populator.footprint_var = self.Variable("")
+        populator._manual_proposal_fields = set(manual_fields)
+        populator._setting_proposal_field = False
+        populator.schematic = SimpleNamespace(get_project=lambda: None)
+        populator.kicad = None
+        return populator
+
+    def test_add_mode_prefills_external_symbol_and_footprint(self):
+        populator = self.populator(create_mode=True)
+        populator._apply_cad_suggestions(self.assets)
+        self.assertEqual(
+            populator.symbol_hint_var.get(),
+            "EasyEDA_01234567:External",
+        )
+        self.assertEqual(
+            populator.footprint_var.get(),
+            "JLCPCB_C12345:External_Package",
+        )
+        self.assertEqual(populator.draft.symbol_hint, populator.symbol_hint_var.get())
+        self.assertEqual(populator.draft.footprint, populator.footprint_var.get())
+
+    def test_late_cad_result_does_not_replace_a_manually_edited_footprint(self):
+        populator = self.populator(create_mode=True, manual_fields={"footprint"})
+        populator.footprint_var.set("My_Footprints:Verified")
+        populator._apply_cad_suggestions(self.assets)
+        self.assertEqual(populator.symbol_hint_var.get(), self.assets.symbol_library_id)
+        self.assertEqual(populator.footprint_var.get(), "My_Footprints:Verified")
+        self.assertEqual(populator.draft.footprint, "")
+
+
+    def test_switching_catalogue_candidate_resets_previous_manual_edits(self):
+        populator = self.populator(create_mode=True, manual_fields={"footprint"})
+        populator.selected_details = SimpleNamespace(lcsc="C11111")
+        next_details = SimpleNamespace(
+            lcsc="C22222",
+            is_cached=False,
+            stale=False,
+        )
+        next_draft = self.draft
+        populator.candidate_tree = SimpleNamespace(selection=lambda: ("candidate-2",))
+        populator.candidate_rows = {"candidate-2": (next_details, next_draft)}
+        populator._render_draft = Mock()
+
+        populator._on_candidate_selected()
+
+        self.assertEqual(populator._manual_proposal_fields, set())
+        self.assertIs(populator.selected_details, next_details)
+        self.assertIs(populator.draft, next_draft)
+        populator._render_draft.assert_called_once_with(next_draft, False)
+
+    def test_update_mode_only_prefills_footprint_and_never_symbol(self):
+        populator = self.populator(create_mode=False)
+        populator._apply_cad_suggestions(self.assets)
+        self.assertEqual(populator.footprint_var.get(), self.assets.footprint_library_id)
+        self.assertEqual(populator.draft.symbol_hint, "")
+
 
 
 if __name__ == "__main__":

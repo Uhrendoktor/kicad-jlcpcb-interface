@@ -13,7 +13,12 @@ from typing import Any
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
-from .catalogue_widgets import build_product_preview, display_product_image
+from .cad_assets import CadAssetResult, EasyEdaCadProvider
+from .catalogue_widgets import (
+    build_cad_asset_preview,
+    build_product_preview,
+    display_product_image,
+)
 from .draft import (
     SUPPORTED_PLACEHOLDERS,
     ComponentDraft,
@@ -23,7 +28,14 @@ from .draft import (
     symbol_library_id,
     update_schematic_symbol,
 )
-from .library import generate_project_library_symbol, reload_project_symbol_library
+from .library import (
+    footprint_library_entry_available,
+    generate_project_library_symbol,
+    register_project_cad_credits,
+    register_project_footprint_library,
+    reload_project_symbol_library,
+    symbol_library_entry_available,
+)
 from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
 from .placement import place_and_select_component_from_draft
@@ -220,13 +232,27 @@ class ComponentPopulator:
         self.provider = JlcSearchProvider(
             self.settings_directory / "component-cache.sqlite3"
         )
+        self.cad_provider = EasyEdaCadProvider(
+            self.settings_directory / "cad-assets"
+        )
         self.executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="jlcpcb-populate"
+        )
+        self.cad_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="jlcpcb-cad-assets"
         )
         self.results: queue.Queue[tuple[Future, str, Any]] = queue.Queue()
         self.image_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="jlcpcb-product-image"
         )
+        self._cad_lcsc = ""
+        self._cad_pending = False
+        self._cad_attempted = False
+        self._cad_assets: CadAssetResult | None = None
+        self._cad_symbol_preview_ref = None
+        self._cad_footprint_preview_ref = None
+        self._manual_proposal_fields: set[str] = set()
+        self._setting_proposal_field = False
         self.draft: ComponentDraft | None = None
         self.selected_details = None
         self.candidate_rows: dict[str, tuple[Any, ComponentDraft]] = {}
@@ -300,6 +326,16 @@ class ComponentPopulator:
             "library": tk.StringVar(value="—"),
             "source": tk.StringVar(value="—"),
         }
+        for field_name, variable in (
+            ("symbol", self.symbol_hint_var),
+            ("value", self.value_var),
+            ("footprint", self.footprint_var),
+            ("reference_prefix", self.reference_prefix_var),
+        ):
+            variable.trace_add(
+                "write",
+                lambda *_args, name=field_name: self._mark_manual_proposal_field(name),
+            )
         self._product_url = ""
         self._datasheet_url = ""
 
@@ -548,6 +584,16 @@ class ComponentPopulator:
         self.product_button = self.product_preview.product_button
         self.datasheet_button = self.product_preview.datasheet_button
         self._image_ref = None
+        self.cad_status_var = tk.StringVar(
+            value="External CAD is requested only when a local KiCad mapping is missing."
+        )
+        self.cad_preview = build_cad_asset_preview(
+            content, ttk, self.cad_status_var
+        )
+        self.cad_preview.frame.grid(
+            row=2, column=0, sticky="ew", pady=(0, 12)
+        )
+        self.cad_preview.frame.grid_remove()
 
         self.candidate_section = ttk.Frame(
             content, style="Card.TFrame", padding=12
@@ -629,7 +675,7 @@ class ComponentPopulator:
         component_section = ttk.Frame(
             content, style="Card.TFrame", padding=12
         )
-        component_section.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        component_section.grid(row=3, column=0, sticky="ew", pady=(0, 12))
         component_section.columnconfigure(1, weight=1)
         ttk.Label(
             component_section,
@@ -701,7 +747,7 @@ class ComponentPopulator:
         proposal_section = ttk.Frame(
             content, style="Card.TFrame", padding=12
         )
-        proposal_section.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        proposal_section.grid(row=4, column=0, sticky="ew", pady=(0, 12))
         proposal_section.columnconfigure(0, weight=1)
         ttk.Label(
             proposal_section,
@@ -720,7 +766,7 @@ class ComponentPopulator:
         self.notes_section = ttk.Frame(
             content, style="Note.TFrame", padding=(10, 8)
         )
-        self.notes_section.grid(row=4, column=0, sticky="ew", pady=(0, 12))
+        self.notes_section.grid(row=5, column=0, sticky="ew", pady=(0, 12))
         self.notes_section.columnconfigure(0, weight=1)
         self.notes = ttk.Label(
             self.notes_section,
@@ -939,6 +985,12 @@ class ComponentPopulator:
 
         self.draft = None
         self.selected_details = None
+        self._manual_proposal_fields.clear()
+        self._cad_lcsc = ""
+        self._cad_pending = False
+        self._cad_attempted = False
+        self._cad_assets = None
+        self._reset_cad_preview()
         self.apply_button.configure(state="disabled")
         self._clear_proposal_rows()
         self.candidate_tree.delete(*self.candidate_tree.get_children())
@@ -991,6 +1043,18 @@ class ComponentPopulator:
                 try:
                     result = future.result()
                 except Exception as exc:
+                    if mode == "cad":
+                        if (
+                            self.selected_details is not None
+                            and self.selected_details.lcsc == query
+                        ):
+                            self._cad_pending = False
+                            self._cad_attempted = True
+                            self._show_cad_assets(None)
+                            self.cad_status_var.set(
+                                f"No downloadable CAD candidate: {exc}"
+                            )
+                        continue
                     if mode == "image":
                         if (
                             self.selected_details is not None
@@ -1012,6 +1076,24 @@ class ComponentPopulator:
                             "Product image loaded."
                             if result
                             else "Catalogue record loaded; no product image is available."
+                        )
+                    continue
+
+                if mode == "cad":
+                    if (
+                        self.selected_details is None
+                        or self.selected_details.lcsc != query
+                        or result.lcsc != query
+                    ):
+                        continue
+                    self._cad_pending = False
+                    self._cad_assets = result
+                    self._show_cad_assets(result)
+                    self._apply_cad_suggestions(result)
+                    if self.draft is not None:
+                        self._render_draft(
+                            self.draft,
+                            self.selected_details.is_cached or self.selected_details.stale,
                         )
                     continue
 
@@ -1173,7 +1255,13 @@ class ComponentPopulator:
         selected = self.candidate_rows.get(selection[0])
         if selected is None:
             return
-        self.selected_details, self.draft = selected
+        next_details, next_draft = selected
+        if (
+            self.selected_details is None
+            or self.selected_details.lcsc != next_details.lcsc
+        ):
+            self._manual_proposal_fields.clear()
+        self.selected_details, self.draft = next_details, next_draft
         self._render_draft(
             self.draft,
             self.selected_details.is_cached or self.selected_details.stale,
@@ -1338,6 +1426,168 @@ class ComponentPopulator:
         if self._is_https_url(self._datasheet_url):
             webbrowser.open(self._datasheet_url)
 
+
+    def _mark_manual_proposal_field(self, name: str) -> None:
+        """Remember user edits so late asynchronous CAD results cannot overwrite them."""
+        if not self._setting_proposal_field:
+            self._manual_proposal_fields.add(name)
+
+    def _set_proposal_field(self, name: str, variable: Any, value: str) -> None:
+        """Set an automatic proposal without marking the input as user-edited."""
+        if name in self._manual_proposal_fields:
+            return
+        self._setting_proposal_field = True
+        try:
+            variable.set(str(value or ""))
+        finally:
+            self._setting_proposal_field = False
+
+    def _reset_cad_preview(self) -> None:
+        """Clear prior-part CAD art and image references."""
+        self._cad_symbol_preview_ref = None
+        self._cad_footprint_preview_ref = None
+        self.cad_preview.symbol_label.configure(
+            image="", text="No symbol preview", padding=8
+        )
+        self.cad_preview.footprint_label.configure(
+            image="", text="No footprint preview", padding=8
+        )
+        self.cad_status_var.set(
+            "External CAD is requested only when a local KiCad mapping is missing."
+        )
+        self.cad_preview.frame.grid_remove()
+
+    def _show_cad_assets(self, assets: CadAssetResult | None) -> None:
+        """Display available symbol and footprint previews independently."""
+        self._cad_symbol_preview_ref = display_product_image(
+            self.cad_preview.symbol_label,
+            assets.symbol_preview_png if assets is not None else None,
+            self.root,
+            size=(260, 164),
+        )
+        self._cad_footprint_preview_ref = display_product_image(
+            self.cad_preview.footprint_label,
+            assets.footprint_preview_png if assets is not None else None,
+            self.root,
+            size=(260, 164),
+        )
+        if assets is None:
+            self.cad_preview.symbol_label.configure(
+                image="", text="CAD preview unavailable", padding=8
+            )
+            self.cad_preview.footprint_label.configure(
+                image="", text="CAD preview unavailable", padding=8
+            )
+            return
+        if assets.symbol_preview_png is None:
+            self.cad_preview.symbol_label.configure(
+                image="", text="No symbol SVG available", padding=8
+            )
+        if assets.footprint_preview_png is None:
+            self.cad_preview.footprint_label.configure(
+                image="", text="No footprint SVG available", padding=8
+            )
+        availability = []
+        if assets.has_symbol:
+            availability.append(f"symbol {assets.symbol_library_id}")
+        if assets.has_footprint:
+            availability.append(f"footprint {assets.footprint_library_id}")
+        summary = ", ".join(availability) if availability else "no usable CAD assets"
+        warning_text = " ".join(assets.warnings)
+        self.cad_status_var.set(
+            f"EasyEDA public CAD · {summary}. Review against the manufacturer datasheet."
+            + (f" {warning_text}" if warning_text else "")
+        )
+
+    def _apply_cad_suggestions(self, assets: CadAssetResult) -> None:
+        """Prefill only unresolved fields; never replace deliberate local/manual choices."""
+        if self.draft is None:
+            return
+        updated = self.draft
+        if self.create_mode and assets.has_symbol and "symbol" not in self._manual_proposal_fields:
+            current_hint = self.symbol_hint_var.get().strip()
+            project = self.schematic.get_project()
+            local_symbol_exists = bool(
+                current_hint
+                and symbol_library_entry_available(
+                    current_hint, self.kicad, project
+                )
+            )
+            if not current_hint or not local_symbol_exists:
+                self._set_proposal_field(
+                    "symbol", self.symbol_hint_var, assets.symbol_library_id
+                )
+                if self.symbol_hint_var.get().strip() == assets.symbol_library_id:
+                    updated = replace(updated, symbol_hint=assets.symbol_library_id)
+        current_footprint = self.footprint_var.get().strip()
+        project = self.schematic.get_project()
+        local_footprint_exists = bool(
+            current_footprint
+            and footprint_library_entry_available(
+                current_footprint, self.kicad, project
+            )
+        )
+        if (
+            assets.has_footprint
+            and (not current_footprint or not local_footprint_exists)
+            and "footprint" not in self._manual_proposal_fields
+        ):
+            self._set_proposal_field(
+                "footprint", self.footprint_var, assets.footprint_library_id
+            )
+            if self.footprint_var.get().strip() == assets.footprint_library_id:
+                updated = replace(updated, footprint=assets.footprint_library_id)
+        self.draft = updated
+
+    def _request_cad_assets(self, details: Any, draft: ComponentDraft) -> None:
+        """Look up external CAD only when the selected part lacks a usable local mapping."""
+        if details is None:
+            return
+        lcsc = str(details.lcsc or "").strip().upper()
+        if self._cad_lcsc != lcsc:
+            self._cad_lcsc = lcsc
+            self._cad_pending = False
+            self._cad_attempted = False
+            self._cad_assets = None
+            self._reset_cad_preview()
+
+        project = self.schematic.get_project()
+        current_footprint = self.footprint_var.get().strip()
+        needs_footprint = (
+            "footprint" not in self._manual_proposal_fields
+            and not footprint_library_entry_available(
+                current_footprint, self.kicad, project
+            )
+        )
+        needs_symbol = False
+        if self.create_mode:
+            current_hint = self.symbol_hint_var.get().strip() or draft.symbol_hint
+            needs_symbol = not (
+                current_hint
+                and symbol_library_entry_available(
+                    current_hint, self.kicad, project
+                )
+            )
+        if not needs_symbol and not needs_footprint:
+            if self._cad_assets is None:
+                self.cad_status_var.set(
+                    "A local KiCad symbol/footprint mapping is already available."
+                )
+            return
+        if self._cad_pending or self._cad_attempted:
+            return
+        self._cad_pending = True
+        self._cad_attempted = True
+        self.cad_preview.frame.grid()
+        self.cad_status_var.set(
+            "Searching public EasyEDA CAD by LCSC number (no credentials required)…"
+        )
+        future = self.cad_executor.submit(self.cad_provider.lookup, lcsc)
+        future.add_done_callback(
+            lambda completed, result_queue=self.results, code=lcsc:
+                result_queue.put((completed, "cad", code))
+        )
+
     def _set_notes(self, lines: tuple[str, ...]) -> None:
         visible = tuple(line.strip() for line in lines if line.strip())
         if not visible:
@@ -1404,7 +1654,9 @@ class ComponentPopulator:
     def _render_draft(self, draft: ComponentDraft, cached: bool) -> None:
         if self.selected_details is not None:
             self._update_catalogue_preview(self.selected_details)
-        self.value_var.set(
+        self._set_proposal_field(
+            "value",
+            self.value_var,
             draft.value
             or (
                 (
@@ -1413,19 +1665,27 @@ class ComponentPopulator:
                 )
                 if self.create_mode and self.selected_details is not None
                 else getattr(self.symbol, "value", "") or ""
-            )
+            ),
         )
         if self.create_mode:
-            self.symbol_hint_var.set(draft.symbol_hint)
-            self.footprint_var.set(draft.footprint)
-            self.reference_prefix_var.set(draft.reference_prefix)
+            self._set_proposal_field("symbol", self.symbol_hint_var, draft.symbol_hint)
+            self._set_proposal_field("footprint", self.footprint_var, draft.footprint)
+            self._set_proposal_field(
+                "reference_prefix", self.reference_prefix_var, draft.reference_prefix
+            )
+            external_symbol_available = bool(
+                self._cad_assets is not None and self._cad_assets.has_symbol
+            )
             self._set_automatic_passive_mode(
-                _is_automatically_mapped_passive(draft), draft
+                _is_automatically_mapped_passive(draft) and not external_symbol_available,
+                draft,
             )
         else:
-            self.footprint_var.set(
+            self._set_proposal_field(
+                "footprint",
+                self.footprint_var,
                 draft.footprint
-                or self._field_value(getattr(self.symbol, "footprint_field", None))
+                or self._field_value(getattr(self.symbol, "footprint_field", None)),
             )
         self._render_proposal_rows(tuple(draft.proposed_fields))
         notes = list(draft.warnings)
@@ -1475,6 +1735,12 @@ class ComponentPopulator:
                 "The provider returned a cached/offline snapshot; "
                 "verify its freshness before applying."
             )
+        if self._cad_assets is not None:
+            notes.append(
+                "The EasyEDA symbol and footprint are imported candidates, not verified "
+                "electrical/mechanical equivalents. Check pin numbers, pad geometry and "
+                "ratings against the datasheet before using the board."
+            )
         self._set_notes(tuple(notes))
         can_apply = (
             compatible
@@ -1494,6 +1760,8 @@ class ComponentPopulator:
             )
         self.status_var.set(status)
         self.apply_button.configure(state="normal" if can_apply else "disabled")
+        if self.selected_details is not None:
+            self._request_cad_assets(self.selected_details, draft)
 
     def _refresh_readiness(self, _event=None) -> None:
         if self.closed or not self.create_mode or self.draft is None:
@@ -1553,8 +1821,46 @@ class ComponentPopulator:
                 if self.kicad is None:
                     raise RuntimeError("The KiCad project connection is unavailable.")
                 project = self.schematic.get_project()
+                cad_assets = getattr(self, "_cad_assets", None)
+                external_symbol_library = None
+                uses_external_symbol = bool(
+                    cad_assets is not None
+                    and draft.symbol_hint == cad_assets.symbol_library_id
+                    and cad_assets.has_symbol
+                )
+                uses_external_footprint = bool(
+                    cad_assets is not None
+                    and draft.footprint == cad_assets.footprint_library_id
+                    and cad_assets.has_footprint
+                )
+                if uses_external_symbol:
+                    external_symbol_library = cad_assets.symbol_library_path
+                credits_path = getattr(cad_assets, "credits_path", None)
+                if (
+                    (uses_external_symbol or uses_external_footprint)
+                    and credits_path is not None
+                    and Path(credits_path).is_file()
+                ):
+                    register_project_cad_credits(
+                        project,
+                        credits_path,
+                        lcsc=draft.lcsc,
+                    )
+                if uses_external_footprint:
+                    imported_footprint = register_project_footprint_library(
+                        project,
+                        cad_assets.footprint_path,
+                        lcsc=draft.lcsc,
+                    )
+                    if imported_footprint.footprint_id != draft.footprint:
+                        raise RuntimeError(
+                            "The imported footprint identifier differs from the reviewed proposal."
+                        )
                 generated = generate_project_library_symbol(
-                    project, draft, kicad=self.kicad
+                    project,
+                    draft,
+                    device_library=external_symbol_library,
+                    kicad=self.kicad,
                 )
                 self.generated_library = generated
                 self.generated_library_symbol = generated
@@ -1598,6 +1904,28 @@ class ComponentPopulator:
         # Clicking Update component is the user's explicit action. Apply the
         # reviewed metadata immediately without an additional confirmation dialog.
         try:
+            cad_assets = getattr(self, "_cad_assets", None)
+            if (
+                cad_assets is not None
+                and draft.footprint == cad_assets.footprint_library_id
+                and cad_assets.has_footprint
+            ):
+                credits_path = getattr(cad_assets, "credits_path", None)
+                if credits_path is not None and Path(credits_path).is_file():
+                    register_project_cad_credits(
+                        self.schematic.get_project(),
+                        credits_path,
+                        lcsc=draft.lcsc,
+                    )
+                imported_footprint = register_project_footprint_library(
+                    self.schematic.get_project(),
+                    cad_assets.footprint_path,
+                    lcsc=draft.lcsc,
+                )
+                if imported_footprint.footprint_id != draft.footprint:
+                    raise RuntimeError(
+                        "The imported footprint identifier differs from the reviewed proposal."
+                    )
             changed = apply_component_draft_fields(
                 self.symbol,
                 draft,
@@ -1637,6 +1965,9 @@ class ComponentPopulator:
             pass
         state["executor"].shutdown(wait=True, cancel_futures=True)
         state["image_executor"].shutdown(wait=True, cancel_futures=True)
+        cad_executor = state.get("cad_executor")
+        if cad_executor is not None:
+            cad_executor.shutdown(wait=True, cancel_futures=True)
 
         # Drop every widget, Tk variable, queue and callback reference on the
         # owning UI thread. Keep only the result metadata that the caller may
@@ -1656,6 +1987,7 @@ class ComponentPopulator:
                 "library_id",
                 "executor",
                 "image_executor",
+                "cad_executor",
             )
         }
         state.clear()

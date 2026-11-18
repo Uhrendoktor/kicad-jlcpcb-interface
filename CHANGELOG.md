@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Discover public EasyEDA CAD by LCSC number when local KiCad symbol or footprint mappings are missing. No credentials are required; symbol and footprint assets are independent, cached, previewed with SVG rendering and proposed in editable Add/Update fields.
+- Convert EasyEDA 2D CAD through the independent MIT-licensed `euc2k` package; use the shared `resvg_py` renderer for CAD previews. Preserve upstream source/author/licence notes in the CAD cache.
+- Register reviewed imported footprints in project-local `.pretty` libraries and `fp-lib-table` only during Add/Update apply. Copy converter source/author/licence notes into a per-LCSC project sidecar, refusing to overwrite user-owned content. Protect unowned, symlinked and manually modified library content.
+- Keep Add/Update proposals editable and ignore stale asynchronous CAD results. Update mode previews candidates and may suggest a footprint, but never replaces the selected schematic symbol or pin mapping.
 - Merge Properties, Add and Update around a shared component workspace and catalogue preview. The Add/Update page uses a scrollable content area, a persistent action footer, concise property rows, conditional candidate results and mode-specific KiCad inputs; Add mode is cursor-only with no coordinate controls or direct-coordinate insertion. Use low-contrast surfaces and clear supplier links rather than nested bordered cards.
 - Share image retrieval and catalogue preview widgets across Properties and Add/Update. Try multiple supplier image renditions with bounded HTTPS requests, validate redirects and content types, and show an explicit unavailable state only after all candidates fail.
 - Generalize the unified workflow as **JLCPCB Add or Update Component**. Updating accepts any single editable selected schematic symbol and preserves its library identity, graphics, pins, units and electrical pin types; add mode creates/reuses a project-local symbol copy. Multiple selections and non-symbol selections are rejected.

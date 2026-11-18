@@ -29,7 +29,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install lint tool
-        run: python -m pip install --disable-pip-version-check ruff
+        run: python -m pip install --disable-pip-version-check ruff "euc2k>=1.4.2,<2" "resvg_py>=0.5,<0.6"
 
       - name: Compile
         run: python -m compileall -q plugin tests scripts
