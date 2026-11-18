@@ -267,6 +267,39 @@ class CadAssetProviderTests(unittest.TestCase):
         )
         self.assertTrue(preview.startswith(b"\x89PNG\r\n\x1a\n"))
 
+
+    def test_redirect_handler_rejects_cross_host_before_following(self):
+        from urllib.request import Request
+
+        from kicad_jlcpcb.cad_assets import _EasyEdaRedirectHandler
+
+        handler = _EasyEdaRedirectHandler()
+        request = Request(
+            "https://easyeda.com/api/products/C12345/components"
+        )
+        with self.assertRaisesRegex(CadAssetError, "redirect outside"):
+            handler.redirect_request(
+                request,
+                None,
+                302,
+                "Found",
+                {},
+                "https://example.test/collect",
+            )
+
+        allowed = handler.redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            "https://www.easyeda.com/api/products/C12345/components",
+        )
+        self.assertEqual(
+            allowed.full_url,
+            "https://www.easyeda.com/api/products/C12345/components",
+        )
+
     def test_rejects_provider_redirect_to_untrusted_host(self):
         class Redirected(FakeResponse):
             def geturl(self):
