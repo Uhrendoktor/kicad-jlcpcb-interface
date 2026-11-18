@@ -31,6 +31,7 @@ from .draft import (
 from .library import (
     generate_project_library_symbol,
     register_project_cad_credits,
+    footprint_library_entry_available,
     register_project_footprint_library,
     reload_project_symbol_library,
     symbol_library_entry_available,
@@ -1499,8 +1500,12 @@ class ComponentPopulator:
         updated = self.draft
         if self.create_mode and assets.has_symbol and "symbol" not in self._manual_proposal_fields:
             current_hint = self.symbol_hint_var.get().strip()
+            project = self.schematic.get_project()
             local_symbol_exists = bool(
-                current_hint and symbol_library_entry_available(current_hint, self.kicad)
+                current_hint
+                and symbol_library_entry_available(
+                    current_hint, self.kicad, project
+                )
             )
             if not current_hint or not local_symbol_exists:
                 self._set_proposal_field(
@@ -1509,9 +1514,16 @@ class ComponentPopulator:
                 if self.symbol_hint_var.get().strip() == assets.symbol_library_id:
                     updated = replace(updated, symbol_hint=assets.symbol_library_id)
         current_footprint = self.footprint_var.get().strip()
+        project = self.schematic.get_project()
+        local_footprint_exists = bool(
+            current_footprint
+            and footprint_library_entry_available(
+                current_footprint, self.kicad, project
+            )
+        )
         if (
             assets.has_footprint
-            and not current_footprint
+            and (not current_footprint or not local_footprint_exists)
             and "footprint" not in self._manual_proposal_fields
         ):
             self._set_proposal_field(
@@ -1533,13 +1545,22 @@ class ComponentPopulator:
             self._cad_assets = None
             self._reset_cad_preview()
 
+        project = self.schematic.get_project()
         current_footprint = self.footprint_var.get().strip()
-        needs_footprint = not current_footprint
+        needs_footprint = (
+            "footprint" not in self._manual_proposal_fields
+            and not footprint_library_entry_available(
+                current_footprint, self.kicad, project
+            )
+        )
         needs_symbol = False
         if self.create_mode:
             current_hint = self.symbol_hint_var.get().strip() or draft.symbol_hint
             needs_symbol = not (
-                current_hint and symbol_library_entry_available(current_hint, self.kicad)
+                current_hint
+                and symbol_library_entry_available(
+                    current_hint, self.kicad, project
+                )
             )
         if not needs_symbol and not needs_footprint:
             if self._cad_assets is None:
