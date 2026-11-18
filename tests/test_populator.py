@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -269,6 +270,81 @@ class ComponentUpdateApplyTests(unittest.TestCase):
         schematic.save.assert_called_once_with()
         self.assertIn("Updated and saved R1", populator.status_var.value)
         populator.apply_button.configure.assert_called_once_with(state="disabled")
+
+
+    def test_update_imports_reviewed_external_footprint_before_writeback(self):
+        details = JlcPartDetails(
+            lcsc="C12345",
+            description="Unclassified component",
+            manufacturer_part_number="MODULE-1",
+            category="Other",
+        )
+        draft = build_component_draft(details)
+        external_footprint = "JLCPCB_C12345:External_Package"
+        draft = replace(draft, footprint=external_footprint)
+
+        class Variable:
+            def __init__(self, value=""):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def set(self, value):
+                self.value = value
+
+        project = object()
+        schematic = SimpleNamespace(get_project=Mock(return_value=project), save=Mock())
+        selected_symbol = symbol("symbol-id", "U1", library="Amplifier_Operational", name="LM358")
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = False
+        populator.draft = draft
+        populator.value_var = Variable(draft.value)
+        populator.footprint_var = Variable(external_footprint)
+        populator.symbol = selected_symbol
+        populator.library_id = "Amplifier_Operational:LM358"
+        populator.schematic = schematic
+        populator.messagebox = SimpleNamespace(showerror=Mock())
+        populator.root = object()
+        populator.status_var = Variable()
+        populator.apply_button = SimpleNamespace(configure=Mock())
+        cad_path = Path("/cache/C12345/source.pretty/External_Package.kicad_mod")
+        populator._cad_assets = SimpleNamespace(
+            footprint_library_id=external_footprint,
+            footprint_path=cad_path,
+            has_footprint=True,
+        )
+        generated_footprint = SimpleNamespace(footprint_id=external_footprint)
+
+        with (
+            patch.object(
+                populator_module,
+                "register_project_footprint_library",
+                return_value=generated_footprint,
+            ) as register_footprint,
+            patch.object(
+                populator_module,
+                "apply_component_draft_fields",
+                return_value=("Value", "Footprint"),
+            ) as apply_fields,
+            patch.object(populator_module, "update_schematic_symbol") as update_symbol,
+        ):
+            populator.apply()
+
+        register_footprint.assert_called_once_with(
+            project,
+            cad_path,
+            lcsc="C12345",
+        )
+        apply_fields.assert_called_once()
+        self.assertIs(apply_fields.call_args.args[0], selected_symbol)
+        self.assertEqual(
+            apply_fields.call_args.kwargs["expected_library_id"],
+            "Amplifier_Operational:LM358",
+        )
+        self.assertEqual(symbol_library_id(selected_symbol), "Amplifier_Operational:LM358")
+        update_symbol.assert_called_once_with(schematic, selected_symbol)
+        schematic.save.assert_called_once_with()
 
 
 class AutomaticPassiveMappingTests(unittest.TestCase):
