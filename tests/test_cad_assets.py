@@ -259,6 +259,19 @@ class CadAssetProviderTests(unittest.TestCase):
         self.assertIn('href="#shape"', cleaned)
 
 
+
+    def test_strips_external_stylesheet_urls_but_keeps_local_gradients(self):
+        cleaned = _safe_preview_svg(
+            '<svg xmlns="http://www.w3.org/2000/svg">'
+            '<defs><linearGradient id="local"/></defs>'
+            '<style>.external { fill: url(https://example.test/p.svg); }</style>'
+            '<style>.local { fill: url(#local); }</style>'
+            "</svg>"
+        )
+        self.assertNotIn("external {", cleaned)
+        self.assertIn(".local", cleaned)
+        self.assertIn("url(#local)", cleaned)
+
     def test_resvg_renders_sanitized_preview_to_png(self):
         preview = render_svg_preview(
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
