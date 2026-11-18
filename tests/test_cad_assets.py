@@ -288,6 +288,49 @@ class CadAssetProviderTests(unittest.TestCase):
                 self.provider.lookup("C12345")
         self.assertFalse((self.cache / "outside.kicad_mod").exists())
 
+
+    def test_single_untyped_svg_is_a_symbol_preview_not_a_footprint(self):
+        class SingleSvgOpener(FakeOpener):
+            def __call__(inner_self, request, timeout):
+                inner_self.requests.append(request)
+                url = request.full_url
+                if urlparse(url).path.endswith("/components"):
+                    payload = {
+                        "success": True,
+                        "result": {
+                            "uuid": "0123456789abcdef0123456789abcdef",
+                            "title": "Symbol only",
+                            "dataStr": {"head": {}, "shape": []},
+                        },
+                    }
+                elif urlparse(url).path.endswith("/svgs"):
+                    payload = {
+                        "success": True,
+                        "result": [{"svg": "<svg>one-symbol</svg>"}],
+                    }
+                else:
+                    raise AssertionError(f"Unexpected request: {url}")
+                return FakeResponse(json.dumps(payload).encode("utf-8"), url)
+
+        provider = EasyEdaCadProvider(
+            self.cache,
+            opener=SingleSvgOpener(),
+            minimum_request_interval=4,
+            sleep=lambda _seconds: None,
+        )
+        with (
+            self.install_converter_stub(self.converted(with_footprint=False)),
+            patch(
+                "kicad_jlcpcb.cad_assets.render_svg_preview",
+                return_value=b"symbol-only-preview",
+            ),
+        ):
+            result = provider.lookup("C12345")
+
+        self.assertEqual(result.symbol_preview_png, b"symbol-only-preview")
+        self.assertIsNone(result.footprint_preview_png)
+        self.assertFalse(result.has_footprint)
+
     def test_symbol_only_component_keeps_footprint_independent(self):
         with (
             self.install_converter_stub(self.converted(with_footprint=False)),
