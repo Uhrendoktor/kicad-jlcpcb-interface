@@ -522,7 +522,15 @@ def find_symbol_library(
                 raise SymbolLibraryError(
                     f"Project symbol nickname {nickname!r} points to a missing library."
                 )
-        except (OSError, UnicodeError, SymbolLibraryError, ValueError):
+        except SymbolLibraryError:
+            if table_path == project_table_path:
+                raise
+            continue
+        except (OSError, UnicodeError, ValueError) as exc:
+            if table_path == project_table_path:
+                raise SymbolLibraryError(
+                    f"Could not read project symbol table {table_path}: {exc}"
+                ) from exc
             continue
 
     candidates: list[Path] = []
