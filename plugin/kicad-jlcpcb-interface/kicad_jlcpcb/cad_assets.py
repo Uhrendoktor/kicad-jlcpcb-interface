@@ -490,16 +490,23 @@ class EasyEdaCadProvider:
             svg_payload = self._request_json(_SVG_URL.format(lcsc=lcsc))
             rows = svg_payload.get("result")
             if isinstance(rows, list):
-                symbol_svg = next(
-                    (row.get("svg") for row in rows
-                     if isinstance(row, dict) and str(row.get("docType")) == "2"),
-                    None,
-                )
-                footprint_svg = next(
-                    (row.get("svg") for row in rows
-                     if isinstance(row, dict) and str(row.get("docType")) == "4"),
-                    None,
-                )
+                valid_rows = [row for row in rows if isinstance(row, dict) and row.get("svg")]
+                typed_symbols = [
+                    row for row in valid_rows if str(row.get("docType")) == "2"
+                ]
+                typed_footprints = [
+                    row for row in valid_rows if str(row.get("docType")) == "4"
+                ]
+                if typed_symbols or typed_footprints:
+                    symbol_svg = typed_symbols[0].get("svg") if typed_symbols else None
+                    footprint_svg = (
+                        typed_footprints[-1].get("svg") if typed_footprints else None
+                    )
+                else:
+                    # The public endpoint often returns one SVG per symbol unit,
+                    # followed by the footprint SVG, without docType metadata.
+                    symbol_svg = valid_rows[0].get("svg") if len(valid_rows) >= 2 else None
+                    footprint_svg = valid_rows[-1].get("svg") if valid_rows else None
                 if symbol_svg:
                     symbol_preview = render_svg_preview(symbol_svg)
                     _safe_write(folder / "symbol-preview.png", symbol_preview)
