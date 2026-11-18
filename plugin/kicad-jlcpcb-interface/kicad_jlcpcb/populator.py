@@ -1863,6 +1863,21 @@ class ComponentPopulator:
         # Clicking Update component is the user's explicit action. Apply the
         # reviewed metadata immediately without an additional confirmation dialog.
         try:
+            cad_assets = getattr(self, "_cad_assets", None)
+            if (
+                cad_assets is not None
+                and draft.footprint == cad_assets.footprint_library_id
+                and cad_assets.has_footprint
+            ):
+                imported_footprint = register_project_footprint_library(
+                    self.schematic.get_project(),
+                    cad_assets.footprint_path,
+                    lcsc=draft.lcsc,
+                )
+                if imported_footprint.footprint_id != draft.footprint:
+                    raise RuntimeError(
+                        "The imported footprint identifier differs from the reviewed proposal."
+                    )
             changed = apply_component_draft_fields(
                 self.symbol,
                 draft,
