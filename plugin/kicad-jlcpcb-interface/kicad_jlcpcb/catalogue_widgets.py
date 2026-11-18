@@ -228,7 +228,7 @@ def build_cad_asset_preview(
 
     ttk.Label(
         surface,
-        text="KI CAD CANDIDATES",
+        text="KICAD CAD CANDIDATES",
         style="ProductEyebrow.TLabel",
     ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 7))
 
