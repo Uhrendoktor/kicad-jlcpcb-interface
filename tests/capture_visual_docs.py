@@ -1858,7 +1858,7 @@ def _capture_easyeda_3d_preview(
     footprint mapping; the provider, STEP download and KiCad render remain real.
     """
     failures: list[str] = []
-    for lcsc in ("C60489", "C105637", "C2889348"):
+    for lcsc in ("C109323", "C60489", "C105637", "C2889348"):
         populator = ComponentPopulator(
             schematic,
             None,
