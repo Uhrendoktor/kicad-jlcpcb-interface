@@ -1808,12 +1808,15 @@ class ComponentPopulator:
                 )
                 if uses_external_symbol:
                     external_symbol_library = cad_assets.symbol_library_path
+                credits_path = getattr(cad_assets, "credits_path", None)
                 if (
-                    uses_external_symbol or uses_external_footprint
-                ) and cad_assets.credits_path.is_file():
+                    (uses_external_symbol or uses_external_footprint)
+                    and credits_path is not None
+                    and Path(credits_path).is_file()
+                ):
                     register_project_cad_credits(
                         project,
-                        cad_assets.credits_path,
+                        credits_path,
                         lcsc=draft.lcsc,
                     )
                 if uses_external_footprint:
@@ -1880,10 +1883,11 @@ class ComponentPopulator:
                 and draft.footprint == cad_assets.footprint_library_id
                 and cad_assets.has_footprint
             ):
-                if cad_assets.credits_path.is_file():
+                credits_path = getattr(cad_assets, "credits_path", None)
+                if credits_path is not None and Path(credits_path).is_file():
                     register_project_cad_credits(
                         self.schematic.get_project(),
-                        cad_assets.credits_path,
+                        credits_path,
                         lcsc=draft.lcsc,
                     )
                 imported_footprint = register_project_footprint_library(
