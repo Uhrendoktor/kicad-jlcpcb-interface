@@ -658,7 +658,7 @@ class EasyEdaCadProvider:
                 model_path=model_path,
                 model_preview_png=model_preview_data,
             )
-        except (OSError, ValueError, KeyError, TypeError):
+        except (CadAssetError, OSError, ValueError, KeyError, TypeError):
             return None
 
     def lookup(self, raw_lcsc: str, *, force_refresh: bool = False) -> CadAssetResult:
