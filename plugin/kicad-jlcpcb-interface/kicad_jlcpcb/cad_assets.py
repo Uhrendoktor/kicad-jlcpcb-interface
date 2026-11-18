@@ -1,4 +1,4 @@
-"""Credential-free EasyEDA/LCSC CAD lookup and KiCad 2D conversion.
+"""Credential-free EasyEDA/LCSC CAD lookup and KiCad 2D/3D conversion.
 
 The upstream product and SVG endpoints are public website endpoints, not a
 contracted API. This adapter is deliberately best-effort, bounded and cached.
@@ -56,7 +56,7 @@ class CadAssetError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class CadAssetResult:
-    """Converted candidate assets plus optional rasterized upstream previews."""
+    """Converted candidate assets plus optional 2D and 3D preview images."""
 
     lcsc: str
     component_uuid: str
@@ -631,7 +631,7 @@ class EasyEdaCadProvider:
             return None
 
     def lookup(self, raw_lcsc: str, *, force_refresh: bool = False) -> CadAssetResult:
-        """Retrieve and convert an exact LCSC part; cache successful 2D results."""
+        """Retrieve an exact LCSC part and cache its available 2D/3D assets."""
         lcsc = normalize_lcsc_code(raw_lcsc)
         if not force_refresh:
             cached = self._cache_result(lcsc)

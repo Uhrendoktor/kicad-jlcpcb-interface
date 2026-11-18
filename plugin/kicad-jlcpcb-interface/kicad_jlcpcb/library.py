@@ -1,4 +1,4 @@
-"""Safe project-local KiCad symbol-library generation for reviewed LCSC components."""
+"""Safe project-local KiCad symbol, footprint and 3D-model library generation."""
 
 from __future__ import annotations
 
@@ -947,10 +947,10 @@ def register_project_footprint_library(
     lcsc: str,
     model_file: str | Path | None = None,
 ) -> GeneratedLibraryFootprint:
-    """Install one converted footprint in an owned project-local .pretty library.
+    """Install a converted footprint and optional STEP model into owned project libraries.
 
-    A per-LCSC library keeps imported assets isolated. Existing user libraries,
-    symlinks and modified imported files are never overwritten.
+    A per-LCSC `.pretty` and `.3dshapes` directory keep imported assets isolated.
+    Existing user libraries, symlinks and modified imported files are never overwritten.
     """
     project_dir = _project_directory(project_or_path)
     code = str(lcsc or "").strip().upper()
