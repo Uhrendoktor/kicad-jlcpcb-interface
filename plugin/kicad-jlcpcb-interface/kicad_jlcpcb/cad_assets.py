@@ -526,8 +526,12 @@ class EasyEdaCadProvider:
                 else:
                     # The public endpoint often returns one SVG per symbol unit,
                     # followed by the footprint SVG, without docType metadata.
-                    symbol_svg = valid_rows[0].get("svg") if len(valid_rows) >= 2 else None
-                    footprint_svg = valid_rows[-1].get("svg") if valid_rows else None
+                    symbol_svg = valid_rows[0].get("svg") if valid_rows else None
+                    footprint_svg = (
+                        valid_rows[-1].get("svg")
+                        if converted.footprint and len(valid_rows) >= 2
+                        else None
+                    )
                 if symbol_svg:
                     symbol_preview = render_svg_preview(symbol_svg)
                     _safe_write(folder / "symbol-preview.png", symbol_preview)
