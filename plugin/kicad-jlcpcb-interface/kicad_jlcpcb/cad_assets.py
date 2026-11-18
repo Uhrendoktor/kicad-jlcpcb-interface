@@ -24,15 +24,14 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from .provider import normalize_lcsc_code
 
 _EASYEDA_HOSTS = {"easyeda.com", "www.easyeda.com"}
-_COMPONENT_URL = (
-    "https://easyeda.com/api/products/{lcsc}/components?version=6.5.60"
-)
+_COMPONENT_URL = "https://easyeda.com/api/products/{lcsc}/components"
 _SVG_URL = "https://easyeda.com/api/products/{lcsc}/svgs"
 _PACKAGE_URL = "https://easyeda.com/api/components/{uuid}"
 _HEADERS = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "X-Requested-With": "XMLHttpRequest",
-    "Referer": "https://easyeda.com/editor",
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "Referer": "https://easyeda.com/",
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
