@@ -670,19 +670,19 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
         footprint_library = self.project / "GlobalFootprints.pretty"
         footprint_library.mkdir()
         (footprint_library / "Part.kicad_mod").write_text(
-            '(footprint "Part")\\n',
+            '(footprint "Part")\n',
             encoding="utf-8",
         )
         (config / "sym-lib-table").write_text(
             '(sym_lib_table (version 7) '
             '(lib (name "GlobalSymbols") (type "KiCad") '
-            f'(uri "{symbol_library.as_posix()}") (options "") (descr "")))\\n',
+            f'(uri "{symbol_library.as_posix()}") (options "") (descr "")))\n',
             encoding="utf-8",
         )
         (config / "fp-lib-table").write_text(
             '(fp_lib_table (version 7) '
             '(lib (name "GlobalFootprints") (type "KiCad") '
-            f'(uri "{footprint_library.as_posix()}") (options "") (descr "")))\\n',
+            f'(uri "{footprint_library.as_posix()}") (options "") (descr "")))\n',
             encoding="utf-8",
         )
         with patch.object(Path, "home", return_value=home):
