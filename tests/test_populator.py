@@ -845,6 +845,8 @@ class CadSuggestionTests(unittest.TestCase):
         populator.footprint_var = self.Variable("")
         populator._manual_proposal_fields = set(manual_fields)
         populator._setting_proposal_field = False
+        populator.schematic = SimpleNamespace(get_project=lambda: None)
+        populator.kicad = None
         return populator
 
     def test_add_mode_prefills_external_symbol_and_footprint(self):
