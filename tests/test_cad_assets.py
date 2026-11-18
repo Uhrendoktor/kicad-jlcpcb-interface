@@ -286,7 +286,7 @@ class CadAssetProviderTests(unittest.TestCase):
         with self.install_converter_stub(unsafe):
             with self.assertRaisesRegex(CadAssetError, "unsafe KiCad"):
                 self.provider.lookup("C12345")
-        self.assertFalse((self.cache.parent / "outside.kicad_mod").exists())
+        self.assertFalse((self.cache / "outside.kicad_mod").exists())
 
     def test_symbol_only_component_keeps_footprint_independent(self):
         with (
