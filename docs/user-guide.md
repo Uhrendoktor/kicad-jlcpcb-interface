@@ -216,6 +216,7 @@ For the selected KiCad Library:Symbol, the add-on:
 - Writes the selected Value, optional Footprint, Datasheet and Description plus hidden LCSC, Manufacturer, MPN, category and catalogue attribute properties.
 - Writes or extends the project-local `JLCPCB_Generated.kicad_sym` library and registers it in `sym-lib-table` using a project-relative KiCad project variable URI.
 - When the reviewed Footprint field matches the retrieved CAD candidate, copies the converted `.kicad_mod` into a project-local `JLCPCB_<LCSC>.pretty` library and registers it in `fp-lib-table`. Existing modified or unowned footprint libraries are not overwritten.
+- When either retrieved symbol or footprint geometry is accepted, copies the converter's source/author/licence notes into `JLCPCB_<LCSC>_CREDITS.txt` beside the project. Existing user-owned credits files are never overwritten.
 - Reloads the project library, inserts the generated part at the current sheet center through schematic IPC, then focuses and selects it for the next Move operation.
 
 The generated symbol ID uses the selected reference prefix and LCSC part number, so repeat generation for the same part can reuse the existing project-local symbol. The generator protects unowned files and refuses to overwrite a generated symbol that has been manually modified. The library writer uses atomic file replacement and creates a backup when extending an existing generated library.
