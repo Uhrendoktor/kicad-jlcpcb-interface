@@ -415,8 +415,8 @@ def _uri_path(project_dir: Path, uri: str) -> Path | None:
     raw = str(uri or "").strip()
     if not raw:
         return None
-    raw = os.path.expandvars(raw)
     raw = raw.replace("${KIPRJMOD}", str(project_dir))
+    raw = os.path.expandvars(raw)
     if "$" + "{" in raw:
         return None
     candidate = Path(raw).expanduser()
@@ -527,7 +527,7 @@ def symbol_library_entry_available(
     kicad=None,
     project_or_path=None,
 ) -> bool:
-    """Check stock and active-project symbol libraries for a concrete Library:Symbol."""
+    """Check stock, user-global and active-project libraries for Library:Symbol."""
     parts = str(library_id or "").strip().split(":", 1)
     if len(parts) != 2 or not all(parts):
         return False
@@ -539,21 +539,30 @@ def symbol_library_entry_available(
     except SymbolLibraryError:
         pass
 
+    tables: list[tuple[Path, Path]] = []
     if project_or_path is not None:
         try:
             project_dir = _project_directory(project_or_path)
-            table_path = project_dir / "sym-lib-table"
-            if table_path.is_file() and not table_path.is_symlink():
-                table = parse_sexpr(table_path.read_text(encoding="utf-8"))
-                entry = _table_entry(table, nickname)
-                if entry is not None and _entry_text(entry, "type") == "KiCad":
-                    project_library = _uri_path(
-                        project_dir, _entry_text(entry, "uri")
-                    )
-                    if project_library is not None:
-                        candidates.append(project_library)
-        except (OSError, UnicodeError, SymbolLibraryError, ValueError):
+            tables.append((project_dir / "sym-lib-table", project_dir))
+        except SymbolLibraryError:
             pass
+    tables.extend(
+        (path, path.parent) for path in _global_library_tables("sym-lib-table")
+    )
+    for table_path, base_dir in tables:
+        if not table_path.is_file() or table_path.is_symlink():
+            continue
+        try:
+            table = parse_sexpr(table_path.read_text(encoding="utf-8"))
+            if _head(table) != "sym_lib_table":
+                continue
+            entry = _table_entry(table, nickname)
+            if entry is not None and _entry_text(entry, "type") == "KiCad":
+                library_path = _uri_path(base_dir, _entry_text(entry, "uri"))
+                if library_path is not None:
+                    candidates.append(library_path)
+        except (OSError, UnicodeError, SymbolLibraryError, ValueError):
+            continue
 
     seen: set[Path] = set()
     for path in candidates:
@@ -569,8 +578,8 @@ def symbol_library_entry_available(
     return False
 
 
-def _global_footprint_tables() -> tuple[Path, ...]:
-    """Return plausible KiCad global footprint-table locations across platforms."""
+def _global_library_tables(table_name: str) -> tuple[Path, ...]:
+    """Return user-level KiCad library table locations across host platforms."""
     roots = [
         Path.home() / ".config" / "kicad",
         Path.home() / "Library" / "Preferences" / "kicad",
@@ -581,11 +590,13 @@ def _global_footprint_tables() -> tuple[Path, ...]:
     tables: set[Path] = set()
     for root in roots:
         if root.is_dir():
-            tables.update(root.glob("*/fp-lib-table"))
-            direct = root / "fp-lib-table"
+            tables.update(root.glob(f"*/{table_name}"))
+            direct = root / table_name
             if direct.is_file():
                 tables.add(direct)
     return tuple(sorted(tables))
+
+
 
 
 def footprint_library_entry_available(
@@ -610,7 +621,9 @@ def footprint_library_entry_available(
             tables.append((project_dir / "fp-lib-table", project_dir))
         except SymbolLibraryError:
             pass
-    tables.extend((path, path.parent) for path in _global_footprint_tables())
+    tables.extend(
+        (path, path.parent) for path in _global_library_tables("fp-lib-table")
+    )
 
     for table_path, base_dir in tables:
         if not table_path.is_file() or table_path.is_symlink():
