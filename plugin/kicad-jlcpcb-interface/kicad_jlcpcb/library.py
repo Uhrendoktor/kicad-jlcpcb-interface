@@ -649,6 +649,15 @@ def footprint_library_entry_available(
             continue
 
     candidates = []
+    if kicad is not None:
+        try:
+            candidates.extend(
+                Path(value).expanduser()
+                for value in kicad.get_paths().values()
+                if value
+            )
+        except Exception:
+            pass
     for variable in (
         "KICAD_FOOTPRINT_DIR",
         "KICAD8_FOOTPRINT_DIR",
@@ -669,10 +678,21 @@ def footprint_library_entry_available(
             "C:/Program Files/KiCad/share/kicad/footprints",
         )
     )
-    for root in candidates:
-        item = root / f"{nickname}.pretty" / f"{footprint_name}.kicad_mod"
-        if item.is_file() and not item.is_symlink():
-            return True
+    seen_roots: set[Path] = set()
+    for candidate in candidates:
+        root = Path(candidate).expanduser()
+        for library_root in (
+            root,
+            root / "footprints",
+            root / "share" / "kicad" / "footprints",
+        ):
+            library_root = library_root.resolve(strict=False)
+            if library_root in seen_roots:
+                continue
+            seen_roots.add(library_root)
+            item = library_root / f"{nickname}.pretty" / f"{footprint_name}.kicad_mod"
+            if item.is_file() and not item.is_symlink():
+                return True
     return False
 
 
