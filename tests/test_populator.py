@@ -871,6 +871,27 @@ class CadSuggestionTests(unittest.TestCase):
         self.assertEqual(populator.footprint_var.get(), "My_Footprints:Verified")
         self.assertEqual(populator.draft.footprint, "")
 
+
+    def test_switching_catalogue_candidate_resets_previous_manual_edits(self):
+        populator = self.populator(create_mode=True, manual_fields={"footprint"})
+        populator.selected_details = SimpleNamespace(lcsc="C11111")
+        next_details = SimpleNamespace(
+            lcsc="C22222",
+            is_cached=False,
+            stale=False,
+        )
+        next_draft = self.draft
+        populator.candidate_tree = SimpleNamespace(selection=lambda: ("candidate-2",))
+        populator.candidate_rows = {"candidate-2": (next_details, next_draft)}
+        populator._render_draft = Mock()
+
+        populator._on_candidate_selected()
+
+        self.assertEqual(populator._manual_proposal_fields, set())
+        self.assertIs(populator.selected_details, next_details)
+        self.assertIs(populator.draft, next_draft)
+        populator._render_draft.assert_called_once_with(next_draft, False)
+
     def test_update_mode_only_prefills_footprint_and_never_symbol(self):
         populator = self.populator(create_mode=False)
         populator._apply_cad_suggestions(self.assets)
