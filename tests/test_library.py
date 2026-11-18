@@ -644,19 +644,26 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
             self.assertFalse(footprint_library_entry_available("Package:Missing"))
 
 
-    def test_generator_loads_project_registered_custom_symbol_library(self):
+    def test_generator_prefers_project_symbol_table_over_stock_nickname(self):
         library = self.project / "Custom.kicad_sym"
         library.write_text(DEVICE_LIBRARY, encoding="utf-8")
-        (self.project / "sym-lib-table").write_text(
-            '(sym_lib_table (version 7) '
-            '(lib (name "ProjectOnly") (type "KiCad") '
-            '(uri "${KIPRJMOD}/Custom.kicad_sym") (options "") (descr "")))\\n',
+        stock_dir = self.project / "stock"
+        stock_dir.mkdir()
+        (stock_dir / "Device.kicad_sym").write_text(
+            DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "C"', 1),
             encoding="utf-8",
         )
-        generated = generate_project_library_symbol(
-            self.project / "demo.kicad_pro",
-            resistor_draft(symbol_hint="ProjectOnly:R"),
+        (self.project / "sym-lib-table").write_text(
+            '(sym_lib_table (version 7) '
+            '(lib (name "Device") (type "KiCad") '
+            '(uri "${KIPRJMOD}/Custom.kicad_sym") (options "") (descr "")))\n',
+            encoding="utf-8",
         )
+        with patch.dict("os.environ", {"KICAD_SYMBOL_DIR": str(stock_dir)}):
+            generated = generate_project_library_symbol(
+                self.project / "demo.kicad_pro",
+                resistor_draft(symbol_hint="Device:R"),
+            )
         self.assertTrue(generated.created)
         self.assertTrue(generated.library_path.is_file())
         root = parse_sexpr(generated.library_path.read_text(encoding="utf-8"))
