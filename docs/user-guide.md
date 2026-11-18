@@ -246,7 +246,7 @@ The optional Footprint field is a KiCad footprint-library reference, not a footp
 - The overview and entry dialogs perform catalogue lookups outside the Tk UI thread so network waits do not freeze the window.
 - Product images are downloaded only from HTTPS image URLs and are limited to 5 MiB.
 - Signed image URLs are retained in memory only; they are stripped from persistent catalogue cache records because they expire.
-- The plugin contains no JLCPCB or EasyEDA credentials. No private partner API is configured. The EasyEDA CAD fallback uses public website endpoints and may fail or be rate-limited.
+- The plugin contains no JLCPCB or EasyEDA credentials. No private partner API is configured. The EasyEDA CAD fallback uses public website endpoints, paces requests by at least four seconds, and may fail or be rate-limited.
 - Retrieved CAD files and previews are cached beneath the plugin settings directory. Signed media is not required for the CAD lookup. Source authorship and licence notes returned by the converter are stored in the CAD cache's `CREDITS.txt`.
 - Price and stock are time-specific supplier responses, not order guarantees.
 
