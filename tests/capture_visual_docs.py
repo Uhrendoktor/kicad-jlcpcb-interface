@@ -70,6 +70,8 @@ ASSET_NAMES = (
     "populate-component-dark.png",
     "add-component-light.png",
     "add-component-dark.png",
+    "add-component-cad-preview-light.png",
+    "add-component-cad-preview-dark.png",
 )
 
 # These are schematic inputs used by the visual demo. All catalogue fields,
@@ -1843,6 +1845,163 @@ def _capture_passive_component_workflows(
     )
 
 
+def _capture_easyeda_3d_preview(
+    schematic: Any,
+    kicad: Any,
+    output_dir: Path,
+    cache_dir: Path,
+) -> None:
+    """Capture the scrolled production CAD panel after a live EasyEDA fallback lookup.
+
+    The fixture clears the proposed footprint before the normal CAD lookup callback.
+    This exercises the same branch used when a selected part has no usable local
+    footprint mapping; the provider, STEP download and KiCad render remain real.
+    """
+    failures: list[str] = []
+    for lcsc in ("C109323", "C60489", "C105637", "C2889348"):
+        populator = ComponentPopulator(
+            schematic,
+            None,
+            cache_dir / f"easyeda-3d-preview-{lcsc}",
+            create_mode=True,
+            kicad=kicad,
+            theme="light",
+        )
+        populator.root.geometry("1120x1000+780+20")
+        original_request = populator._request_cad_assets
+
+        def request_external_cad(
+            details: Any,
+            draft: ComponentDraft,
+            *,
+            target=populator,
+            request=original_request,
+        ) -> None:
+            # Force the app's supported fallback path without marking the empty
+            # footprint as a deliberate user edit.
+            target.footprint_var.set("")
+            target._manual_proposal_fields.discard("footprint")
+            request(details, draft)
+
+        populator._request_cad_assets = request_external_cad
+        populator.lcsc_var.set(lcsc)
+        populator.lookup()
+        state = {"captured": False, "deadline": time.monotonic() + 120.0}
+        errors: list[str] = []
+
+        def advance() -> None:
+            try:
+                root = populator.root
+                root.update()
+                if (
+                    populator.selected_details is None
+                    or populator.draft is None
+                    or populator.selected_details.lcsc != lcsc
+                ):
+                    if time.monotonic() >= state["deadline"]:
+                        raise TimeoutError(
+                            f"JLCPCB detail lookup did not settle for {lcsc}: "
+                            f"{populator.status_var.get()!r}"
+                        )
+                    root.after(150, advance)
+                    return
+                if populator._image_pending or populator._cad_pending:
+                    if time.monotonic() >= state["deadline"]:
+                        raise TimeoutError(
+                            f"EasyEDA CAD lookup did not settle for {lcsc}: "
+                            f"{populator.cad_status_var.get()!r}"
+                        )
+                    root.after(150, advance)
+                    return
+
+                assets = populator._cad_assets
+                if assets is None:
+                    raise RuntimeError(
+                        f"EasyEDA returned no CAD candidate for {lcsc}: "
+                        f"{populator.cad_status_var.get()!r}"
+                    )
+                if not assets.has_footprint:
+                    raise RuntimeError(
+                        f"EasyEDA returned no usable footprint for {lcsc}: "
+                        f"{assets.warnings!r}"
+                    )
+                if not assets.has_3d_model or not assets.model_preview_png:
+                    raise RuntimeError(
+                        f"EasyEDA supplied no renderable STEP preview for {lcsc}: "
+                        f"{assets.warnings!r}"
+                    )
+
+                root.update_idletasks()
+                canvas = populator.content_canvas
+                scroll_region = canvas.bbox("all")
+                if not scroll_region:
+                    raise RuntimeError("The CAD preview content has no scroll region.")
+                content_height = scroll_region[3] - scroll_region[1]
+                viewport_height = canvas.winfo_height()
+                max_scroll = max(0, content_height - viewport_height)
+                cad_top = populator.cad_preview.frame.winfo_y()
+                target_scroll = min(max_scroll, max(0, cad_top - 8))
+                canvas.yview_moveto(
+                    target_scroll / max(1, content_height)
+                )
+                root.update_idletasks()
+                root.update()
+
+                model_label = populator.cad_preview.model_label
+                viewport_top = canvas.winfo_rooty()
+                viewport_bottom = viewport_top + canvas.winfo_height()
+                model_top = model_label.winfo_rooty()
+                model_bottom = model_top + model_label.winfo_height()
+                if (
+                    not model_label.winfo_ismapped()
+                    or not str(model_label.cget("image") or "")
+                    or model_top < viewport_top
+                    or model_bottom > viewport_bottom
+                ):
+                    raise RuntimeError(
+                        "The 3D model preview is not fully visible after scrolling: "
+                        f"viewport=({viewport_top}, {viewport_bottom}), "
+                        f"model=({model_top}, {model_bottom})."
+                    )
+
+                _capture_window(
+                    root, output_dir / "add-component-cad-preview-light.png"
+                )
+                apply_tk_theme(root, "dark")
+                root.update()
+                _capture_window(
+                    root, output_dir / "add-component-cad-preview-dark.png"
+                )
+                apply_tk_theme(root, "light")
+                root.update()
+                print(
+                    "live-easyeda-3d-preview=passed "
+                    f"lcsc={lcsc} model_uuid={assets.model_uuid} "
+                    f"preview_bytes={len(assets.model_preview_png)} "
+                    f"scroll_offset={target_scroll}",
+                    flush=True,
+                )
+                state["captured"] = True
+                populator.close()
+            except BaseException as exc:
+                errors.append(f"{type(exc).__name__}: {exc}")
+                try:
+                    populator.close()
+                except Exception:
+                    pass
+
+        populator.root.after(200, advance)
+        populator.run()
+        if state["captured"]:
+            return
+        failures.append(f"{lcsc}: {errors[0] if errors else 'capture stopped before completion'}")
+
+    raise RuntimeError(
+        "Could not capture a live EasyEDA STEP preview from the fallback candidates: "
+        + "; ".join(failures)
+    )
+
+
 def _find_symbol_library() -> Path:
     """Find the Device symbol library installed with the KiCad CLI package."""
     configured = os.environ.get("KICAD_SYMBOL_DIR", "").strip()
@@ -1943,6 +2102,9 @@ def main() -> int:
         _capture_live_selection_workflow(schematic, symbols, output_dir, cache_dir)
         _capture_passive_component_workflows(
             schematic, symbols, kicad, output_dir, cache_dir
+        )
+        _capture_easyeda_3d_preview(
+            schematic, kicad, output_dir, cache_dir
         )
         cli_version = _render_native_symbols(cli, output_dir)
 

@@ -111,6 +111,21 @@ The screenshots show the two contexts of that one action—not separate commands
   </tr>
 </table>
 
+### External EasyEDA CAD and 3D preview
+
+When a part has no suitable local footprint mapping, the review workspace can retrieve
+public EasyEDA symbol, footprint and optional STEP assets. The CAD preview sits below
+the supplier preview in the scrollable content area; scroll down within the workspace
+to inspect the footprint and 3D render. The render is shown only when EasyEDA supplies
+a model and the local KiCad renderer can create a preview.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-cad-preview-dark.png">
+    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-cad-preview-light.png" alt="Add-mode workspace scrolled down to the EasyEDA symbol, footprint and KiCad-rendered 3D model previews." width="640">
+  </picture>
+</p>
+
 For exact resistor/capacitor values such as `10k`, `4k7` or `100nF`, Add mode shows at most five exact matches. Basic listings rank first across passive-value and general keyword searches. The **Basic parts only** checkbox hides Extended and unclassified results; leaving it unchecked keeps those alternatives available behind Basic parts. A direct LCSC-number lookup always returns the exact requested record. Selecting a passive automatically chooses `Device:R` or `Device:C`, its reference prefix, a reviewed package-to-footprint mapping when available, and the catalogue fields. You can still edit Value and Footprint. For other part searches, the suggested generic stock symbol remains editable; enter a KiCad identifier manually (for example, `Amplifier_Operational:LM358`) whenever the mapping is uncertain. The project-local library copies the chosen standalone symbol's original pins, units and graphics; it does not infer a manufacturer-specific pinout.
 
 Clicking **Generate & select component** immediately uses KiCad schematic IPC to insert the generated project-local symbol at the current sheet center, bring it into view and select it—without a second confirmation window. Use KiCad's Move tool to position it where needed. No X/Y placement fields or coordinate entry are exposed.
