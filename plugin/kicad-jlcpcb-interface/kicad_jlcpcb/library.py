@@ -560,55 +560,24 @@ def symbol_library_entry_available(
     kicad=None,
     project_or_path=None,
 ) -> bool:
-    """Check stock, user-global and active-project libraries for Library:Symbol."""
+    """Check the active project's resolved Library:Symbol entry."""
     parts = str(library_id or "").strip().split(":", 1)
     if len(parts) != 2 or not all(parts):
         return False
 
     nickname, symbol_name = parts
-    candidates: list[Path] = []
     try:
-        candidates.append(find_symbol_library(nickname, kicad))
-    except SymbolLibraryError:
-        pass
-
-    tables: list[tuple[Path, Path]] = []
-    if project_or_path is not None:
-        try:
-            project_dir = _project_directory(project_or_path)
-            tables.append((project_dir / "sym-lib-table", project_dir))
-        except SymbolLibraryError:
-            pass
-    tables.extend(
-        (path, path.parent) for path in _global_library_tables("sym-lib-table")
-    )
-    for table_path, base_dir in tables:
-        if not table_path.is_file() or table_path.is_symlink():
-            continue
-        try:
-            table = parse_sexpr(table_path.read_text(encoding="utf-8"))
-            if _head(table) != "sym_lib_table":
-                continue
-            entry = _table_entry(table, nickname)
-            if entry is not None and _entry_text(entry, "type") == "KiCad":
-                library_path = _uri_path(base_dir, _entry_text(entry, "uri"))
-                if library_path is not None:
-                    candidates.append(library_path)
-        except (OSError, UnicodeError, SymbolLibraryError, ValueError):
-            continue
-
-    seen: set[Path] = set()
-    for path in candidates:
-        if path in seen or path.is_symlink() or not path.is_file():
-            continue
-        seen.add(path)
-        try:
-            root = parse_sexpr(path.read_text(encoding="utf-8"))
-            if _head(root) == "kicad_symbol_lib" and _root_symbol(root, symbol_name):
-                return True
-        except (OSError, UnicodeError, SymbolLibraryError, ValueError):
-            continue
-    return False
+        path = find_symbol_library(
+            nickname,
+            kicad,
+            project_or_path=project_or_path,
+        )
+        if path.is_symlink() or not path.is_file():
+            return False
+        root = parse_sexpr(path.read_text(encoding="utf-8"))
+        return _head(root) == "kicad_symbol_lib" and _root_symbol(root, symbol_name) is not None
+    except (OSError, UnicodeError, SymbolLibraryError, ValueError):
+        return False
 
 
 def _global_library_tables(table_name: str) -> tuple[Path, ...]:
