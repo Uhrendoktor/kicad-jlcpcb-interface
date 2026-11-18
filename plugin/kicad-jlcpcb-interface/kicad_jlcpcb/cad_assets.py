@@ -114,7 +114,20 @@ def _safe_preview_svg(raw: str | bytes) -> str:
     if root.tag.rsplit("}", 1)[-1].casefold() != "svg":
         raise CadAssetError("The CAD preview root is not an SVG element.")
 
-    forbidden = {"script", "foreignobject", "iframe", "object", "embed", "audio", "video"}
+    forbidden = {
+        "script",
+        "foreignobject",
+        "iframe",
+        "object",
+        "embed",
+        "audio",
+        "video",
+        "animate",
+        "animatemotion",
+        "animatetransform",
+        "set",
+        "discard",
+    }
     for parent in list(root.iter()):
         if parent.tag.rsplit("}", 1)[-1].casefold() in forbidden:
             raise CadAssetError("The CAD preview contains active or embedded content.")
@@ -193,14 +206,14 @@ class EasyEdaCadProvider:
         *,
         timeout_seconds: float = 20.0,
         opener=urlopen,
-        minimum_request_interval: float = 1.0,
+        minimum_request_interval: float = 4.0,
         sleep=time.sleep,
     ):
         self.cache_directory = Path(cache_directory).expanduser()
         self.cache_directory.mkdir(parents=True, exist_ok=True)
         self.timeout_seconds = float(timeout_seconds)
         self.opener = opener
-        self.minimum_request_interval = max(1.0, float(minimum_request_interval))
+        self.minimum_request_interval = max(4.0, float(minimum_request_interval))
         self.sleep = sleep
         self._last_request = 0.0
 
