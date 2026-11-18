@@ -17,6 +17,7 @@ from kicad_jlcpcb.cad_assets import (  # noqa: E402
     CadAssetError,
     EasyEdaCadProvider,
     _safe_preview_svg,
+    render_svg_preview,
 )
 
 
@@ -247,6 +248,15 @@ class CadAssetProviderTests(unittest.TestCase):
             '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.test/a.png"/></svg>'
         )
         self.assertNotIn("https://example.test", cleaned)
+
+
+    def test_resvg_renders_sanitized_preview_to_png(self):
+        preview = render_svg_preview(
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
+            '<rect x="1" y="1" width="8" height="8" fill="#000"/>'
+            "</svg>"
+        )
+        self.assertTrue(preview.startswith(b"\\x89PNG\\r\\n\\x1a\\n"))
 
     def test_rejects_provider_redirect_to_untrusted_host(self):
         class Redirected(FakeResponse):
