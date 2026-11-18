@@ -29,9 +29,9 @@ from .draft import (
     update_schematic_symbol,
 )
 from .library import (
+    footprint_library_entry_available,
     generate_project_library_symbol,
     register_project_cad_credits,
-    footprint_library_entry_available,
     register_project_footprint_library,
     reload_project_symbol_library,
     symbol_library_entry_available,
