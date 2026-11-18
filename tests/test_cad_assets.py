@@ -240,10 +240,14 @@ class CadAssetProviderTests(unittest.TestCase):
         self.assertIsNone(result.footprint_path)
 
     def test_rejects_active_svg_and_strips_external_references(self):
-        with self.assertRaisesRegex(CadAssetError, "active"):
-            _safe_preview_svg(
-                '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
-            )
+        for active_element in ("script", "animate", "set"):
+            with self.subTest(element=active_element):
+                with self.assertRaisesRegex(CadAssetError, "active"):
+                    _safe_preview_svg(
+                        '<svg xmlns="http://www.w3.org/2000/svg">'
+                        f"<{active_element}/>"
+                        "</svg>"
+                    )
         cleaned = _safe_preview_svg(
             '<svg xmlns="http://www.w3.org/2000/svg">'
             '<defs><path id="shape" d="M0 0L1 1"/></defs>'
