@@ -724,6 +724,28 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
                 )
             )
 
+
+    def test_missing_project_symbol_table_entry_does_not_fall_back_to_stock(self):
+        stock_dir = self.project / "stock"
+        stock_dir.mkdir()
+        (stock_dir / "Device.kicad_sym").write_text(
+            DEVICE_LIBRARY,
+            encoding="utf-8",
+        )
+        (self.project / "sym-lib-table").write_text(
+            '(sym_lib_table (version 7) '
+            '(lib (name "Device") (type "KiCad") '
+            '(uri "${KIPRJMOD}/missing.kicad_sym") (options "") (descr "")))\\n',
+            encoding="utf-8",
+        )
+        with patch.dict("os.environ", {"KICAD_SYMBOL_DIR": str(stock_dir)}):
+            self.assertFalse(
+                symbol_library_entry_available(
+                    "Device:R",
+                    project_or_path=self.project,
+                )
+            )
+
     def test_recognizes_project_symbols_even_when_stock_nickname_is_present(self):
         library = self.project / "Custom.kicad_sym"
         library.write_text(DEVICE_LIBRARY, encoding="utf-8")
