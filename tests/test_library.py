@@ -775,6 +775,39 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
                 )
             )
 
+
+    def test_project_footprint_table_shadows_same_named_global_library(self):
+        home = self.project / "home"
+        config = home / ".config" / "kicad" / "10.0"
+        config.mkdir(parents=True)
+        project_library = self.project / "ProjectParts.pretty"
+        project_library.mkdir()
+        global_library = self.project / "GlobalParts.pretty"
+        global_library.mkdir()
+        (global_library / "Part.kicad_mod").write_text(
+            '(footprint "Part")\\n',
+            encoding="utf-8",
+        )
+        (self.project / "fp-lib-table").write_text(
+            '(fp_lib_table (version 7) '
+            '(lib (name "SharedParts") (type "KiCad") '
+            '(uri "${KIPRJMOD}/ProjectParts.pretty") (options "") (descr "")))\\n',
+            encoding="utf-8",
+        )
+        (config / "fp-lib-table").write_text(
+            '(fp_lib_table (version 7) '
+            '(lib (name "SharedParts") (type "KiCad") '
+            f'(uri "{global_library.as_posix()}") (options "") (descr "")))\\n',
+            encoding="utf-8",
+        )
+        with patch.object(Path, "home", return_value=home):
+            self.assertFalse(
+                footprint_library_entry_available(
+                    "SharedParts:Part",
+                    project_or_path=self.project,
+                )
+            )
+
     def test_recognizes_user_global_symbol_and_footprint_tables(self):
         home = self.project / "home"
         config = home / ".config" / "kicad" / "10.0"
