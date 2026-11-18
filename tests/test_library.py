@@ -660,6 +660,35 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
         )
 
 
+
+    def test_recognizes_user_global_symbol_and_footprint_tables(self):
+        home = self.project / "home"
+        config = home / ".config" / "kicad" / "10.0"
+        config.mkdir(parents=True)
+        symbol_library = self.project / "GlobalSymbols.kicad_sym"
+        symbol_library.write_text(DEVICE_LIBRARY, encoding="utf-8")
+        footprint_library = self.project / "GlobalFootprints.pretty"
+        footprint_library.mkdir()
+        (footprint_library / "Part.kicad_mod").write_text(
+            '(footprint "Part")\\n',
+            encoding="utf-8",
+        )
+        (config / "sym-lib-table").write_text(
+            '(sym_lib_table (version 7) '
+            '(lib (name "GlobalSymbols") (type "KiCad") '
+            f'(uri "{symbol_library.as_posix()}") (options "") (descr "")))\\n',
+            encoding="utf-8",
+        )
+        (config / "fp-lib-table").write_text(
+            '(fp_lib_table (version 7) '
+            '(lib (name "GlobalFootprints") (type "KiCad") '
+            f'(uri "{footprint_library.as_posix()}") (options "") (descr "")))\\n',
+            encoding="utf-8",
+        )
+        with patch.object(Path, "home", return_value=home):
+            self.assertTrue(symbol_library_entry_available("GlobalSymbols:R"))
+            self.assertTrue(footprint_library_entry_available("GlobalFootprints:Part"))
+
 if __name__ == "__main__":
     unittest.main()
 
