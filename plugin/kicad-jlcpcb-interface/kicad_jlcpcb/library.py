@@ -560,11 +560,10 @@ def symbol_library_entry_available(
     kicad=None,
     project_or_path=None,
 ) -> bool:
-    """Check the active project's resolved Library:Symbol entry."""
+    """Check the effective KiCad library scope for a concrete Library:Symbol."""
     parts = str(library_id or "").strip().split(":", 1)
     if len(parts) != 2 or not all(parts):
         return False
-
     nickname, symbol_name = parts
     try:
         path = find_symbol_library(
@@ -575,7 +574,10 @@ def symbol_library_entry_available(
         if path.is_symlink() or not path.is_file():
             return False
         root = parse_sexpr(path.read_text(encoding="utf-8"))
-        return _head(root) == "kicad_symbol_lib" and _root_symbol(root, symbol_name) is not None
+        return (
+            _head(root) == "kicad_symbol_lib"
+            and _root_symbol(root, symbol_name) is not None
+        )
     except (OSError, UnicodeError, SymbolLibraryError, ValueError):
         return False
 
