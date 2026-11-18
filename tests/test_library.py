@@ -600,7 +600,7 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.project = Path(self.temp.name)
-        (self.project / "demo.kicad_pro").write_text("{}\\n", encoding="utf-8")
+        (self.project / "demo.kicad_pro").write_text("{}\n", encoding="utf-8")
 
     def tearDown(self):
         self.temp.cleanup()
@@ -609,13 +609,13 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
         library = self.project / "MyParts.pretty"
         library.mkdir()
         (library / "Example_0402.kicad_mod").write_text(
-            '(footprint "Example_0402")\\n',
+            '(footprint "Example_0402")\n',
             encoding="utf-8",
         )
         (self.project / "fp-lib-table").write_text(
             '(fp_lib_table (version 7) '
             '(lib (name "MyParts") (type "KiCad") '
-            '(uri "${KIPRJMOD}/MyParts.pretty") (options "") (descr "")))\\n',
+            '(uri "${KIPRJMOD}/MyParts.pretty") (options "") (descr "")))\n',
             encoding="utf-8",
         )
         self.assertTrue(
@@ -636,20 +636,20 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
         library = root / "Package.pretty"
         library.mkdir(parents=True)
         (library / "Part.kicad_mod").write_text(
-            '(footprint "Part")\\n',
+            '(footprint "Part")\n',
             encoding="utf-8",
         )
         with patch.dict("os.environ", {"KICAD_FOOTPRINT_DIR": str(root)}):
             self.assertTrue(footprint_library_entry_available("Package:Part"))
             self.assertFalse(footprint_library_entry_available("Package:Missing"))
 
-    def test_recognizes_project_registered_symbols_even_when_stock_nickname_is_present(self):
+    def test_recognizes_project_symbols_even_when_stock_nickname_is_present(self):
         library = self.project / "Custom.kicad_sym"
         library.write_text(DEVICE_LIBRARY, encoding="utf-8")
         (self.project / "sym-lib-table").write_text(
             '(sym_lib_table (version 7) '
             '(lib (name "ProjectOnly") (type "KiCad") '
-            '(uri "${KIPRJMOD}/Custom.kicad_sym") (options "") (descr "")))\\n',
+            '(uri "${KIPRJMOD}/Custom.kicad_sym") (options "") (descr "")))\n',
             encoding="utf-8",
         )
         self.assertTrue(
