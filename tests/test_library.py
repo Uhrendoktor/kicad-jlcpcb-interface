@@ -639,7 +639,7 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
             '(footprint "Part")\n',
             encoding="utf-8",
         )
-        with patch.dict("os.environ", {"KICAD_FOOTPRINT_DIR": ""}):
+        with patch.dict("os.environ", {"KICAD_FOOTPRINT_DIR": str(root)}):
             self.assertTrue(footprint_library_entry_available("Package:Part"))
             self.assertFalse(footprint_library_entry_available("Package:Missing"))
         kicad = SimpleNamespace(get_paths=lambda: {"KICAD_FOOTPRINT_DIR": str(root)})
