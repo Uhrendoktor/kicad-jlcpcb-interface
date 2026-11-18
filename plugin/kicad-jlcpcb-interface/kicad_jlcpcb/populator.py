@@ -1872,15 +1872,16 @@ class ComponentPopulator:
                         lcsc=draft.lcsc,
                     )
                 if uses_external_footprint:
+                    model_kwargs = (
+                        {"model_file": cad_assets.model_path}
+                        if getattr(cad_assets, "has_3d_model", False)
+                        else {}
+                    )
                     imported_footprint = register_project_footprint_library(
                         project,
                         cad_assets.footprint_path,
                         lcsc=draft.lcsc,
-                        model_file=(
-                            cad_assets.model_path
-                            if getattr(cad_assets, "has_3d_model", False)
-                            else None
-                        ),
+                        **model_kwargs,
                     )
                     if imported_footprint.footprint_id != draft.footprint:
                         raise RuntimeError(
@@ -1947,15 +1948,16 @@ class ComponentPopulator:
                         credits_path,
                         lcsc=draft.lcsc,
                     )
+                model_kwargs = (
+                    {"model_file": cad_assets.model_path}
+                    if getattr(cad_assets, "has_3d_model", False)
+                    else {}
+                )
                 imported_footprint = register_project_footprint_library(
                     self.schematic.get_project(),
                     cad_assets.footprint_path,
                     lcsc=draft.lcsc,
-                    model_file=(
-                        cad_assets.model_path
-                        if getattr(cad_assets, "has_3d_model", False)
-                        else None
-                    ),
+                    **model_kwargs,
                 )
                 if imported_footprint.footprint_id != draft.footprint:
                     raise RuntimeError(

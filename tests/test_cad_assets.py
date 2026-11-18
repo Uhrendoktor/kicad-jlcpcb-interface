@@ -582,7 +582,7 @@ class CadAssetProviderTests(unittest.TestCase):
         self.assertEqual(result.model_path.read_bytes(), step)
         self.assertEqual(result.model_preview_png, b"\x89PNG\r\n\x1a\n3d-preview")
         self.assertIn(
-            '(model "${KIPRJMOD}/JLCPCB_C12345.3dshapes/model-abcdef01.step"',
+            '${KIPRJMOD}/JLCPCB_C12345.3dshapes/model-abcdef01.step',
             result.footprint_path.read_text(encoding="utf-8"),
         )
         render.assert_called_once_with(result.footprint_path, result.model_path)

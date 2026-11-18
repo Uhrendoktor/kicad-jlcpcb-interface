@@ -894,7 +894,7 @@ class CadSuggestionTests(unittest.TestCase):
 
 
     def test_3d_model_preview_is_displayed_in_its_own_panel(self):
-        model = self.temp / "model.step"
+        model = Path(self.temp.name) / "model.step"
         model.write_bytes(b"ISO-10303-21;\nEND-ISO-10303-21;")
         assets = replace(
             self.assets,
