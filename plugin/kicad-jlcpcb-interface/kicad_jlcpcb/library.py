@@ -533,12 +533,13 @@ def symbol_library_entry_available(
         return False
 
     nickname, symbol_name = parts
+    candidates: list[Path] = []
     try:
-        path = find_symbol_library(nickname, kicad)
+        candidates.append(find_symbol_library(nickname, kicad))
     except SymbolLibraryError:
-        path = None
+        pass
 
-    if path is None and project_or_path is not None:
+    if project_or_path is not None:
         try:
             project_dir = _project_directory(project_or_path)
             table_path = project_dir / "sym-lib-table"
@@ -546,17 +547,26 @@ def symbol_library_entry_available(
                 table = parse_sexpr(table_path.read_text(encoding="utf-8"))
                 entry = _table_entry(table, nickname)
                 if entry is not None and _entry_text(entry, "type") == "KiCad":
-                    path = _uri_path(project_dir, _entry_text(entry, "uri"))
+                    project_library = _uri_path(
+                        project_dir, _entry_text(entry, "uri")
+                    )
+                    if project_library is not None:
+                        candidates.append(project_library)
         except (OSError, UnicodeError, SymbolLibraryError, ValueError):
-            path = None
+            pass
 
-    if path is None or path.is_symlink() or not path.is_file():
-        return False
-    try:
-        root = parse_sexpr(path.read_text(encoding="utf-8"))
-        return _head(root) == "kicad_symbol_lib" and _root_symbol(root, symbol_name) is not None
-    except (OSError, UnicodeError, SymbolLibraryError, ValueError):
-        return False
+    seen: set[Path] = set()
+    for path in candidates:
+        if path in seen or path.is_symlink() or not path.is_file():
+            continue
+        seen.add(path)
+        try:
+            root = parse_sexpr(path.read_text(encoding="utf-8"))
+            if _head(root) == "kicad_symbol_lib" and _root_symbol(root, symbol_name):
+                return True
+        except (OSError, UnicodeError, SymbolLibraryError, ValueError):
+            continue
+    return False
 
 
 def _global_footprint_tables() -> tuple[Path, ...]:
