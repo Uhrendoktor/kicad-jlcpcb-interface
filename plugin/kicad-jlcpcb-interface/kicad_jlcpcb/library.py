@@ -591,6 +591,48 @@ def _atomic_write(path: Path, content: str, *, backup: bool) -> None:
         raise
 
 
+def register_project_cad_credits(
+    project_or_path,
+    source_file: str | Path,
+    *,
+    lcsc: str,
+) -> Path:
+    """Copy converter attribution into the project without overwriting user files."""
+    project_dir = _project_directory(project_or_path)
+    code = str(lcsc or "").strip().upper()
+    if not re.fullmatch(r"C\d{3,}", code):
+        raise SymbolLibraryError("A validated LCSC number is required for CAD attribution.")
+    source_path = Path(source_file).expanduser().resolve(strict=True)
+    if not source_path.is_file() or source_path.stat().st_size > 1024 * 1024:
+        raise SymbolLibraryError("The CAD attribution file is missing or exceeds 1 MiB.")
+    try:
+        content = source_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise SymbolLibraryError(f"Could not read CAD attribution: {exc}") from exc
+    if not content.strip():
+        raise SymbolLibraryError("The CAD converter returned an empty attribution file.")
+
+    target = project_dir / f"JLCPCB_{code}_CREDITS.txt"
+    if target.is_symlink():
+        raise SymbolLibraryConflict(
+            f"Refusing to replace symlinked CAD attribution file {target}."
+        )
+    if target.exists():
+        try:
+            existing = target.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise SymbolLibraryError(f"Could not inspect existing CAD attribution {target}: {exc}") from exc
+        if existing != content:
+            raise SymbolLibraryConflict(
+                f"Existing CAD attribution file {target.name} differs from the source; "
+                "it was left untouched."
+            )
+        return target
+
+    _atomic_write(target, content, backup=False)
+    return target
+
+
 def generate_project_library_symbol(
     project_or_path, draft, *, device_library: str | Path | None = None, kicad=None
 ) -> GeneratedLibrarySymbol:
