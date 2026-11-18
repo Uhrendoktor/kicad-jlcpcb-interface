@@ -66,6 +66,11 @@ class CadAssetResult:
     warnings: tuple[str, ...] = ()
 
     @property
+    def credits_path(self) -> Path:
+        """Return the cached converter attribution associated with this symbol."""
+        return self.symbol_library_path.parent / "CREDITS.txt"
+
+    @property
     def has_symbol(self) -> bool:
         return bool(self.symbol_name and self.symbol_library_path.is_file())
 
