@@ -11,8 +11,11 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import tempfile
 import time
+import uuid as uuidlib
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,10 +24,13 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from .library import Atom, Quoted, SymbolLibraryError, dump_sexpr, parse_sexpr
 from .provider import normalize_lcsc_code
 
 _EASYEDA_HOSTS = {"easyeda.com", "www.easyeda.com"}
+_MODEL_HOSTS = {"modules.easyeda.com"}
 _COMPONENT_URL = "https://easyeda.com/api/products/{lcsc}/components"
+_STEP_MODEL_URL = "https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{uuid}"
 _SVG_URL = "https://easyeda.com/api/products/{lcsc}/svgs"
 _PACKAGE_URL = "https://easyeda.com/api/components/{uuid}"
 _HEADERS = {
@@ -40,6 +46,7 @@ _HEADERS = {
 _UUID_RE = re.compile(r"^[0-9a-f]{32}$", re.IGNORECASE)
 _MAX_JSON_BYTES = 16 * 1024 * 1024
 _MAX_SVG_BYTES = 4 * 1024 * 1024
+_MAX_STEP_BYTES = 32 * 1024 * 1024
 _MAX_PREVIEW_EDGE = 420
 
 
@@ -63,6 +70,9 @@ class CadAssetResult:
     symbol_preview_png: bytes | None
     footprint_preview_png: bytes | None
     warnings: tuple[str, ...] = ()
+    model_uuid: str = ""
+    model_path: Path | None = None
+    model_preview_png: bytes | None = None
 
     @property
     def credits_path(self) -> Path:
@@ -76,6 +86,10 @@ class CadAssetResult:
     @property
     def has_footprint(self) -> bool:
         return bool(self.footprint_name and self.footprint_path and self.footprint_path.is_file())
+
+    @property
+    def has_3d_model(self) -> bool:
+        return bool(self.model_uuid and self.model_path and self.model_path.is_file())
 
 
 
@@ -94,11 +108,194 @@ def _is_trusted_easyeda_url(url: str) -> bool:
         return False
 
 
+def _is_trusted_model_url(url: str) -> bool:
+    """Accept only the public EasyEDA model host over ordinary HTTPS."""
+    try:
+        parsed = urlparse(str(url))
+        return (
+            parsed.scheme == "https"
+            and parsed.hostname in _MODEL_HOSTS
+            and parsed.port in (None, 443)
+            and parsed.username is None
+            and parsed.password is None
+        )
+    except ValueError:
+        return False
+
+
+def _is_trusted_cad_url(url: str) -> bool:
+    return _is_trusted_easyeda_url(url) or _is_trusted_model_url(url)
+
+
+def _validate_step_model(data: bytes) -> bytes:
+    """Accept bounded ISO-10303-21 STEP data only; reject HTML/error payloads."""
+    payload = bytes(data)
+    if not payload or len(payload) > _MAX_STEP_BYTES:
+        raise CadAssetError("The EasyEDA 3D model is empty or exceeds the 32 MiB limit.")
+    header = payload.lstrip(b"\xef\xbb\xbf \t\r\n")[:64].upper()
+    if not header.startswith(b"ISO-10303-21;"):
+        raise CadAssetError("EasyEDA did not return a valid ISO-10303-21 STEP model.")
+    return payload
+
+
+def _extract_3d_model_metadata(document: dict[str, Any] | None):
+    """Read the 3D model UUID and orientation from EasyEDA package metadata."""
+    if not isinstance(document, dict):
+        return None
+    data = document.get("dataStr")
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except json.JSONDecodeError:
+            data = None
+    if not isinstance(data, dict):
+        data = {}
+    head = data.get("head") if isinstance(data.get("head"), dict) else {}
+    parameters = head.get("c_para") if isinstance(head.get("c_para"), dict) else {}
+    model_uuid = str(head.get("uuid_3d") or parameters.get("Model_3D") or "").strip()
+    rotation: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    for shape in data.get("shape", ()) if isinstance(data.get("shape"), list) else ():
+        if not isinstance(shape, str) or not shape.startswith("SVGNODE~"):
+            continue
+        encoded = shape.split("~", 2)[1]
+        try:
+            node = json.loads(encoded)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        attrs = node.get("attrs") if isinstance(node, dict) else None
+        if not isinstance(attrs, dict):
+            continue
+        candidate = str(attrs.get("uuid") or "").strip()
+        if _UUID_RE.fullmatch(candidate):
+            model_uuid = candidate
+            try:
+                values = tuple(float(value.strip()) for value in str(
+                    attrs.get("c_rotation") or "0,0,0"
+                ).split(","))
+                if len(values) == 3 and all(abs(value) <= 3600 for value in values):
+                    rotation = tuple((360.0 - value) % 360.0 for value in values)
+            except (TypeError, ValueError):
+                rotation = (0.0, 0.0, 0.0)
+            break
+    if not _UUID_RE.fullmatch(model_uuid):
+        return None
+    if not rotation or rotation == (0.0, 0.0, 0.0):
+        try:
+            model_rotation = parameters.get("Model_3D_Rotation")
+            if isinstance(model_rotation, str):
+                values = tuple(float(value.strip()) for value in model_rotation.split(","))
+                if len(values) == 3:
+                    rotation = tuple((360.0 - value) % 360.0 for value in values)
+        except (TypeError, ValueError):
+            pass
+    return model_uuid.lower(), rotation
+
+
+def _format_rotation(values: tuple[float, float, float]) -> list[Any]:
+    return [
+        Atom("rotate"),
+        [Atom("xyz"), *(Atom(f"{float(value):g}") for value in values)],
+    ]
+
+
+def render_step_preview(footprint_file: Path, model_file: Path) -> bytes:
+    """Render one candidate footprint using KiCad's native 3D ray-tracing CLI."""
+    cli = shutil.which("kicad-cli") or shutil.which("kicad-cli-nightly")
+    if not cli:
+        raise CadAssetError("KiCad's kicad-cli renderer is unavailable; the STEP model was retained.")
+    try:
+        footprint = parse_sexpr(footprint_file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError, SymbolLibraryError) as exc:
+        raise CadAssetError(f"Could not prepare the 3D preview footprint: {exc}") from exc
+    if not isinstance(footprint, list) or not footprint or not isinstance(footprint[0], Atom) or footprint[0].value != "footprint":
+        raise CadAssetError("The converted footprint is not a valid KiCad footprint.")
+    model_nodes = [item for item in footprint if isinstance(item, list) and item and isinstance(item[0], Atom) and item[0].value == "model"]
+    if len(model_nodes) != 1 or len(model_nodes[0]) < 2 or not isinstance(model_nodes[0][1], Quoted):
+        raise CadAssetError("The footprint has no unambiguous KiCad 3D model reference.")
+    model_reference = model_nodes[0][1].value
+    prefix = "${KIPRJMOD}/"
+    if not model_reference.startswith(prefix):
+        raise CadAssetError("The model preview requires a project-relative 3D model path.")
+    relative_model = Path(model_reference[len(prefix):])
+    if relative_model.is_absolute() or ".." in relative_model.parts or relative_model.suffix.casefold() != ".step":
+        raise CadAssetError("The 3D model reference contains an unsafe path.")
+    with tempfile.TemporaryDirectory(prefix="kicad-jlcpcb-3d-") as temporary:
+        root = Path(temporary)
+        model_destination = root / relative_model
+        model_destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(model_file, model_destination)
+        children = [item for item in footprint if isinstance(item, list) and item and isinstance(item[0], Atom)]
+        if not any(item[0].value == "layer" for item in children):
+            footprint.insert(2, [Atom("layer"), Quoted("F.Cu")])
+        if not any(item[0].value == "at" for item in children):
+            footprint.insert(2, [Atom("at"), Atom("0"), Atom("0"), Atom("0")])
+        if not any(item[0].value == "uuid" for item in children):
+            footprint.append([Atom("uuid"), Quoted(str(uuidlib.uuid4()))])
+        footprint[1] = Quoted("JLCPCB_Preview:" + str(footprint[1].value if isinstance(footprint[1], Quoted) else footprint[1].value))
+        layers = """
+        (layers
+          (0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal)
+          (3 "In3.Cu" signal) (4 "In4.Cu" signal) (5 "In5.Cu" signal)
+          (6 "In6.Cu" signal) (7 "In7.Cu" signal) (8 "In8.Cu" signal)
+          (9 "In9.Cu" signal) (10 "In10.Cu" signal) (11 "In11.Cu" signal)
+          (12 "In12.Cu" signal) (13 "In13.Cu" signal) (14 "In14.Cu" signal)
+          (15 "In15.Cu" signal) (16 "In16.Cu" signal) (17 "In17.Cu" signal)
+          (18 "In18.Cu" signal) (19 "In19.Cu" signal) (20 "In20.Cu" signal)
+          (21 "In21.Cu" signal) (22 "In22.Cu" signal) (23 "In23.Cu" signal)
+          (24 "In24.Cu" signal) (25 "In25.Cu" signal) (26 "In26.Cu" signal)
+          (27 "In27.Cu" signal) (28 "In28.Cu" signal) (29 "In29.Cu" signal)
+          (30 "In30.Cu" signal) (31 "B.Cu" signal)
+          (32 "B.Adhes" user) (33 "F.Adhes" user)
+          (34 "B.Paste" user) (35 "F.Paste" user)
+          (36 "B.SilkS" user) (37 "F.SilkS" user)
+          (38 "B.Mask" user) (39 "F.Mask" user)
+          (40 "Dwgs.User" user) (41 "Cmts.User" user)
+          (42 "Eco1.User" user) (43 "Eco2.User" user)
+          (44 "Edge.Cuts" user) (45 "Margin" user)
+          (46 "B.CrtYd" user) (47 "F.CrtYd" user)
+          (48 "B.Fab" user) (49 "F.Fab" user)
+        )
+        """
+        board = (
+            '(kicad_pcb (version 20250114) (generator "kicad_jlcpcb_interface") '
+            '(general (thickness 1.6)) (paper "A4") ' + layers +
+            ' (setup) (net 0 "") ' + dump_sexpr(footprint) + ')'
+        )
+        board_file = root / "preview.kicad_pcb"
+        output_file = root / "preview.png"
+        board_file.write_text(board, encoding="utf-8")
+        try:
+            completed = subprocess.run(
+                [
+                    cli, "pcb", "render", "--output", str(output_file),
+                    "--width", "420", "--height", "280", "--side", "top",
+                    "--floor", str(board_file),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=25,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise CadAssetError(f"KiCad could not render the 3D model preview: {exc}") from exc
+        if completed.returncode != 0 or not output_file.is_file():
+            detail = (completed.stderr or completed.stdout or b"").decode(
+                "utf-8", errors="replace"
+            )[-1000:]
+            raise CadAssetError(
+                "KiCad's 3D renderer could not create a preview."
+                + (f" {detail.strip()}" if detail.strip() else "")
+            )
+        preview = output_file.read_bytes()
+        if not preview.startswith(b"\x89PNG\r\n\x1a\n") or len(preview) > 8 * 1024 * 1024:
+            raise CadAssetError("KiCad's 3D renderer returned an invalid or oversized PNG.")
+        return preview
+
+
 class _EasyEdaRedirectHandler(HTTPRedirectHandler):
-    """Follow only HTTPS redirects that stay on the public EasyEDA hosts."""
+    """Follow only HTTPS redirects that stay on public EasyEDA CAD hosts."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if not _is_trusted_easyeda_url(newurl):
+        if not _is_trusted_cad_url(newurl):
             raise CadAssetError(
                 "Refusing an EasyEDA redirect outside the approved HTTPS hosts."
             )
@@ -244,8 +441,8 @@ class EasyEdaCadProvider:
         self._last_request = 0.0
 
     def _request(self, url: str, *, limit: int) -> bytes:
-        if not _is_trusted_easyeda_url(url):
-            raise CadAssetError("Refusing a CAD request outside EasyEDA HTTPS.")
+        if not _is_trusted_cad_url(url):
+            raise CadAssetError("Refusing a CAD request outside the approved EasyEDA HTTPS hosts.")
         delay = self.minimum_request_interval - (time.monotonic() - self._last_request)
         if delay > 0:
             self.sleep(delay)
@@ -260,7 +457,7 @@ class EasyEdaCadProvider:
         try:
             with self.opener(request, timeout=self.timeout_seconds) as response:
                 final_url = response.geturl() if hasattr(response, "geturl") else url
-                if not _is_trusted_easyeda_url(final_url):
+                if not _is_trusted_cad_url(final_url):
                     raise CadAssetError("EasyEDA redirected the CAD request to an untrusted host.")
                 status = getattr(response, "status", 200)
                 if status in (403, 429):
@@ -373,8 +570,42 @@ class EasyEdaCadProvider:
                     != manifest["footprint_sha256"]
                 ):
                     return None
+            model_uuid = str(manifest.get("model_uuid") or "")
+            model_filename = str(manifest.get("model_filename") or "")
+            model_path = None
+            if model_uuid or model_filename:
+                if (
+                    not _UUID_RE.fullmatch(model_uuid)
+                    or Path(model_filename).name != model_filename
+                    or not model_filename.endswith(".step")
+                ):
+                    return None
+                model_path = folder / f"JLCPCB_{lcsc}.3dshapes" / model_filename
+                if not model_path.is_file() or model_path.is_symlink():
+                    return None
+                model_bytes = _validate_step_model(model_path.read_bytes())
+                if hashlib.sha256(model_bytes).hexdigest() != manifest.get("model_sha256"):
+                    return None
             symbol_png_path = folder / "symbol-preview.png"
             footprint_png_path = folder / "footprint-preview.png"
+            model_png_path = folder / "model-preview.png"
+            if model_png_path.is_symlink() or (
+                model_png_path.is_file()
+                and model_png_path.stat().st_size > 8 * 1024 * 1024
+            ):
+                return None
+            model_preview_data = (
+                model_png_path.read_bytes() if model_png_path.is_file() else None
+            )
+            if (
+                model_preview_data is not None
+                and (
+                    not model_preview_data.startswith(b"\x89PNG\r\n\x1a\n")
+                    or hashlib.sha256(model_preview_data).hexdigest()
+                    != manifest.get("model_preview_sha256")
+                )
+            ):
+                model_preview_data = None
             return CadAssetResult(
                 lcsc=lcsc,
                 component_uuid=uuid,
@@ -392,6 +623,9 @@ class EasyEdaCadProvider:
                     footprint_png_path.read_bytes() if footprint_png_path.is_file() else None
                 ),
                 warnings=tuple(str(item) for item in manifest.get("warnings", ())),
+                model_uuid=model_uuid,
+                model_path=model_path,
+                model_preview_png=model_preview_data,
             )
         except (OSError, ValueError, KeyError, TypeError):
             return None
@@ -456,6 +690,8 @@ class EasyEdaCadProvider:
             fallback_result.pop("packageDetail", None)
             return fallback
 
+        model_metadata = _extract_3d_model_metadata(package or result)
+        model_uuid, model_rotation = model_metadata if model_metadata else ("", (0.0, 0.0, 0.0))
         conversion_payload = payload if package is not None else symbol_only_payload()
         try:
             converted = convert_response(conversion_payload, package)
@@ -497,13 +733,62 @@ class EasyEdaCadProvider:
         footprint_filename = ""
         footprint_library_id = ""
         footprint_name = converted_name if converted.footprint else ""
-        if converted.footprint:
+        footprint_text = str(converted.footprint or "")
+        model_path: Path | None = None
+        model_preview: bytes | None = None
+        model_filename = ""
+        model_sha256 = ""
+        if footprint_text:
+            footprint_library_id = f"JLCPCB_{lcsc}:{converted_name}"
+            if model_uuid:
+                try:
+                    model_bytes = _validate_step_model(
+                        self._request(
+                            _STEP_MODEL_URL.format(uuid=model_uuid),
+                            limit=_MAX_STEP_BYTES,
+                        )
+                    )
+                    model_filename = f"model-{model_uuid[:8]}.step"
+                    model_directory = folder / f"JLCPCB_{lcsc}.3dshapes"
+                    model_directory.mkdir(parents=True, exist_ok=True)
+                    if model_directory.is_symlink():
+                        raise CadAssetError("Refusing to write into a symlinked 3D model cache.")
+                    model_path = model_directory / model_filename
+                    _safe_write(model_path, model_bytes)
+                    model_sha256 = hashlib.sha256(model_bytes).hexdigest()
+                    footprint_root = parse_sexpr(footprint_text)
+                    if not isinstance(footprint_root, list) or not footprint_root or not isinstance(footprint_root[0], Atom) or footprint_root[0].value != "footprint":
+                        raise CadAssetError("The converter returned a malformed footprint for 3D model attachment.")
+                    if any(
+                        isinstance(node, list) and node and isinstance(node[0], Atom)
+                        and node[0].value == "model"
+                        for node in footprint_root
+                    ):
+                        raise CadAssetError("The converted footprint already contains an unexpected 3D model reference.")
+                    relative_path = (
+                        f"${{KIPRJMOD}}/JLCPCB_{lcsc}.3dshapes/{model_filename}"
+                    )
+                    footprint_root.append(
+                        [
+                            Atom("model"),
+                            Quoted(relative_path),
+                            [Atom("at"), [Atom("xyz"), Atom("0"), Atom("0"), Atom("0")]],
+                            [Atom("scale"), [Atom("xyz"), Atom("1"), Atom("1"), Atom("1")]],
+                            _format_rotation(model_rotation),
+                        ]
+                    )
+                    footprint_text = dump_sexpr(footprint_root)
+                except (CadAssetError, OSError, SymbolLibraryError) as exc:
+                    warnings.append(f"3D model unavailable: {exc}")
+                    model_uuid = ""
+                    model_path = None
+                    model_filename = ""
+                    model_sha256 = ""
             footprint_dir = folder / "source.pretty"
             footprint_dir.mkdir(parents=True, exist_ok=True)
             footprint_filename = f"{converted_name}.kicad_mod"
             footprint_path = footprint_dir / footprint_filename
-            _safe_write(footprint_path, converted.footprint.encode("utf-8"))
-            footprint_library_id = f"JLCPCB_{lcsc}:{converted_name}"
+            _safe_write(footprint_path, footprint_text.encode("utf-8"))
         _safe_write(folder / "CREDITS.txt", converted.credits.encode("utf-8"))
 
         symbol_preview = footprint_preview = None
@@ -544,6 +829,13 @@ class EasyEdaCadProvider:
             warnings.append(f"CAD previews are unavailable: {exc}")
 
         symbol_library_id = f"{nickname}:{converted_name}"
+        if model_path is not None and footprint_path is not None:
+            try:
+                model_preview = render_step_preview(footprint_path, model_path)
+                _safe_write(folder / "model-preview.png", model_preview)
+            except (CadAssetError, OSError) as exc:
+                warnings.append(f"3D model preview is unavailable: {exc}")
+
         manifest = {
             "lcsc": lcsc,
             "component_uuid": component_uuid,
@@ -557,8 +849,14 @@ class EasyEdaCadProvider:
             "warnings": warnings,
             "symbol_sha256": hashlib.sha256(converted.symbol.encode("utf-8")).hexdigest(),
             "footprint_sha256": (
-                hashlib.sha256(converted.footprint.encode("utf-8")).hexdigest()
-                if converted.footprint else ""
+                hashlib.sha256(footprint_text.encode("utf-8")).hexdigest()
+                if footprint_text else ""
+            ),
+            "model_uuid": model_uuid,
+            "model_filename": model_filename,
+            "model_sha256": model_sha256,
+            "model_preview_sha256": (
+                hashlib.sha256(model_preview).hexdigest() if model_preview else ""
             ),
         }
         _safe_write(
@@ -578,4 +876,7 @@ class EasyEdaCadProvider:
             symbol_preview_png=symbol_preview,
             footprint_preview_png=footprint_preview,
             warnings=tuple(warnings),
+            model_uuid=model_uuid,
+            model_path=model_path,
+            model_preview_png=model_preview,
         )
