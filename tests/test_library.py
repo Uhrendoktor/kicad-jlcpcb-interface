@@ -554,8 +554,8 @@ class ProjectCadCreditsTests(unittest.TestCase):
         self.project = Path(self.temp.name)
         self.source = self.project / "CREDITS.txt"
         self.source.write_text(
-            "Source: https://easyeda.com/component/example\\n"
-            "Author: Example contributor\\n",
+            "Source: https://easyeda.com/component/example\n"
+            "Author: Example contributor\n",
             encoding="utf-8",
         )
 
@@ -569,7 +569,10 @@ class ProjectCadCreditsTests(unittest.TestCase):
             lcsc="C12345",
         )
         self.assertEqual(target.name, "JLCPCB_C12345_CREDITS.txt")
-        self.assertEqual(target.read_text(encoding="utf-8"), self.source.read_text(encoding="utf-8"))
+        self.assertEqual(
+            target.read_text(encoding="utf-8"),
+            self.source.read_text(encoding="utf-8"),
+        )
         again = register_project_cad_credits(
             self.project,
             self.source,
@@ -579,7 +582,7 @@ class ProjectCadCreditsTests(unittest.TestCase):
 
     def test_refuses_to_replace_existing_user_attribution(self):
         target = self.project / "JLCPCB_C12345_CREDITS.txt"
-        target.write_text("User-owned notes\\n", encoding="utf-8")
+        target.write_text("User-owned notes\n", encoding="utf-8")
         before = target.read_bytes()
         with self.assertRaises(SymbolLibraryConflict):
             register_project_cad_credits(
