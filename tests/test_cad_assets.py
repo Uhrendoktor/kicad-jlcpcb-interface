@@ -5,9 +5,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from urllib.parse import urlparse
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
