@@ -745,7 +745,7 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
         (self.project / "sym-lib-table").write_text(
             '(sym_lib_table (version 7) '
             '(lib (name "Device") (type "KiCad") '
-            '(uri "${KIPRJMOD}/ProjectDevice.kicad_sym") (options "") (descr "")))\\n',
+            '(uri "${KIPRJMOD}/ProjectDevice.kicad_sym") (options "") (descr "")))\n',
             encoding="utf-8",
         )
         with patch.dict("os.environ", {"KICAD_SYMBOL_DIR": str(stock_directory)}):
