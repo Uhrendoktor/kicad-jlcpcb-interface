@@ -202,36 +202,67 @@ def render_step_preview(footprint_file: Path, model_file: Path) -> bytes:
     """Render one candidate footprint using KiCad's native 3D ray-tracing CLI."""
     cli = shutil.which("kicad-cli") or shutil.which("kicad-cli-nightly")
     if not cli:
-        raise CadAssetError("KiCad's kicad-cli renderer is unavailable; the STEP model was retained.")
+        raise CadAssetError(
+            "KiCad's kicad-cli renderer is unavailable; the STEP model was retained."
+        )
     try:
         footprint = parse_sexpr(footprint_file.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, ValueError, SymbolLibraryError) as exc:
         raise CadAssetError(f"Could not prepare the 3D preview footprint: {exc}") from exc
-    if not isinstance(footprint, list) or not footprint or not isinstance(footprint[0], Atom) or footprint[0].value != "footprint":
+    if (
+        not isinstance(footprint, list)
+        or not footprint
+        or not isinstance(footprint[0], Atom)
+        or footprint[0].value != "footprint"
+    ):
         raise CadAssetError("The converted footprint is not a valid KiCad footprint.")
-    model_nodes = [item for item in footprint if isinstance(item, list) and item and isinstance(item[0], Atom) and item[0].value == "model"]
-    if len(model_nodes) != 1 or len(model_nodes[0]) < 2 or not isinstance(model_nodes[0][1], Quoted):
+    model_nodes = [
+        item for item in footprint
+        if (
+            isinstance(item, list)
+            and item
+            and isinstance(item[0], Atom)
+            and item[0].value == "model"
+        )
+    ]
+    if (
+        len(model_nodes) != 1
+        or len(model_nodes[0]) < 2
+        or not isinstance(model_nodes[0][1], Quoted)
+    ):
         raise CadAssetError("The footprint has no unambiguous KiCad 3D model reference.")
     model_reference = model_nodes[0][1].value
     prefix = "${KIPRJMOD}/"
     if not model_reference.startswith(prefix):
         raise CadAssetError("The model preview requires a project-relative 3D model path.")
     relative_model = Path(model_reference[len(prefix):])
-    if relative_model.is_absolute() or ".." in relative_model.parts or relative_model.suffix.casefold() != ".step":
+    if (
+        relative_model.is_absolute()
+        or ".." in relative_model.parts
+        or relative_model.suffix.casefold() != ".step"
+    ):
         raise CadAssetError("The 3D model reference contains an unsafe path.")
     with tempfile.TemporaryDirectory(prefix="kicad-jlcpcb-3d-") as temporary:
         root = Path(temporary)
         model_destination = root / relative_model
         model_destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(model_file, model_destination)
-        children = [item for item in footprint if isinstance(item, list) and item and isinstance(item[0], Atom)]
+        children = [
+            item for item in footprint
+            if isinstance(item, list) and item and isinstance(item[0], Atom)
+        ]
         if not any(item[0].value == "layer" for item in children):
             footprint.insert(2, [Atom("layer"), Quoted("F.Cu")])
         if not any(item[0].value == "at" for item in children):
             footprint.insert(2, [Atom("at"), Atom("0"), Atom("0"), Atom("0")])
         if not any(item[0].value == "uuid" for item in children):
             footprint.append([Atom("uuid"), Quoted(str(uuidlib.uuid4()))])
-        footprint[1] = Quoted("JLCPCB_Preview:" + str(footprint[1].value if isinstance(footprint[1], Quoted) else footprint[1].value))
+        source_name = (
+            footprint[1].value
+            if isinstance(footprint[1], (Atom, Quoted))
+            else str(footprint[1])
+        )
+        footprint[1] = Quoted(f"JLCPCB_Preview:{source_name}")
         layers = """
         (layers
           (0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal)
@@ -757,14 +788,23 @@ class EasyEdaCadProvider:
                     _safe_write(model_path, model_bytes)
                     model_sha256 = hashlib.sha256(model_bytes).hexdigest()
                     footprint_root = parse_sexpr(footprint_text)
-                    if not isinstance(footprint_root, list) or not footprint_root or not isinstance(footprint_root[0], Atom) or footprint_root[0].value != "footprint":
-                        raise CadAssetError("The converter returned a malformed footprint for 3D model attachment.")
+                    if (
+                        not isinstance(footprint_root, list)
+                        or not footprint_root
+                        or not isinstance(footprint_root[0], Atom)
+                        or footprint_root[0].value != "footprint"
+                    ):
+                        raise CadAssetError(
+                            "The converter returned a malformed footprint for 3D model attachment."
+                        )
                     if any(
                         isinstance(node, list) and node and isinstance(node[0], Atom)
                         and node[0].value == "model"
                         for node in footprint_root
                     ):
-                        raise CadAssetError("The converted footprint already contains an unexpected 3D model reference.")
+                        raise CadAssetError(
+                            "The converted footprint already contains an unexpected 3D model reference."
+                        )
                     relative_path = (
                         f"${{KIPRJMOD}}/JLCPCB_{lcsc}.3dshapes/{model_filename}"
                     )

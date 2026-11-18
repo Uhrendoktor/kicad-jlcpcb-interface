@@ -997,16 +997,28 @@ def register_project_footprint_library(
         model_filename = model_source.name
         if (
             Path(model_filename).name != model_filename
-            or not re.fullmatch(r"[A-Za-z0-9_+.-]{1,120}\.step", model_filename, re.IGNORECASE)
+            or not re.fullmatch(
+                r"[A-Za-z0-9_+.-]{1,120}\.step",
+                model_filename,
+                re.IGNORECASE,
+            )
         ):
             raise SymbolLibraryError("The EasyEDA 3D model has an unsafe filename.")
         model_digest = hashlib.sha256(model_bytes).hexdigest()
         model_target = model_directory / model_filename
         expected_reference = f"${{KIPRJMOD}}/{model_directory.name}/{model_filename}"
-        if len(model_nodes) != 1 or len(model_nodes[0]) < 2 or _string_value(model_nodes[0][1]) != expected_reference:
-            raise SymbolLibraryError("The footprint's 3D model reference does not match the imported model path.")
+        if (
+            len(model_nodes) != 1
+            or len(model_nodes[0]) < 2
+            or _string_value(model_nodes[0][1]) != expected_reference
+        ):
+            raise SymbolLibraryError(
+                "The footprint's 3D model reference does not match the imported model path."
+            )
     elif model_nodes:
-        raise SymbolLibraryError("The footprint references a 3D model, but no matching STEP file was supplied.")
+        raise SymbolLibraryError(
+            "The footprint references a 3D model, but no matching STEP file was supplied."
+        )
     table_path = project_dir / "fp-lib-table"
     if table_path.is_symlink():
         raise SymbolLibraryConflict("Refusing to modify a symlinked project fp-lib-table.")
@@ -1111,7 +1123,9 @@ def register_project_footprint_library(
                     shutil.rmtree(library_path, ignore_errors=True)
                 if model_created:
                     shutil.rmtree(model_directory, ignore_errors=True)
-                raise SymbolLibraryConflict("The imported 3D model ownership data is unreadable.") from exc
+                raise SymbolLibraryConflict(
+                    "The imported 3D model ownership data is unreadable."
+                ) from exc
             if (
                 model_marker.get("generator") != _GENERATOR
                 or model_marker.get("lcsc") != code
@@ -1124,7 +1138,8 @@ def register_project_footprint_library(
                 if model_created:
                     shutil.rmtree(model_directory, ignore_errors=True)
                 raise SymbolLibraryConflict(
-                    "The imported 3D model already exists but is foreign, modified, or differs from the candidate."
+                    "The imported 3D model already exists but is foreign, modified, "
+                    "or differs from the candidate."
                 )
         else:
             staging = Path(tempfile.mkdtemp(
