@@ -30,6 +30,7 @@ from .draft import (
 )
 from .library import (
     generate_project_library_symbol,
+    register_project_cad_credits,
     register_project_footprint_library,
     reload_project_symbol_library,
     symbol_library_entry_available,
@@ -1795,17 +1796,27 @@ class ComponentPopulator:
                 project = self.schematic.get_project()
                 cad_assets = getattr(self, "_cad_assets", None)
                 external_symbol_library = None
-                if (
+                uses_external_symbol = bool(
                     cad_assets is not None
                     and draft.symbol_hint == cad_assets.symbol_library_id
                     and cad_assets.has_symbol
-                ):
-                    external_symbol_library = cad_assets.symbol_library_path
-                if (
+                )
+                uses_external_footprint = bool(
                     cad_assets is not None
                     and draft.footprint == cad_assets.footprint_library_id
                     and cad_assets.has_footprint
-                ):
+                )
+                if uses_external_symbol:
+                    external_symbol_library = cad_assets.symbol_library_path
+                if (
+                    uses_external_symbol or uses_external_footprint
+                ) and cad_assets.credits_path.is_file():
+                    register_project_cad_credits(
+                        project,
+                        cad_assets.credits_path,
+                        lcsc=draft.lcsc,
+                    )
+                if uses_external_footprint:
                     imported_footprint = register_project_footprint_library(
                         project,
                         cad_assets.footprint_path,
@@ -1869,6 +1880,12 @@ class ComponentPopulator:
                 and draft.footprint == cad_assets.footprint_library_id
                 and cad_assets.has_footprint
             ):
+                if cad_assets.credits_path.is_file():
+                    register_project_cad_credits(
+                        self.schematic.get_project(),
+                        cad_assets.credits_path,
+                        lcsc=draft.lcsc,
+                    )
                 imported_footprint = register_project_footprint_library(
                     self.schematic.get_project(),
                     cad_assets.footprint_path,
