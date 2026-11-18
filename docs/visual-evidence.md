@@ -83,6 +83,27 @@ There is one Eeschema command and one component workspace. Properties, Update an
   </tr>
 </table>
 
+### External EasyEDA CAD and 3D preview
+
+The CAD panel is below the catalogue preview inside the same scrollable content area.
+When a local footprint mapping is unavailable, the app fetches EasyEDA CAD in the
+background. Scroll the review form down to see the symbol and footprint previews and,
+when the upstream package exposes a STEP model, the KiCad-rendered 3D image. The
+capture fixture clears the candidate footprint to exercise this real fallback path on
+a live LCSC record; the STEP asset and thumbnail are fetched/rendered by the provider
+and KiCad CLI rather than supplied as a mock image.
+
+<table>
+  <tr>
+    <th>Light theme · external CAD and 3D model</th>
+    <th>Dark theme · external CAD and 3D model</th>
+  </tr>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-cad-preview-light.png" alt="Scrolled Add-mode workspace showing EasyEDA CAD and the KiCad-rendered STEP preview in light theme" width="480"></td>
+    <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-cad-preview-dark.png" alt="Scrolled Add-mode workspace showing EasyEDA CAD and the KiCad-rendered STEP preview in dark theme" width="480"></td>
+  </tr>
+</table>
+
 <details>
   <summary>Show Update and Add completion states</summary>
 
@@ -124,6 +145,7 @@ The visual capture runs the production application windows, not separately drawn
 | Properties controls | Calls Select in schematic and Select same part on sheet; verifies the Eeschema selection; copies the LCSC ID and verifies the clipboard; invokes LCSC search, supplier product, datasheet and MPN-result actions and checks that each opens an HTTPS URL. |
 | Add or Update Component — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, verifies the shared match list and catalogue preview, waits for the asynchronous supplier image when present, captures the proposal, applies the reviewed update directly without a confirmation dialog and reads the resulting fields back through IPC. |
 | Add or Update Component — add mode | Clears the Eeschema selection, searches for `10k`, verifies the shortlist is limited to five exact candidates and ranks Basic listings first, captures the selected catalogue preview and proposal, proceeds directly to generation without a confirmation window, generates/reuses the selected project-local resistor symbol, and verifies that the symbol is inserted at the schematic page center, focused and selected in Eeschema. |
+| Add or Update Component — external CAD preview | Uses a live LCSC detail record, forces the no-local-footprint fallback, downloads EasyEDA CAD and an available STEP model, renders the 3D preview with KiCad CLI, scrolls the same production workspace to the CAD panel, and captures both themes. |
 | Theme pairs | Captures the overview, properties and both Add or Update Component modes in both light and dark palettes, reusing each live widget tree. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 
