@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 from .provider import normalize_lcsc_code
 
@@ -77,6 +77,19 @@ class CadAssetResult:
     @property
     def has_footprint(self) -> bool:
         return bool(self.footprint_name and self.footprint_path and self.footprint_path.is_file())
+
+
+
+class _EasyEdaRedirectHandler(HTTPRedirectHandler):
+    """Follow only HTTPS redirects that stay on the public EasyEDA hosts."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urlparse(newurl)
+        if target.scheme != "https" or target.hostname not in _EASYEDA_HOSTS:
+            raise CadAssetError(
+                "Refusing an EasyEDA redirect outside the approved HTTPS hosts."
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def _safe_write(path: Path, data: bytes) -> None:
@@ -205,14 +218,14 @@ class EasyEdaCadProvider:
         cache_directory: str | Path,
         *,
         timeout_seconds: float = 20.0,
-        opener=urlopen,
+        opener=None,
         minimum_request_interval: float = 4.0,
         sleep=time.sleep,
     ):
         self.cache_directory = Path(cache_directory).expanduser()
         self.cache_directory.mkdir(parents=True, exist_ok=True)
         self.timeout_seconds = float(timeout_seconds)
-        self.opener = opener
+        self.opener = opener or build_opener(_EasyEdaRedirectHandler()).open
         self.minimum_request_interval = max(4.0, float(minimum_request_interval))
         self.sleep = sleep
         self._last_request = 0.0
