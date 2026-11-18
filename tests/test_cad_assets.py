@@ -279,6 +279,15 @@ class CadAssetProviderTests(unittest.TestCase):
         self.assertEqual(result.symbol_preview_png, b"<svg>symbol-unit-one</svg>")
         self.assertEqual(result.footprint_preview_png, b"<svg>footprint</svg>")
 
+
+    def test_rejects_converter_asset_names_that_escape_the_cache_directory(self):
+        unsafe = self.converted()
+        unsafe.name = "../../outside"
+        with self.install_converter_stub(unsafe):
+            with self.assertRaisesRegex(CadAssetError, "unsafe KiCad"):
+                self.provider.lookup("C12345")
+        self.assertFalse((self.cache.parent / "outside.kicad_mod").exists())
+
     def test_symbol_only_component_keeps_footprint_independent(self):
         with (
             self.install_converter_stub(self.converted(with_footprint=False)),
