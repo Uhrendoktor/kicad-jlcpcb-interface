@@ -79,12 +79,26 @@ class CadAssetResult:
 
 
 
+def _is_trusted_easyeda_url(url: str) -> bool:
+    """Accept only credential-free HTTPS URLs on EasyEDA's standard port."""
+    try:
+        parsed = urlparse(str(url))
+        return (
+            parsed.scheme == "https"
+            and parsed.hostname in _EASYEDA_HOSTS
+            and parsed.port in (None, 443)
+            and parsed.username is None
+            and parsed.password is None
+        )
+    except ValueError:
+        return False
+
+
 class _EasyEdaRedirectHandler(HTTPRedirectHandler):
     """Follow only HTTPS redirects that stay on the public EasyEDA hosts."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        target = urlparse(newurl)
-        if target.scheme != "https" or target.hostname not in _EASYEDA_HOSTS:
+        if not _is_trusted_easyeda_url(newurl):
             raise CadAssetError(
                 "Refusing an EasyEDA redirect outside the approved HTTPS hosts."
             )
@@ -230,8 +244,7 @@ class EasyEdaCadProvider:
         self._last_request = 0.0
 
     def _request(self, url: str, *, limit: int) -> bytes:
-        parsed = urlparse(url)
-        if parsed.scheme != "https" or parsed.hostname not in _EASYEDA_HOSTS:
+        if not _is_trusted_easyeda_url(url):
             raise CadAssetError("Refusing a CAD request outside EasyEDA HTTPS.")
         delay = self.minimum_request_interval - (time.monotonic() - self._last_request)
         if delay > 0:
@@ -247,8 +260,7 @@ class EasyEdaCadProvider:
         try:
             with self.opener(request, timeout=self.timeout_seconds) as response:
                 final_url = response.geturl() if hasattr(response, "geturl") else url
-                final = urlparse(final_url)
-                if final.scheme != "https" or final.hostname not in _EASYEDA_HOSTS:
+                if not _is_trusted_easyeda_url(final_url):
                     raise CadAssetError("EasyEDA redirected the CAD request to an untrusted host.")
                 status = getattr(response, "status", 200)
                 if status in (403, 429):
