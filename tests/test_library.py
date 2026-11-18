@@ -653,11 +653,14 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
 
     def test_generator_prefers_project_symbol_table_over_stock_nickname(self):
         library = self.project / "Custom.kicad_sym"
-        library.write_text(DEVICE_LIBRARY, encoding="utf-8")
+        library.write_text(
+            DEVICE_LIBRARY.replace('(symbol "C"', '(symbol "C_UNUSED"', 1),
+            encoding="utf-8",
+        )
         stock_dir = self.project / "stock"
         stock_dir.mkdir()
         (stock_dir / "Device.kicad_sym").write_text(
-            DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "C"', 1),
+            DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "R_UNUSED"', 1),
             encoding="utf-8",
         )
         (self.project / "sym-lib-table").write_text(
@@ -691,17 +694,20 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
 
     def test_symbol_availability_uses_project_table_before_same_named_stock_library(self):
         library = self.project / "ProjectDevice.kicad_sym"
-        library.write_text(DEVICE_LIBRARY, encoding="utf-8")
+        library.write_text(
+            DEVICE_LIBRARY.replace('(symbol "C"', '(symbol "C_UNUSED"', 1),
+            encoding="utf-8",
+        )
         stock_dir = self.project / "stock"
         stock_dir.mkdir()
         (stock_dir / "Device.kicad_sym").write_text(
-            DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "C"', 1),
+            DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "R_UNUSED"', 1),
             encoding="utf-8",
         )
         (self.project / "sym-lib-table").write_text(
             '(sym_lib_table (version 7) '
             '(lib (name "Device") (type "KiCad") '
-            '(uri "${KIPRJMOD}/ProjectDevice.kicad_sym") (options "") (descr "")))\\n',
+            '(uri "${KIPRJMOD}/ProjectDevice.kicad_sym") (options "") (descr "")))\n',
             encoding="utf-8",
         )
         with patch.dict("os.environ", {"KICAD_SYMBOL_DIR": str(stock_dir)}):
@@ -740,13 +746,13 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
     def test_project_symbol_table_overrides_matching_stock_nickname(self):
         project_library = self.project / "ProjectDevice.kicad_sym"
         project_library.write_text(
-            DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "C"', 1),
+            DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "R_UNUSED"', 1),
             encoding="utf-8",
         )
         stock_directory = self.project / "stock"
         stock_directory.mkdir()
         (stock_directory / "Device.kicad_sym").write_text(
-            DEVICE_LIBRARY,
+            DEVICE_LIBRARY.replace('(symbol "C"', '(symbol "C_UNUSED"', 1),
             encoding="utf-8",
         )
         (self.project / "sym-lib-table").write_text(
