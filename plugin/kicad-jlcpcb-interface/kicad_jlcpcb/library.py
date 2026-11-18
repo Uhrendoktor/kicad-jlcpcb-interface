@@ -1,4 +1,4 @@
-"""Safe project-local KiCad symbol-library generation for reviewed LCSC components."""
+"""Safe project-local KiCad symbol, footprint and 3D-model library generation."""
 
 from __future__ import annotations
 
@@ -945,11 +945,12 @@ def register_project_footprint_library(
     source_file: str | Path,
     *,
     lcsc: str,
+    model_file: str | Path | None = None,
 ) -> GeneratedLibraryFootprint:
-    """Install one converted footprint in an owned project-local .pretty library.
+    """Install a converted footprint and optional STEP model into owned project libraries.
 
-    A per-LCSC library keeps imported assets isolated. Existing user libraries,
-    symlinks and modified imported files are never overwritten.
+    A per-LCSC `.pretty` and `.3dshapes` directory keep imported assets isolated.
+    Existing user libraries, symlinks and modified imported files are never overwritten.
     """
     project_dir = _project_directory(project_or_path)
     code = str(lcsc or "").strip().upper()
@@ -975,6 +976,49 @@ def register_project_footprint_library(
     target_path = library_path / f"{footprint_name}.kicad_mod"
     marker_path = library_path / ".jlcpcb-generated.json"
     digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+    model_source = None
+    model_filename = ""
+    model_digest = ""
+    model_directory = project_dir / f"{nickname}.3dshapes"
+    model_target = None
+    model_marker_path = model_directory / ".jlcpcb-generated.json"
+    model_nodes = _direct(source_root, "model")
+    if model_file is not None:
+        model_source = Path(model_file).expanduser().resolve(strict=True)
+        if (
+            not model_source.is_file()
+            or model_source.suffix.casefold() != ".step"
+            or model_source.stat().st_size > 32 * 1024 * 1024
+        ):
+            raise SymbolLibraryError("The EasyEDA 3D model is missing or exceeds 32 MiB.")
+        model_bytes = model_source.read_bytes()
+        if not model_bytes.lstrip(b"\xef\xbb\xbf \t\r\n").upper().startswith(b"ISO-10303-21;"):
+            raise SymbolLibraryError("The EasyEDA 3D model is not a valid STEP file.")
+        model_filename = model_source.name
+        if (
+            Path(model_filename).name != model_filename
+            or not re.fullmatch(
+                r"[A-Za-z0-9_+.-]{1,120}\.step",
+                model_filename,
+                re.IGNORECASE,
+            )
+        ):
+            raise SymbolLibraryError("The EasyEDA 3D model has an unsafe filename.")
+        model_digest = hashlib.sha256(model_bytes).hexdigest()
+        model_target = model_directory / model_filename
+        expected_reference = f"${{KIPRJMOD}}/{model_directory.name}/{model_filename}"
+        if (
+            len(model_nodes) != 1
+            or len(model_nodes[0]) < 2
+            or _string_value(model_nodes[0][1]) != expected_reference
+        ):
+            raise SymbolLibraryError(
+                "The footprint's 3D model reference does not match the imported model path."
+            )
+    elif model_nodes:
+        raise SymbolLibraryError(
+            "The footprint references a 3D model, but no matching STEP file was supplied."
+        )
     table_path = project_dir / "fp-lib-table"
     if table_path.is_symlink():
         raise SymbolLibraryConflict("Refusing to modify a symlinked project fp-lib-table.")
@@ -985,6 +1029,7 @@ def register_project_footprint_library(
         )
     created = False
     already_present = False
+    model_created = False
     if library_path.exists():
         if not library_path.is_dir() or marker_path.is_symlink() or not marker_path.is_file():
             raise SymbolLibraryConflict(
@@ -1046,6 +1091,88 @@ def register_project_footprint_library(
         finally:
             shutil.rmtree(staging, ignore_errors=True)
 
+    if model_source is not None and model_target is not None:
+        if model_directory.is_symlink():
+            if created:
+                shutil.rmtree(library_path, ignore_errors=True)
+            if model_created:
+                shutil.rmtree(model_directory, ignore_errors=True)
+            raise SymbolLibraryConflict(
+                f"Refusing to write into symlinked 3D model library {model_directory}."
+            )
+        if model_directory.exists():
+            if (
+                not model_directory.is_dir()
+                or model_marker_path.is_symlink()
+                or not model_marker_path.is_file()
+                or model_target.is_symlink()
+                or not model_target.is_file()
+            ):
+                if created:
+                    shutil.rmtree(library_path, ignore_errors=True)
+                if model_created:
+                    shutil.rmtree(model_directory, ignore_errors=True)
+                raise SymbolLibraryConflict(
+                    f"Existing {model_directory.name} is not an owned JLCPCB 3D model library."
+                )
+            try:
+                model_marker = json.loads(model_marker_path.read_text(encoding="utf-8"))
+                existing_model = model_target.read_bytes()
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                if created:
+                    shutil.rmtree(library_path, ignore_errors=True)
+                if model_created:
+                    shutil.rmtree(model_directory, ignore_errors=True)
+                raise SymbolLibraryConflict(
+                    "The imported 3D model ownership data is unreadable."
+                ) from exc
+            if (
+                model_marker.get("generator") != _GENERATOR
+                or model_marker.get("lcsc") != code
+                or model_marker.get("model") != model_filename
+                or model_marker.get("sha256") != model_digest
+                or hashlib.sha256(existing_model).hexdigest() != model_digest
+            ):
+                if created:
+                    shutil.rmtree(library_path, ignore_errors=True)
+                if model_created:
+                    shutil.rmtree(model_directory, ignore_errors=True)
+                raise SymbolLibraryConflict(
+                    "The imported 3D model already exists but is foreign, modified, "
+                    "or differs from the candidate."
+                )
+        else:
+            staging = Path(tempfile.mkdtemp(
+                prefix=f".{model_directory.name}.", dir=str(project_dir)
+            ))
+            try:
+                staged_models = staging / model_directory.name
+                staged_models.mkdir()
+                staged_target = staged_models / model_filename
+                staged_target.write_bytes(model_bytes)
+                model_marker = {
+                    "generator": _GENERATOR,
+                    "lcsc": code,
+                    "model": model_filename,
+                    "sha256": model_digest,
+                }
+                (staged_models / model_marker_path.name).write_text(
+                    json.dumps(model_marker, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                    newline="\n",
+                )
+                os.replace(staged_models, model_directory)
+                model_created = True
+            except Exception:
+                shutil.rmtree(staging, ignore_errors=True)
+                if created:
+                    shutil.rmtree(library_path, ignore_errors=True)
+                if model_created:
+                    shutil.rmtree(model_directory, ignore_errors=True)
+                raise
+            finally:
+                shutil.rmtree(staging, ignore_errors=True)
+
     table = (
         [Atom("fp_lib_table"), [Atom("version"), Atom("7")]]
         if not table_path.exists()
@@ -1057,12 +1184,16 @@ def register_project_footprint_library(
         except (OSError, UnicodeError, SymbolLibraryError) as exc:
             if created:
                 shutil.rmtree(library_path, ignore_errors=True)
+            if model_created:
+                shutil.rmtree(model_directory, ignore_errors=True)
             raise SymbolLibraryError(
                 f"Could not read project footprint table {table_path}: {exc}"
             ) from exc
         if _head(table) != "fp_lib_table":
             if created:
                 shutil.rmtree(library_path, ignore_errors=True)
+            if model_created:
+                shutil.rmtree(model_directory, ignore_errors=True)
             raise SymbolLibraryError(
                 f"Project footprint table {table_path} has an invalid root node."
             )
@@ -1078,6 +1209,8 @@ def register_project_footprint_library(
         ):
             if created:
                 shutil.rmtree(library_path, ignore_errors=True)
+            if model_created:
+                shutil.rmtree(model_directory, ignore_errors=True)
             raise SymbolLibraryConflict(
                 f"Footprint library nickname {nickname!r} is already registered to another path."
             )
@@ -1102,6 +1235,8 @@ def register_project_footprint_library(
         except Exception:
             if created:
                 shutil.rmtree(library_path, ignore_errors=True)
+            if model_created:
+                shutil.rmtree(model_directory, ignore_errors=True)
             raise
 
     return GeneratedLibraryFootprint(

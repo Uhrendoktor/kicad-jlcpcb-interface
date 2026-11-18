@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 import tempfile
 import unittest
@@ -507,6 +509,120 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
         )
         self.assertTrue(again.already_present)
         self.assertFalse(again.created)
+
+
+
+    def test_registers_step_model_with_owned_portable_footprint_reference(self):
+        model = self.project / "model-abcdef01.step"
+        model.write_bytes(
+            b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"
+        )
+        reference = "${KIPRJMOD}/JLCPCB_C12345.3dshapes/model-abcdef01.step"
+        self.source.write_text(
+            '(footprint "Example_0402" (version 20240108) '
+            '(model "' + reference + '" (at (xyz 0 0 0)) '
+            '(scale (xyz 1 1 1)) (rotate (xyz 0 0 0))))\n',
+            encoding="utf-8",
+        )
+
+        entry = register_project_footprint_library(
+            self.project / "demo.kicad_pro",
+            self.source,
+            lcsc="C12345",
+            model_file=model,
+        )
+
+        model_directory = self.project / "JLCPCB_C12345.3dshapes"
+        imported_model = model_directory / model.name
+        self.assertTrue(imported_model.is_file())
+        self.assertEqual(imported_model.read_bytes(), model.read_bytes())
+        imported_footprint = (entry.library_path / "Example_0402.kicad_mod").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(reference, imported_footprint)
+        marker = json.loads(
+            (model_directory / ".jlcpcb-generated.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(marker["lcsc"], "C12345")
+        self.assertEqual(marker["model"], model.name)
+        self.assertEqual(
+            marker["sha256"],
+            hashlib.sha256(model.read_bytes()).hexdigest(),
+        )
+
+        again = register_project_footprint_library(
+            self.project,
+            self.source,
+            lcsc="C12345",
+            model_file=model,
+        )
+        self.assertTrue(again.already_present)
+        self.assertEqual(imported_model.read_bytes(), model.read_bytes())
+
+    def test_rejects_a_footprint_model_reference_that_does_not_match_import_path(self):
+        model = self.project / "model.step"
+        model.write_bytes(b"ISO-10303-21;\nEND-ISO-10303-21;")
+        self.source.write_text(
+            '(footprint "Example_0402" '
+            '(model "${KIPRJMOD}/foreign/model.step"))\n',
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(SymbolLibraryError, "does not match"):
+            register_project_footprint_library(
+                self.project,
+                self.source,
+                lcsc="C12345",
+                model_file=model,
+            )
+        self.assertFalse((self.project / "JLCPCB_C12345.pretty").exists())
+
+    def test_refuses_modified_project_local_step_model(self):
+        model = self.project / "model-abcdef01.step"
+        model.write_bytes(b"ISO-10303-21;\nDATA;\nENDSEC;\nEND-ISO-10303-21;")
+        reference = "${KIPRJMOD}/JLCPCB_C12345.3dshapes/model-abcdef01.step"
+        self.source.write_text(
+            '(footprint "Example_0402" (model "' + reference + '"))\n',
+            encoding="utf-8",
+        )
+        register_project_footprint_library(
+            self.project,
+            self.source,
+            lcsc="C12345",
+            model_file=model,
+        )
+        target = self.project / "JLCPCB_C12345.3dshapes" / model.name
+        target.write_bytes(b"ISO-10303-21;\nmodified\nEND-ISO-10303-21;")
+        before = target.read_bytes()
+        with self.assertRaisesRegex(SymbolLibraryConflict, "modified"):
+            register_project_footprint_library(
+                self.project,
+                self.source,
+                lcsc="C12345",
+                model_file=model,
+            )
+        self.assertEqual(target.read_bytes(), before)
+
+    def test_rejects_unowned_3d_model_directory_without_overwriting_it(self):
+        model = self.project / "model-abcdef01.step"
+        model.write_bytes(b"ISO-10303-21;\nDATA;\nENDSEC;\nEND-ISO-10303-21;")
+        reference = "${KIPRJMOD}/JLCPCB_C12345.3dshapes/model-abcdef01.step"
+        self.source.write_text(
+            '(footprint "Example_0402" (model "' + reference + '"))\n',
+            encoding="utf-8",
+        )
+        model_directory = self.project / "JLCPCB_C12345.3dshapes"
+        model_directory.mkdir()
+        foreign = model_directory / "user.step"
+        foreign.write_bytes(b"user model")
+        with self.assertRaisesRegex(SymbolLibraryConflict, "not an owned"):
+            register_project_footprint_library(
+                self.project,
+                self.source,
+                lcsc="C12345",
+                model_file=model,
+            )
+        self.assertEqual(foreign.read_bytes(), b"user model")
+        self.assertFalse((self.project / "JLCPCB_C12345.pretty").exists())
 
     def test_refuses_to_replace_a_modified_imported_footprint(self):
         entry = register_project_footprint_library(

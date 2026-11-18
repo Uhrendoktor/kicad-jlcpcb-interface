@@ -892,6 +892,45 @@ class CadSuggestionTests(unittest.TestCase):
         self.assertIs(populator.draft, next_draft)
         populator._render_draft.assert_called_once_with(next_draft, False)
 
+
+    def test_3d_model_preview_is_displayed_in_its_own_panel(self):
+        model = Path(self.temp.name) / "model.step"
+        model.write_bytes(b"ISO-10303-21;\nEND-ISO-10303-21;")
+        assets = replace(
+            self.assets,
+            model_uuid="abcdef0123456789abcdef0123456789",
+            model_path=model,
+            model_preview_png=b"3d-preview",
+        )
+        class Label:
+            def __init__(self):
+                self.settings = {}
+            def configure(self, **kwargs):
+                self.settings.update(kwargs)
+
+        labels = SimpleNamespace(
+            symbol_label=Label(),
+            footprint_label=Label(),
+            model_label=Label(),
+        )
+        populator = object.__new__(ComponentPopulator)
+        populator.cad_preview = labels
+        populator.root = object()
+        populator.cad_status_var = self.Variable()
+        displayed = []
+
+        def display(label, data, master, *, size):
+            displayed.append((label, data, master, size))
+            return object()
+
+        with patch("kicad_jlcpcb.populator.display_product_image", side_effect=display):
+            populator._show_cad_assets(assets)
+
+        self.assertEqual(displayed[2][0], labels.model_label)
+        self.assertEqual(displayed[2][1], b"3d-preview")
+        self.assertEqual(displayed[2][3], (400, 210))
+        self.assertIn("3D model", populator.cad_status_var.get())
+
     def test_update_mode_only_prefills_footprint_and_never_symbol(self):
         populator = self.populator(create_mode=False)
         populator._apply_cad_suggestions(self.assets)

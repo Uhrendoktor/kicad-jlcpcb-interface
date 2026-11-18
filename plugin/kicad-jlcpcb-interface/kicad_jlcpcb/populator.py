@@ -1446,11 +1446,15 @@ class ComponentPopulator:
         """Clear prior-part CAD art and image references."""
         self._cad_symbol_preview_ref = None
         self._cad_footprint_preview_ref = None
+        self._cad_model_preview_ref = None
         self.cad_preview.symbol_label.configure(
             image="", text="No symbol preview", padding=8
         )
         self.cad_preview.footprint_label.configure(
             image="", text="No footprint preview", padding=8
+        )
+        self.cad_preview.model_label.configure(
+            image="", text="No 3D model preview", padding=8
         )
         self.cad_status_var.set(
             "External CAD is requested only when a local KiCad mapping is missing."
@@ -1471,12 +1475,21 @@ class ComponentPopulator:
             self.root,
             size=(260, 164),
         )
+        self._cad_model_preview_ref = display_product_image(
+            self.cad_preview.model_label,
+            assets.model_preview_png if assets is not None else None,
+            self.root,
+            size=(400, 210),
+        )
         if assets is None:
             self.cad_preview.symbol_label.configure(
                 image="", text="CAD preview unavailable", padding=8
             )
             self.cad_preview.footprint_label.configure(
                 image="", text="CAD preview unavailable", padding=8
+            )
+            self.cad_preview.model_label.configure(
+                image="", text="3D preview unavailable", padding=8
             )
             return
         if assets.symbol_preview_png is None:
@@ -1487,11 +1500,23 @@ class ComponentPopulator:
             self.cad_preview.footprint_label.configure(
                 image="", text="No footprint SVG available", padding=8
             )
+        if assets.model_preview_png is None:
+            self.cad_preview.model_label.configure(
+                image="",
+                text=(
+                    "3D render unavailable"
+                    if assets.has_3d_model
+                    else "No 3D model attached to this EasyEDA footprint"
+                ),
+                padding=8,
+            )
         availability = []
         if assets.has_symbol:
             availability.append(f"symbol {assets.symbol_library_id}")
         if assets.has_footprint:
             availability.append(f"footprint {assets.footprint_library_id}")
+        if assets.has_3d_model:
+            availability.append(f"3D model {assets.model_uuid}")
         summary = ", ".join(availability) if availability else "no usable CAD assets"
         warning_text = " ".join(assets.warnings)
         self.cad_status_var.set(
@@ -1847,10 +1872,16 @@ class ComponentPopulator:
                         lcsc=draft.lcsc,
                     )
                 if uses_external_footprint:
+                    model_kwargs = (
+                        {"model_file": cad_assets.model_path}
+                        if getattr(cad_assets, "has_3d_model", False)
+                        else {}
+                    )
                     imported_footprint = register_project_footprint_library(
                         project,
                         cad_assets.footprint_path,
                         lcsc=draft.lcsc,
+                        **model_kwargs,
                     )
                     if imported_footprint.footprint_id != draft.footprint:
                         raise RuntimeError(
@@ -1917,10 +1948,16 @@ class ComponentPopulator:
                         credits_path,
                         lcsc=draft.lcsc,
                     )
+                model_kwargs = (
+                    {"model_file": cad_assets.model_path}
+                    if getattr(cad_assets, "has_3d_model", False)
+                    else {}
+                )
                 imported_footprint = register_project_footprint_library(
                     self.schematic.get_project(),
                     cad_assets.footprint_path,
                     lcsc=draft.lcsc,
+                    **model_kwargs,
                 )
                 if imported_footprint.footprint_id != draft.footprint:
                     raise RuntimeError(

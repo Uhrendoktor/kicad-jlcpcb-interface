@@ -1,7 +1,7 @@
-# Feasibility: automatic KiCad symbol and footprint retrieval
+# Feasibility: automatic KiCad symbol, footprint and 3D-model retrieval
 
 **Research date:** 2026-11-17  
-**Scope:** discover, preview, download and use KiCad schematic symbols and PCB footprints for JLCPCB/LCSC catalogue parts when the existing local mappings do not produce a suitable library entry.
+**Scope:** discover, preview, download and use KiCad schematic symbols, PCB footprints and available STEP models for JLCPCB/LCSC catalogue parts when the existing local mappings do not produce a suitable library entry.
 
 ## Executive summary
 
@@ -26,9 +26,10 @@ The initial credential-free implementation is now present in the plugin:
 - CAD retrieval and rendering run in a worker. Results are scoped to the selected LCSC code, partial symbol-only results are retained, and dirty-field tracking prevents late responses overwriting manual edits.
 - Add mode proposes external `Library:Symbol` and `Library:Footprint` values in the existing editable inputs. External symbols are copied through the existing project-local symbol generator; retrieved footprints are registered in a per-LCSC project-local `.pretty` library and `fp-lib-table` only when the user runs Generate.
 - Update mode can preview both candidate assets and prefill a missing footprint, but never replaces the selected schematic symbol or pin mapping.
-- The CAD cache is size-bounded, HTTPS-host restricted, redirect-checked, SVG-sanitized and content-hash checked. Imported footprint libraries use ownership manifests and refuse to overwrite foreign, symlinked or modified content. Converter attribution/licence notes are kept in the CAD cache's `CREDITS.txt` and copied beside the project as `JLCPCB_<LCSC>_CREDITS.txt` when imported geometry is accepted.
+- Optional STEP retrieval uses the EasyEDA model UUID from package `SVGNODE` metadata and the public `modules.easyeda.com` endpoint. Files are size-limited, checked for an ISO-10303-21 header, cached by model UUID and SHA-256, and linked from footprints through `${KIPRJMOD}` paths. A native `kicad-cli pcb render` thumbnail is generated when the KiCad renderer is available; otherwise the model can still be imported with an explicit preview-unavailable state.
+- The CAD cache is size-bounded, HTTPS-host restricted, redirect-checked, SVG-sanitized and content-hash checked. Imported footprint and `.3dshapes` directories use ownership manifests and refuse to overwrite foreign, symlinked or modified content. Converter attribution/licence notes are kept in the CAD cache's `CREDITS.txt` and copied beside the project as `JLCPCB_<LCSC>_CREDITS.txt` when imported geometry is accepted.
 
-Coverage remains best-effort: some LCSC parts have no public CAD model, may have only one of symbol/footprint, or may return geometry that the converter rejects. In such cases the manual editable workflow remains available. The initial implementation imports 2D geometry only; it does not infer pin maps or retrieve 3D models.
+Coverage remains best-effort: some LCSC parts have no public CAD record, may have only one of symbol/footprint, may lack a 3D model, or may return geometry that the converter rejects. In such cases the manual editable workflow remains available. STEP assets are downloaded only when the upstream package exposes a valid model UUID; the plugin does not synthesize geometry or infer pin maps.
 
 ## What the repository already provides
 
@@ -93,14 +94,15 @@ A candidate should carry at least: LCSC ID, source/provider, upstream model ID, 
 
 ### Preview UI
 
-Extend the shared catalogue preview workspace with a CAD-assets section containing two separate preview areas:
+Extend the shared catalogue preview workspace with three separate CAD preview areas:
 
 - **Schematic symbol:** SVG or rendered image of the symbol, including multiple units when present.
 - **PCB footprint:** top-view preview of pads, outline and silkscreen, with the pad count/package identifier where available.
+- **3D model:** a ray-traced KiCad CLI image of the footprint and associated STEP file. Show a separate unavailable state when the supplier has no model or the local KiCad renderer cannot produce an image.
 
 Show each preview only when that asset is available. Include source attribution and a status such as “local KiCad library”, “EasyEDA candidate”, “preview unavailable” or “download/conversion failed”. Do not reuse the supplier product photo as a CAD preview.
 
-The EasyEDA endpoint returns SVG, while the Tk preview path uses Pillow-backed raster image bytes. The implementation uses `resvg_py` (as in `kicad-blocks`) to rasterize sanitized SVG in the CAD worker, then updates Tk widgets on the main thread. When the renderer is unavailable or the SVG cannot be validated, the CAD panels show an explicit unavailable state and the manual workflow remains usable.
+The EasyEDA symbol/footprint endpoint returns SVG, while the Tk preview path uses Pillow-backed raster image bytes. The implementation uses `resvg_py` to rasterize sanitized SVG in the CAD worker. The 3D thumbnail is rendered from the downloaded STEP model through `kicad-cli pcb render`; both renderers run off the Tk event thread and update widgets on the main thread. Preview failure never blocks the editable 2D workflow.
 
 ### Add mode
 
@@ -128,8 +130,9 @@ The symbol writer in `library.py` provides ownership checks, safe parsing, atomi
 
 - Symbol: import/merge a selected definition into an owned project-local `.kicad_sym` library and register it in `sym-lib-table`.
 - Footprint: write the `.kicad_mod` into an owned project-local `.pretty/` directory and register it in `fp-lib-table`.
+- 3D model: copy the validated STEP file into an owned project-local `.3dshapes/` directory and preserve the `${KIPRJMOD}` model reference in the footprint.
 - Set the fields to the exact registered `Library:Item` names, for example `ImportedSymbols:PartName` and `ImportedFootprints:PackageName`.
-- Do not overwrite unrelated project libraries, symlinks, user-edited imported definitions or table entries. Use deterministic names, conflict detection, content hashes, backups and atomic writes, following the current symbol-library safeguards.
+- Do not overwrite unrelated project libraries, symlinks, user-edited imported definitions or table entries. Use deterministic names, conflict detection, content hashes, backups and atomic writes, following the current symbol-library safeguards. Treat the STEP model directory as a separately owned asset.
 - Keep source files, metadata and a manifest in a user cache so repeated searches can reuse them and support revalidation. Avoid persisting expiring signed URLs.
 - Treat 3D model downloading as a separate optional phase. It is not required to deliver the requested symbol/footprint behavior.
 
@@ -183,4 +186,4 @@ The import process should validate archive/response type, KiCad S-expression roo
 
 Proceed with a **small proof of concept**, not a blanket auto-import of every catalogue result. Start with EasyEDA retrieval for exact LCSC IDs, but settle the AGPL conversion question before implementation is distributed. Keep local KiCad matches preferred; treat external CAD as a reviewable fallback; make Add mode prefill editable identifiers; and keep Update mode from changing a selected symbol's identity.
 
-The initial release should target symbol and footprint assets only. 3D models, pin-map inference, automatic electrical validation and guaranteed drop-in-equivalence claims should remain out of scope.
+The retrieval flow may include an upstream STEP model when one is attached to the selected footprint. STEP downloading remains optional and best-effort; OBJ/WRL conversion, 3D model generation, pin-map inference, automatic electrical validation and guaranteed drop-in-equivalence claims remain out of scope.

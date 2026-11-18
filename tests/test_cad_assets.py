@@ -16,7 +16,11 @@ sys.path.insert(0, str(PLUGIN))
 from kicad_jlcpcb.cad_assets import (  # noqa: E402
     CadAssetError,
     EasyEdaCadProvider,
+    _extract_3d_model_metadata,
+    _is_trusted_model_url,
     _safe_preview_svg,
+    _validate_step_model,
+    render_step_preview,
     render_svg_preview,
 )
 
@@ -440,6 +444,226 @@ class CadAssetProviderTests(unittest.TestCase):
             provider._request_json(
                 "https://easyeda.com/api/products/C12345/components"
             )
+
+
+    def test_extracts_model_uuid_and_rotation_from_footprint_svgnode(self):
+        model_uuid = "abcdef0123456789abcdef0123456789"
+        document = {
+            "dataStr": {
+                "head": {"docType": "4"},
+                "shape": [
+                    "SVGNODE~"
+                    + json.dumps(
+                        {
+                            "gId": "g1",
+                            "attrs": {
+                                "uuid": model_uuid,
+                                "c_rotation": "90,0,180",
+                            },
+                        }
+                    )
+                    + "~gge1"
+                ],
+            }
+        }
+        self.assertEqual(
+            _extract_3d_model_metadata(document),
+            (model_uuid, (270.0, 0.0, 180.0)),
+        )
+
+    def test_extracts_model_uuid_from_package_header_without_svg_node(self):
+        model_uuid = "abcdef0123456789abcdef0123456789"
+        self.assertEqual(
+            _extract_3d_model_metadata(
+                {"dataStr": {"head": {"uuid_3d": model_uuid}, "shape": []}}
+            ),
+            (model_uuid, (0.0, 0.0, 0.0)),
+        )
+
+    def test_step_validator_rejects_html_and_accepts_iso10303(self):
+        valid = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"
+        self.assertEqual(_validate_step_model(valid), valid)
+        with self.assertRaisesRegex(CadAssetError, "valid ISO-10303-21"):
+            _validate_step_model(b"<html>not a STEP model</html>")
+
+    def test_model_host_is_https_and_redirect_allowlisted(self):
+        from urllib.request import Request
+
+        from kicad_jlcpcb.cad_assets import _EasyEdaRedirectHandler
+
+        self.assertTrue(
+            _is_trusted_model_url(
+                "https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/0123456789abcdef0123456789abcdef"
+            )
+        )
+        for url in (
+            "http://modules.easyeda.com/model",
+            "https://modules.easyeda.com:8443/model",
+            "https://user@modules.easyeda.com/model",
+            "https://example.test/model",
+        ):
+            self.assertFalse(_is_trusted_model_url(url))
+        handler = _EasyEdaRedirectHandler()
+        request = Request("https://easyeda.com/api/products/C12345/components")
+        allowed = handler.redirect_request(
+            request, None, 302, "Found", {},
+            "https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/0123456789abcdef0123456789abcdef",
+        )
+        self.assertIn("modules.easyeda.com", allowed.full_url)
+
+    def test_lookup_downloads_step_model_attaches_it_and_caches_preview(self):
+        model_uuid = "abcdef0123456789abcdef0123456789"
+        step = (
+            b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;"
+            b"\nEND-ISO-10303-21;"
+        )
+
+        class ModelOpener(FakeOpener):
+            def __call__(inner_self, request, timeout):
+                if urlparse(request.full_url).hostname == "modules.easyeda.com":
+                    inner_self.requests.append(request)
+                    return FakeResponse(step, request.full_url)
+                return super().__call__(request, timeout)
+
+        payload = {
+            "success": True,
+            "result": {
+                "uuid": "0123456789abcdef0123456789abcdef",
+                "title": "Example device",
+                "dataStr": {"head": {}, "shape": []},
+                "packageDetail": {
+                    "dataStr": {
+                        "head": {"uuid_3d": model_uuid},
+                        "shape": [],
+                    }
+                },
+            },
+        }
+        class PayloadModelOpener(ModelOpener):
+            def __call__(inner_self, request, timeout):
+                if urlparse(request.full_url).hostname == "modules.easyeda.com":
+                    return super().__call__(request, timeout)
+                if urlparse(request.full_url).path.endswith("/components"):
+                    inner_self.requests.append(request)
+                    return FakeResponse(json.dumps(payload).encode("utf-8"), request.full_url)
+                if urlparse(request.full_url).path.endswith("/svgs"):
+                    inner_self.requests.append(request)
+                    return FakeResponse(
+                        json.dumps({
+                            "success": True,
+                            "result": [
+                                {"docType": "2", "svg": "<svg viewBox='0 0 10 10'/>"},
+                                {"docType": "4", "svg": "<svg viewBox='0 0 20 10'/>"},
+                            ],
+                        }).encode("utf-8"),
+                        request.full_url,
+                    )
+                raise AssertionError(f"Unexpected request: {request.full_url}")
+
+        opener = PayloadModelOpener()
+        provider = EasyEdaCadProvider(
+            self.cache,
+            opener=opener,
+            minimum_request_interval=4,
+            sleep=lambda _seconds: None,
+        )
+        with (
+            self.install_converter_stub(self.converted()),
+            patch("kicad_jlcpcb.cad_assets.render_svg_preview", return_value=b"2d-preview"),
+            patch(
+                "kicad_jlcpcb.cad_assets.render_step_preview",
+                return_value=b"\x89PNG\r\n\x1a\n3d-preview",
+            ) as render,
+        ):
+            result = provider.lookup("C12345")
+
+        self.assertTrue(result.has_3d_model)
+        self.assertEqual(result.model_uuid, model_uuid)
+        self.assertEqual(result.model_path.read_bytes(), step)
+        self.assertEqual(result.model_preview_png, b"\x89PNG\r\n\x1a\n3d-preview")
+        self.assertIn(
+            '${KIPRJMOD}/JLCPCB_C12345.3dshapes/model-abcdef01.step',
+            result.footprint_path.read_text(encoding="utf-8"),
+        )
+        render.assert_called_once_with(result.footprint_path, result.model_path)
+        self.assertEqual(len(opener.requests), 3)
+        self.assertTrue(
+            all(request.get_header("Authorization") is None for request in opener.requests)
+        )
+
+        cached = provider.lookup("C12345")
+        self.assertTrue(cached.has_3d_model)
+        self.assertEqual(cached.model_preview_png, b"\x89PNG\r\n\x1a\n3d-preview")
+        self.assertEqual(len(opener.requests), 3)
+
+    def test_invalid_cached_step_model_is_treated_as_a_cache_miss(self):
+        folder = self.cache / "C12345"
+        model_directory = folder / "JLCPCB_C12345.3dshapes"
+        model_directory.mkdir(parents=True)
+        symbol_filename = "EasyEDA_01234567.kicad_sym"
+        (folder / symbol_filename).write_text(
+            '(kicad_symbol_lib (version 20231120) (generator "euc2k"))',
+            encoding="utf-8",
+        )
+        model_filename = "model-abcdef01.step"
+        (model_directory / model_filename).write_bytes(b"<html>corrupt cached model</html>")
+        manifest = {
+            "lcsc": "C12345",
+            "component_uuid": "0123456789abcdef0123456789abcdef",
+            "symbol_name": "Example",
+            "symbol_filename": symbol_filename,
+            "symbol_library_id": "EasyEDA_01234567:Example",
+            "footprint_name": "",
+            "footprint_filename": "",
+            "model_uuid": "abcdef0123456789abcdef0123456789",
+            "model_filename": model_filename,
+            "model_sha256": "",
+        }
+        (folder / "manifest.json").write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+
+        self.assertIsNone(self.provider._cache_result("C12345"))
+
+    def test_kicad_cli_preview_renders_a_temporary_board_and_model(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            model = root / "model.step"
+            model.write_bytes(b"ISO-10303-21;\nEND-ISO-10303-21;")
+            model_reference = "${KIPRJMOD}/JLCPCB_C12345.3dshapes/model.step"
+            footprint = root / "candidate.kicad_mod"
+            footprint.write_text(
+                '(footprint "Example" (version 20240108) (generator "euc2k") '
+                '(layer "F.Cu") (at 0 0) '
+                '(model "' + model_reference + '" '
+                '(at (xyz 0 0 0)) (scale (xyz 1 1 1)) '
+                '(rotate (xyz 0 0 0))))\n',
+                encoding="utf-8",
+            )
+            observed = {}
+
+            def fake_run(arguments, **_kwargs):
+                board_file = Path(arguments[-1])
+                observed["board"] = board_file.read_text(encoding="utf-8")
+                output_file = Path(arguments[arguments.index("--output") + 1])
+                output_file.write_bytes(b"\x89PNG\r\n\x1a\nrendered")
+                return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+            with (
+                patch("kicad_jlcpcb.cad_assets.shutil.which", return_value="/usr/bin/kicad-cli"),
+                patch("kicad_jlcpcb.cad_assets.subprocess.run", side_effect=fake_run) as run,
+            ):
+                rendered = render_step_preview(footprint, model)
+
+            self.assertTrue(rendered.startswith(b"\x89PNG\r\n\x1a\n"))
+            self.assertIn("JLCPCB_C12345.3dshapes/model.step", observed["board"])
+            self.assertIn("(kicad_pcb", observed["board"])
+            self.assertEqual(run.call_args.kwargs["timeout"], 25)
+
+    def test_kicad_cli_preview_reports_missing_renderer_without_losing_model(self):
+        with patch("kicad_jlcpcb.cad_assets.shutil.which", return_value=None):
+            with self.assertRaisesRegex(CadAssetError, "renderer is unavailable"):
+                render_step_preview(Path("missing.kicad_mod"), Path("model.step"))
 
 
 if __name__ == "__main__":

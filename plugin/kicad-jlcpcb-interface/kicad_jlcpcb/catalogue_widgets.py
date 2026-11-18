@@ -214,6 +214,7 @@ class CadAssetPreviewControls:
     frame: Any
     symbol_label: Any
     footprint_label: Any
+    model_label: Any
 
 
 def build_cad_asset_preview(
@@ -221,7 +222,7 @@ def build_cad_asset_preview(
     ttk: Any,
     status_var: Any,
 ) -> CadAssetPreviewControls:
-    """Build paired, optional SVG-derived previews beneath the supplier image."""
+    """Build optional 2D CAD previews and a native KiCad 3D model render."""
     surface = ttk.Frame(parent, style="ProductPreview.TFrame", padding=(12, 10))
     surface.columnconfigure(0, weight=1, uniform="cad-preview")
     surface.columnconfigure(1, weight=1, uniform="cad-preview")
@@ -262,16 +263,39 @@ def build_cad_asset_preview(
         label.pack(fill="both", expand=True)
         labels.append(label)
 
+    model_cell = ttk.Frame(surface, style="ProductPreview.TFrame")
+    model_cell.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+    model_cell.columnconfigure(0, weight=1)
+    ttk.Label(
+        model_cell, text="3D MODEL", style="ProductKey.TLabel"
+    ).grid(row=0, column=0, sticky="w", pady=(0, 5))
+    model_surface = ttk.Frame(
+        model_cell, style="ProductImage.TFrame", width=420, height=230
+    )
+    model_surface.grid(row=1, column=0, sticky="ew")
+    model_surface.grid_propagate(False)
+    model_label = ttk.Label(
+        model_surface,
+        text="No 3D model preview",
+        anchor="center",
+        justify="center",
+        padding=8,
+        style="ProductImage.TLabel",
+        wraplength=380,
+    )
+    model_label.pack(fill="both", expand=True)
+
     ttk.Label(
         surface,
         textvariable=status_var,
         style="ProductMeta.TLabel",
         wraplength=700,
         justify="left",
-    ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(7, 0))
+    ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(7, 0))
 
     return CadAssetPreviewControls(
         frame=surface,
         symbol_label=labels[0],
         footprint_label=labels[1],
+        model_label=model_label,
     )
