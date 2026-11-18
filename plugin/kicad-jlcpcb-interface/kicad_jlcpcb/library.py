@@ -621,7 +621,9 @@ def register_project_cad_credits(
         try:
             existing = target.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
-            raise SymbolLibraryError(f"Could not inspect existing CAD attribution {target}: {exc}") from exc
+            raise SymbolLibraryError(
+                f"Could not inspect existing CAD attribution {target}: {exc}"
+            ) from exc
         if existing != content:
             raise SymbolLibraryConflict(
                 f"Existing CAD attribution file {target.name} differs from the source; "
