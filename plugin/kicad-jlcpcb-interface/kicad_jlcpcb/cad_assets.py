@@ -124,12 +124,16 @@ def _safe_preview_svg(raw: str | bytes) -> str:
             lowered_value = value.casefold()
             if local_key.startswith("on"):
                 del parent.attrib[key]
-            elif (
-                local_key in {"href", "src"}
-                and value
-                and not lowered_value.startswith("data:image/")
-            ):
-                del parent.attrib[key]
+            elif local_key in {"href", "src"} and value:
+                local_fragment = lowered_value.startswith("#")
+                raster_data = bool(
+                    re.match(
+                        r"data:image/(?:png|jpeg|gif|webp);base64,",
+                        lowered_value,
+                    )
+                )
+                if not local_fragment and not raster_data:
+                    del parent.attrib[key]
             elif "url(" in lowered_value and not re.search(
                 r"url\(\s*#[A-Za-z0-9_.:-]+\s*\)", lowered_value
             ):
