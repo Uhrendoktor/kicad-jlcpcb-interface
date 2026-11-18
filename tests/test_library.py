@@ -20,6 +20,7 @@ from kicad_jlcpcb.library import (  # noqa: E402
     dump_sexpr,
     generate_project_library_symbol,
     parse_sexpr,
+    register_project_cad_credits,
     register_project_footprint_library,
     reload_project_symbol_library,
     symbol_library_entry_available,
@@ -543,6 +544,50 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
             self.assertTrue(symbol_library_entry_available("Device:R"))
             self.assertFalse(symbol_library_entry_available("Device:Missing"))
             self.assertFalse(symbol_library_entry_available("BadIdentifier"))
+
+
+
+
+class ProjectCadCreditsTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.project = Path(self.temp.name)
+        self.source = self.project / "CREDITS.txt"
+        self.source.write_text(
+            "Source: https://easyeda.com/component/example\\n"
+            "Author: Example contributor\\n",
+            encoding="utf-8",
+        )
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_registers_attribution_as_project_sidecar_idempotently(self):
+        target = register_project_cad_credits(
+            self.project,
+            self.source,
+            lcsc="C12345",
+        )
+        self.assertEqual(target.name, "JLCPCB_C12345_CREDITS.txt")
+        self.assertEqual(target.read_text(encoding="utf-8"), self.source.read_text(encoding="utf-8"))
+        again = register_project_cad_credits(
+            self.project,
+            self.source,
+            lcsc="C12345",
+        )
+        self.assertEqual(again, target)
+
+    def test_refuses_to_replace_existing_user_attribution(self):
+        target = self.project / "JLCPCB_C12345_CREDITS.txt"
+        target.write_text("User-owned notes\\n", encoding="utf-8")
+        before = target.read_bytes()
+        with self.assertRaises(SymbolLibraryConflict):
+            register_project_cad_credits(
+                self.project,
+                self.source,
+                lcsc="C12345",
+            )
+        self.assertEqual(target.read_bytes(), before)
 
 
 if __name__ == "__main__":
