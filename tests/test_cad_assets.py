@@ -345,15 +345,21 @@ class CadAssetProviderTests(unittest.TestCase):
         request = Request(
             "https://easyeda.com/api/products/C12345/components"
         )
-        with self.assertRaisesRegex(CadAssetError, "redirect outside"):
-            handler.redirect_request(
-                request,
-                None,
-                302,
-                "Found",
-                {},
-                "https://example.test/collect",
-            )
+        for target in (
+            "https://example.test/collect",
+            "https://easyeda.com:8443/api/products/C12345/components",
+            "https://user:pass@easyeda.com/api/products/C12345/components",
+        ):
+            with self.subTest(target=target):
+                with self.assertRaisesRegex(CadAssetError, "redirect outside"):
+                    handler.redirect_request(
+                        request,
+                        None,
+                        302,
+                        "Found",
+                        {},
+                        target,
+                    )
 
         allowed = handler.redirect_request(
             request,
