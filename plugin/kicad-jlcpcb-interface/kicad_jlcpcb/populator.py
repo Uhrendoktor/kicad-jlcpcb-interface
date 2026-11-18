@@ -1255,7 +1255,13 @@ class ComponentPopulator:
         selected = self.candidate_rows.get(selection[0])
         if selected is None:
             return
-        self.selected_details, self.draft = selected
+        next_details, next_draft = selected
+        if (
+            self.selected_details is None
+            or self.selected_details.lcsc != next_details.lcsc
+        ):
+            self._manual_proposal_fields.clear()
+        self.selected_details, self.draft = next_details, next_draft
         self._render_draft(
             self.draft,
             self.selected_details.is_cached or self.selected_details.stale,
