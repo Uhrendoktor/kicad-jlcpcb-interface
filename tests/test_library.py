@@ -18,6 +18,7 @@ from kicad_jlcpcb.library import (  # noqa: E402
     SymbolLibraryError,
     _atomic_write,
     dump_sexpr,
+    footprint_library_entry_available,
     generate_project_library_symbol,
     parse_sexpr,
     register_project_cad_credits,
@@ -591,6 +592,72 @@ class ProjectCadCreditsTests(unittest.TestCase):
                 lcsc="C12345",
             )
         self.assertEqual(target.read_bytes(), before)
+
+
+
+
+class ProjectLibraryAvailabilityTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.project = Path(self.temp.name)
+        (self.project / "demo.kicad_pro").write_text("{}\\n", encoding="utf-8")
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_recognizes_project_registered_footprint_library_entries(self):
+        library = self.project / "MyParts.pretty"
+        library.mkdir()
+        (library / "Example_0402.kicad_mod").write_text(
+            '(footprint "Example_0402")\\n',
+            encoding="utf-8",
+        )
+        (self.project / "fp-lib-table").write_text(
+            '(fp_lib_table (version 7) '
+            '(lib (name "MyParts") (type "KiCad") '
+            '(uri "${KIPRJMOD}/MyParts.pretty") (options "") (descr "")))\\n',
+            encoding="utf-8",
+        )
+        self.assertTrue(
+            footprint_library_entry_available(
+                "MyParts:Example_0402",
+                project_or_path=self.project,
+            )
+        )
+        self.assertFalse(
+            footprint_library_entry_available(
+                "MyParts:Missing",
+                project_or_path=self.project,
+            )
+        )
+
+    def test_recognizes_installed_footprints_from_kicad_directory(self):
+        root = self.project / "installed"
+        library = root / "Package.pretty"
+        library.mkdir(parents=True)
+        (library / "Part.kicad_mod").write_text(
+            '(footprint "Part")\\n',
+            encoding="utf-8",
+        )
+        with patch.dict("os.environ", {"KICAD_FOOTPRINT_DIR": str(root)}):
+            self.assertTrue(footprint_library_entry_available("Package:Part"))
+            self.assertFalse(footprint_library_entry_available("Package:Missing"))
+
+    def test_recognizes_project_registered_symbols_even_when_stock_nickname_is_present(self):
+        library = self.project / "Custom.kicad_sym"
+        library.write_text(DEVICE_LIBRARY, encoding="utf-8")
+        (self.project / "sym-lib-table").write_text(
+            '(sym_lib_table (version 7) '
+            '(lib (name "ProjectOnly") (type "KiCad") '
+            '(uri "${KIPRJMOD}/Custom.kicad_sym") (options "") (descr "")))\\n',
+            encoding="utf-8",
+        )
+        self.assertTrue(
+            symbol_library_entry_available(
+                "ProjectOnly:R",
+                project_or_path=self.project,
+            )
+        )
 
 
 if __name__ == "__main__":
