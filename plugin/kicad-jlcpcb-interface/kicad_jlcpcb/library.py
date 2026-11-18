@@ -415,6 +415,7 @@ def _uri_path(project_dir: Path, uri: str) -> Path | None:
     raw = str(uri or "").strip()
     if not raw:
         return None
+    raw = os.path.expandvars(raw)
     raw = raw.replace("${KIPRJMOD}", str(project_dir))
     if "$" + "{" in raw:
         return None
@@ -521,17 +522,131 @@ def find_symbol_library(
     )
 
 
-def symbol_library_entry_available(library_id: str, kicad=None) -> bool:
-    """Return whether a concrete Library:Symbol identifier exists in local KiCad libraries."""
+def symbol_library_entry_available(
+    library_id: str,
+    kicad=None,
+    project_or_path=None,
+) -> bool:
+    """Check stock and active-project symbol libraries for a concrete Library:Symbol."""
     parts = str(library_id or "").strip().split(":", 1)
     if len(parts) != 2 or not all(parts):
         return False
+
+    nickname, symbol_name = parts
     try:
-        path = find_symbol_library(parts[0], kicad)
+        path = find_symbol_library(nickname, kicad)
+    except SymbolLibraryError:
+        path = None
+
+    if path is None and project_or_path is not None:
+        try:
+            project_dir = _project_directory(project_or_path)
+            table_path = project_dir / "sym-lib-table"
+            if table_path.is_file() and not table_path.is_symlink():
+                table = parse_sexpr(table_path.read_text(encoding="utf-8"))
+                entry = _table_entry(table, nickname)
+                if entry is not None and _entry_text(entry, "type") == "KiCad":
+                    path = _uri_path(project_dir, _entry_text(entry, "uri"))
+        except (OSError, UnicodeError, SymbolLibraryError, ValueError):
+            path = None
+
+    if path is None or path.is_symlink() or not path.is_file():
+        return False
+    try:
         root = parse_sexpr(path.read_text(encoding="utf-8"))
-        return _head(root) == "kicad_symbol_lib" and _root_symbol(root, parts[1]) is not None
+        return _head(root) == "kicad_symbol_lib" and _root_symbol(root, symbol_name) is not None
     except (OSError, UnicodeError, SymbolLibraryError, ValueError):
         return False
+
+
+def _global_footprint_tables() -> tuple[Path, ...]:
+    """Return plausible KiCad global footprint-table locations across platforms."""
+    roots = [
+        Path.home() / ".config" / "kicad",
+        Path.home() / "Library" / "Preferences" / "kicad",
+    ]
+    appdata = os.environ.get("APPDATA", "").strip()
+    if appdata:
+        roots.append(Path(appdata) / "kicad")
+    tables: set[Path] = set()
+    for root in roots:
+        if root.is_dir():
+            tables.update(root.glob("*/fp-lib-table"))
+            direct = root / "fp-lib-table"
+            if direct.is_file():
+                tables.add(direct)
+    return tuple(sorted(tables))
+
+
+def footprint_library_entry_available(
+    footprint_id: str,
+    kicad=None,
+    project_or_path=None,
+) -> bool:
+    """Check project/global KiCad tables and stock paths for Library:Footprint."""
+    parts = str(footprint_id or "").strip().split(":", 1)
+    if len(parts) != 2 or not all(parts):
+        return False
+    nickname, footprint_name = parts
+    if not re.fullmatch(r"[A-Za-z0-9_+-]{1,80}", nickname):
+        return False
+    if not re.fullmatch(r"[A-Za-z0-9_+.-]{1,120}", footprint_name):
+        return False
+
+    tables: list[tuple[Path, Path]] = []
+    if project_or_path is not None:
+        try:
+            project_dir = _project_directory(project_or_path)
+            tables.append((project_dir / "fp-lib-table", project_dir))
+        except SymbolLibraryError:
+            pass
+    tables.extend((path, path.parent) for path in _global_footprint_tables())
+
+    for table_path, base_dir in tables:
+        if not table_path.is_file() or table_path.is_symlink():
+            continue
+        try:
+            table = parse_sexpr(table_path.read_text(encoding="utf-8"))
+            if _head(table) != "fp_lib_table":
+                continue
+            entry = _table_entry(table, nickname)
+            if entry is None or _entry_text(entry, "type") != "KiCad":
+                continue
+            library_path = _uri_path(base_dir, _entry_text(entry, "uri"))
+            if library_path is None or library_path.is_symlink() or not library_path.is_dir():
+                continue
+            item = library_path / f"{footprint_name}.kicad_mod"
+            if item.is_file() and not item.is_symlink():
+                return True
+        except (OSError, UnicodeError, SymbolLibraryError, ValueError):
+            continue
+
+    candidates = []
+    for variable in (
+        "KICAD_FOOTPRINT_DIR",
+        "KICAD8_FOOTPRINT_DIR",
+        "KICAD9_FOOTPRINT_DIR",
+        "KICAD10_FOOTPRINT_DIR",
+        "KICAD11_FOOTPRINT_DIR",
+    ):
+        value = os.environ.get(variable, "").strip()
+        if value:
+            candidates.append(Path(value).expanduser())
+    candidates.extend(
+        Path(value)
+        for value in (
+            "/usr/share/kicad-nightly/footprints",
+            "/usr/share/kicad/footprints",
+            "/usr/local/share/kicad/footprints",
+            "/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints",
+            "C:/Program Files/KiCad/share/kicad/footprints",
+        )
+    )
+    for root in candidates:
+        item = root / f"{nickname}.pretty" / f"{footprint_name}.kicad_mod"
+        if item.is_file() and not item.is_symlink():
+            return True
+    return False
 
 
 def find_device_symbol_library(kicad=None, explicit: str | Path | None = None) -> Path:
