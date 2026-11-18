@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.parse import urlparse
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
@@ -45,7 +46,7 @@ class FakeOpener:
     def __call__(self, request, timeout):
         self.requests.append(request)
         url = request.full_url
-        if url.endswith("/components"):
+        if urlparse(url).path.endswith("/components"):
             payload = {
                 "success": True,
                 "result": {
@@ -55,7 +56,7 @@ class FakeOpener:
                     "packageDetail": {"dataStr": {"head": {}, "shape": []}},
                 },
             }
-        elif url.endswith("/svgs"):
+        elif urlparse(url).path.endswith("/svgs"):
             payload = {
                 "success": True,
                 "result": [
@@ -168,9 +169,9 @@ class CadAssetProviderTests(unittest.TestCase):
             def __call__(inner_self, request, timeout):
                 inner_self.requests.append(request)
                 url = request.full_url
-                if url.endswith("/components"):
+                if urlparse(url).path.endswith("/components"):
                     payload = component_payload
-                elif url.endswith("/svgs"):
+                elif urlparse(url).path.endswith("/svgs"):
                     payload = {
                         "success": True,
                         "result": [
