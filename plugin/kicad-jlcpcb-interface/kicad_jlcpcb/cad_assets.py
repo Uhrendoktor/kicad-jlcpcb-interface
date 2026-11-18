@@ -147,7 +147,7 @@ def _safe_preview_svg(raw: str | bytes) -> str:
         for child in list(parent):
             if child.tag.rsplit("}", 1)[-1].casefold() == "style":
                 css = str(child.text or "").casefold()
-                if "@import" in css or re.search(r"url\\(\\s*(?!#)", css):
+                if "@import" in css or re.search(r"url\(\s*(?!#)", css):
                     parent.remove(child)
         for key in list(parent.attrib):
             local_key = key.rsplit("}", 1)[-1].casefold()
