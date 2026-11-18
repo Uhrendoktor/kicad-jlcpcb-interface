@@ -153,6 +153,75 @@ class CadAssetProviderTests(unittest.TestCase):
         self.assertEqual(cached.symbol_library_id, result.symbol_library_id)
         self.assertEqual(len(self.opener.requests), 2)
 
+
+    def test_real_easyeda_fixture_converts_with_installed_euc2k_package(self):
+        fixture_path = (
+            ROOT / "tests" / "fixtures" / "easyeda"
+            / "7db93ef938c54a728e02f6579db05977.json"
+        )
+        component_payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+
+        class FixtureOpener:
+            def __init__(self):
+                self.requests = []
+
+            def __call__(inner_self, request, timeout):
+                inner_self.requests.append(request)
+                url = request.full_url
+                if url.endswith("/components"):
+                    payload = component_payload
+                elif url.endswith("/svgs"):
+                    payload = {
+                        "success": True,
+                        "result": [
+                            {
+                                "docType": 2,
+                                "svg": (
+                                    "<svg xmlns='http://www.w3.org/2000/svg' "
+                                    "viewBox='0 0 10 10'/>"
+                                ),
+                            },
+                            {
+                                "docType": 4,
+                                "svg": (
+                                    "<svg xmlns='http://www.w3.org/2000/svg' "
+                                    "viewBox='0 0 20 10'/>"
+                                ),
+                            },
+                        ],
+                    }
+                else:
+                    raise AssertionError(f"Unexpected request: {url}")
+                return FakeResponse(json.dumps(payload).encode("utf-8"), url)
+
+        opener = FixtureOpener()
+        provider = EasyEdaCadProvider(
+            self.cache,
+            opener=opener,
+            minimum_request_interval=1,
+            sleep=lambda _seconds: None,
+        )
+        with patch(
+            "kicad_jlcpcb.cad_assets.render_svg_preview",
+            return_value=b"rendered-preview",
+        ):
+            result = provider.lookup("C12345")
+
+        symbol_text = result.symbol_library_path.read_text(encoding="utf-8")
+        footprint_text = result.footprint_path.read_text(encoding="utf-8")
+        credits = (self.cache / "C12345" / "CREDITS.txt").read_text(encoding="utf-8")
+        self.assertTrue(result.has_symbol)
+        self.assertTrue(result.has_footprint)
+        self.assertIn('(symbol "MAX98357A_NO_HOLES_7db93ef9"', symbol_text)
+        self.assertIn('(footprint "MAX98357A_NO_HOLES_7db93ef9"', footprint_text)
+        self.assertIn("virskiy", credits)
+        self.assertEqual(result.symbol_preview_png, b"rendered-preview")
+        self.assertEqual(result.footprint_preview_png, b"rendered-preview")
+        self.assertEqual(len(opener.requests), 2)
+        self.assertTrue(
+            all(request.get_header("Authorization") is None for request in opener.requests)
+        )
+
     def test_symbol_only_component_keeps_footprint_independent(self):
         with (
             self.install_converter_stub(self.converted(with_footprint=False)),
