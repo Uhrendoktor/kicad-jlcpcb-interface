@@ -215,7 +215,7 @@ class CadAssetProviderTests(unittest.TestCase):
         self.assertTrue(result.has_footprint)
         self.assertIn('(symbol "MAX98357A_NO_HOLES_7db93ef9"', symbol_text)
         self.assertIn('(footprint "MAX98357A_NO_HOLES_7db93ef9"', footprint_text)
-        self.assertIn("virskiy", credits)
+        self.assertIn("thomas.weiss.intuity", credits)
         self.assertEqual(result.symbol_preview_png, b"rendered-preview")
         self.assertEqual(result.footprint_preview_png, b"rendered-preview")
         self.assertEqual(len(opener.requests), 2)
