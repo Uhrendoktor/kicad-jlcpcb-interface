@@ -491,9 +491,11 @@ def find_symbol_library(
     # Project table entries take precedence over globally registered and stock
     # libraries with the same nickname, matching the active KiCad project scope.
     tables: list[tuple[Path, Path]] = []
+    project_table_path = None
     if project_or_path is not None:
         project_dir = _project_directory(project_or_path)
-        tables.append((project_dir / "sym-lib-table", project_dir))
+        project_table_path = project_dir / "sym-lib-table"
+        tables.append((project_table_path, project_dir))
     tables.extend(
         (path, path.parent) for path in _global_library_tables("sym-lib-table")
     )
@@ -505,11 +507,21 @@ def find_symbol_library(
             if _head(table) != "sym_lib_table":
                 continue
             entry = _table_entry(table, nickname)
-            if entry is None or _entry_text(entry, "type") != "KiCad":
+            if entry is None:
+                continue
+            if _entry_text(entry, "type") != "KiCad":
+                if table_path == project_table_path:
+                    raise SymbolLibraryError(
+                        f"Project symbol nickname {nickname!r} is not a KiCad library entry."
+                    )
                 continue
             library_path = _uri_path(base_dir, _entry_text(entry, "uri"))
             if library_path is not None and library_path.is_file():
                 return library_path
+            if table_path == project_table_path:
+                raise SymbolLibraryError(
+                    f"Project symbol nickname {nickname!r} points to a missing library."
+                )
         except (OSError, UnicodeError, SymbolLibraryError, ValueError):
             continue
 
