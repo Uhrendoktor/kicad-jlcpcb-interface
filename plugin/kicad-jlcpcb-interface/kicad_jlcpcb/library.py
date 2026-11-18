@@ -608,7 +608,7 @@ def footprint_library_entry_available(
     kicad=None,
     project_or_path=None,
 ) -> bool:
-    """Check project/global KiCad tables and stock paths for Library:Footprint."""
+    """Check the effective KiCad scope for a concrete Library:Footprint."""
     parts = str(footprint_id or "").strip().split(":", 1)
     if len(parts) != 2 or not all(parts):
         return False
@@ -629,6 +629,8 @@ def footprint_library_entry_available(
         (path, path.parent) for path in _global_library_tables("fp-lib-table")
     )
 
+    # A project/global table entry shadows lower-precedence tables and stock
+    # folders even when the requested footprint is absent from that library.
     for table_path, base_dir in tables:
         if not table_path.is_file() or table_path.is_symlink():
             continue
@@ -637,18 +639,23 @@ def footprint_library_entry_available(
             if _head(table) != "fp_lib_table":
                 continue
             entry = _table_entry(table, nickname)
-            if entry is None or _entry_text(entry, "type") != "KiCad":
+            if entry is None:
                 continue
+            if _entry_text(entry, "type") != "KiCad":
+                return False
             library_path = _uri_path(base_dir, _entry_text(entry, "uri"))
-            if library_path is None or library_path.is_symlink() or not library_path.is_dir():
-                continue
+            if (
+                library_path is None
+                or library_path.is_symlink()
+                or not library_path.is_dir()
+            ):
+                return False
             item = library_path / f"{footprint_name}.kicad_mod"
-            if item.is_file() and not item.is_symlink():
-                return True
+            return item.is_file() and not item.is_symlink()
         except (OSError, UnicodeError, SymbolLibraryError, ValueError):
             continue
 
-    candidates = []
+    candidates: list[Path] = []
     if kicad is not None:
         try:
             candidates.extend(
