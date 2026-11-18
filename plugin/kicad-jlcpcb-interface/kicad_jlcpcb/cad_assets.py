@@ -803,7 +803,8 @@ class EasyEdaCadProvider:
                         for node in footprint_root
                     ):
                         raise CadAssetError(
-                            "The converted footprint already contains an unexpected 3D model reference."
+                            "The converted footprint already contains an unexpected "
+                            "3D model reference."
                         )
                     relative_path = (
                         f"${{KIPRJMOD}}/JLCPCB_{lcsc}.3dshapes/{model_filename}"
