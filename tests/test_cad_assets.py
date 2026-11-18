@@ -256,7 +256,7 @@ class CadAssetProviderTests(unittest.TestCase):
             '<rect x="1" y="1" width="8" height="8" fill="#000"/>'
             "</svg>"
         )
-        self.assertTrue(preview.startswith(b"\\x89PNG\\r\\n\\x1a\\n"))
+        self.assertTrue(preview.startswith(b"\x89PNG\r\n\x1a\n"))
 
     def test_rejects_provider_redirect_to_untrusted_host(self):
         class Redirected(FakeResponse):
