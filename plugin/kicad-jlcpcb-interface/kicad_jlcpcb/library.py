@@ -475,15 +475,44 @@ def find_symbol_library(
     *,
     project_or_path=None,
 ) -> Path:
-    """Locate a named KiCad symbol library in stock or registered local tables."""
+    """Locate a named KiCad symbol library in registered tables or stock paths."""
     nickname = str(library_nickname or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9_+-]{1,80}", nickname):
         raise SymbolLibraryError(f"Invalid KiCad symbol-library nickname: {nickname!r}.")
+    filename = f"{nickname}.kicad_sym"
     explicit_path = (
         Path(explicit).expanduser().resolve(strict=False)
         if explicit is not None
         else None
     )
+    if explicit_path is not None and explicit_path.is_file():
+        return explicit_path
+
+    # Project table entries take precedence over globally registered and stock
+    # libraries with the same nickname, matching the active KiCad project scope.
+    tables: list[tuple[Path, Path]] = []
+    if project_or_path is not None:
+        project_dir = _project_directory(project_or_path)
+        tables.append((project_dir / "sym-lib-table", project_dir))
+    tables.extend(
+        (path, path.parent) for path in _global_library_tables("sym-lib-table")
+    )
+    for table_path, base_dir in tables:
+        if not table_path.is_file() or table_path.is_symlink():
+            continue
+        try:
+            table = parse_sexpr(table_path.read_text(encoding="utf-8"))
+            if _head(table) != "sym_lib_table":
+                continue
+            entry = _table_entry(table, nickname)
+            if entry is None or _entry_text(entry, "type") != "KiCad":
+                continue
+            library_path = _uri_path(base_dir, _entry_text(entry, "uri"))
+            if library_path is not None and library_path.is_file():
+                return library_path
+        except (OSError, UnicodeError, SymbolLibraryError, ValueError):
+            continue
+
     candidates: list[Path] = []
     if explicit_path is not None:
         candidates.append(explicit_path)
@@ -508,7 +537,6 @@ def find_symbol_library(
             "/Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols",
         )
     )
-    filename = f"{nickname}.kicad_sym"
     seen: set[Path] = set()
     for candidate in candidates:
         candidate = candidate.resolve(strict=False)
@@ -520,29 +548,6 @@ def find_symbol_library(
         for possible in (candidate / filename, candidate / "symbols" / filename):
             if possible.is_file():
                 return possible.resolve()
-
-    tables: list[tuple[Path, Path]] = []
-    if project_or_path is not None:
-        project_dir = _project_directory(project_or_path)
-        tables.append((project_dir / "sym-lib-table", project_dir))
-    tables.extend(
-        (path, path.parent) for path in _global_library_tables("sym-lib-table")
-    )
-    for table_path, base_dir in tables:
-        if not table_path.is_file() or table_path.is_symlink():
-            continue
-        try:
-            table = parse_sexpr(table_path.read_text(encoding="utf-8"))
-            if _head(table) != "sym_lib_table":
-                continue
-            entry = _table_entry(table, nickname)
-            if entry is None or _entry_text(entry, "type") != "KiCad":
-                continue
-            library_path = _uri_path(base_dir, _entry_text(entry, "uri"))
-            if library_path is not None and library_path.is_file():
-                return library_path
-        except (OSError, UnicodeError, SymbolLibraryError, ValueError):
-            continue
 
     raise SymbolLibraryError(
         f"Could not locate KiCad's {filename}. Set KICAD_SYMBOL_DIR or register the "
