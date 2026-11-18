@@ -681,6 +681,36 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
             )
         )
 
+
+    def test_symbol_availability_uses_project_table_before_same_named_stock_library(self):
+        library = self.project / "ProjectDevice.kicad_sym"
+        library.write_text(DEVICE_LIBRARY, encoding="utf-8")
+        stock_dir = self.project / "stock"
+        stock_dir.mkdir()
+        (stock_dir / "Device.kicad_sym").write_text(
+            DEVICE_LIBRARY.replace('(symbol "R"', '(symbol "C"', 1),
+            encoding="utf-8",
+        )
+        (self.project / "sym-lib-table").write_text(
+            '(sym_lib_table (version 7) '
+            '(lib (name "Device") (type "KiCad") '
+            '(uri "${KIPRJMOD}/ProjectDevice.kicad_sym") (options "") (descr "")))\\n',
+            encoding="utf-8",
+        )
+        with patch.dict("os.environ", {"KICAD_SYMBOL_DIR": str(stock_dir)}):
+            self.assertTrue(
+                symbol_library_entry_available(
+                    "Device:R",
+                    project_or_path=self.project,
+                )
+            )
+            self.assertFalse(
+                symbol_library_entry_available(
+                    "Device:C",
+                    project_or_path=self.project,
+                )
+            )
+
     def test_recognizes_project_symbols_even_when_stock_nickname_is_present(self):
         library = self.project / "Custom.kicad_sym"
         library.write_text(DEVICE_LIBRARY, encoding="utf-8")
