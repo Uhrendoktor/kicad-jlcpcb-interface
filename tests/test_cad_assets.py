@@ -245,9 +245,14 @@ class CadAssetProviderTests(unittest.TestCase):
                 '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
             )
         cleaned = _safe_preview_svg(
-            '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.test/a.png"/></svg>'
+            '<svg xmlns="http://www.w3.org/2000/svg">'
+            '<defs><path id="shape" d="M0 0L1 1"/></defs>'
+            '<use href="#shape"/>'
+            '<image href="https://example.test/a.png"/>'
+            "</svg>"
         )
         self.assertNotIn("https://example.test", cleaned)
+        self.assertIn('href="#shape"', cleaned)
 
 
     def test_resvg_renders_sanitized_preview_to_png(self):
