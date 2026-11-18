@@ -476,6 +476,15 @@ class EasyEdaCadProvider:
                     f"{symbol_exc}"
                 ) from symbol_exc
 
+        converted_name = str(getattr(converted, "name", "") or "").strip()
+        if (
+            not re.fullmatch(r"[A-Za-z0-9_+.-]{1,120}", converted_name)
+            or converted_name in {".", ".."}
+        ):
+            raise CadAssetError(
+                "The converter returned an unsafe KiCad symbol/footprint name."
+            )
+
         folder = self.cache_directory / lcsc
         folder.mkdir(parents=True, exist_ok=True)
         if folder.is_symlink():
@@ -487,14 +496,14 @@ class EasyEdaCadProvider:
         footprint_path: Path | None = None
         footprint_filename = ""
         footprint_library_id = ""
-        footprint_name = converted.name if converted.footprint else ""
+        footprint_name = converted_name if converted.footprint else ""
         if converted.footprint:
             footprint_dir = folder / "source.pretty"
             footprint_dir.mkdir(parents=True, exist_ok=True)
-            footprint_filename = f"{converted.name}.kicad_mod"
+            footprint_filename = f"{converted_name}.kicad_mod"
             footprint_path = footprint_dir / footprint_filename
             _safe_write(footprint_path, converted.footprint.encode("utf-8"))
-            footprint_library_id = f"JLCPCB_{lcsc}:{converted.name}"
+            footprint_library_id = f"JLCPCB_{lcsc}:{converted_name}"
         _safe_write(folder / "CREDITS.txt", converted.credits.encode("utf-8"))
 
         symbol_preview = footprint_preview = None
@@ -530,12 +539,12 @@ class EasyEdaCadProvider:
         except (CadAssetError, OSError) as exc:
             warnings.append(f"CAD previews are unavailable: {exc}")
 
-        symbol_library_id = f"{nickname}:{converted.name}"
+        symbol_library_id = f"{nickname}:{converted_name}"
         manifest = {
             "lcsc": lcsc,
             "component_uuid": component_uuid,
             "source": "EasyEDA public LCSC CAD",
-            "symbol_name": converted.name,
+            "symbol_name": converted_name,
             "symbol_filename": symbol_filename,
             "symbol_library_id": symbol_library_id,
             "footprint_name": footprint_name,
@@ -556,7 +565,7 @@ class EasyEdaCadProvider:
             lcsc=lcsc,
             component_uuid=component_uuid,
             source="EasyEDA public LCSC CAD",
-            symbol_name=converted.name,
+            symbol_name=converted_name,
             symbol_library_id=symbol_library_id,
             symbol_library_path=symbol_path,
             footprint_name=footprint_name,
