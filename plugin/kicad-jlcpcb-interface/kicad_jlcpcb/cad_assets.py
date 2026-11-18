@@ -24,13 +24,20 @@ from urllib.request import Request, urlopen
 from .provider import normalize_lcsc_code
 
 _EASYEDA_HOSTS = {"easyeda.com", "www.easyeda.com"}
-_COMPONENT_URL = "https://easyeda.com/api/products/{lcsc}/components"
+_COMPONENT_URL = (
+    "https://easyeda.com/api/products/{lcsc}/components?version=6.5.60"
+)
 _SVG_URL = "https://easyeda.com/api/products/{lcsc}/svgs"
 _PACKAGE_URL = "https://easyeda.com/api/components/{uuid}"
-_USER_AGENT = (
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-)
+_HEADERS = {
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "X-Requested-With": "XMLHttpRequest",
+    "Referer": "https://easyeda.com/editor",
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    ),
+}
 _UUID_RE = re.compile(r"^[0-9a-f]{32}$", re.IGNORECASE)
 _MAX_JSON_BYTES = 16 * 1024 * 1024
 _MAX_SVG_BYTES = 4 * 1024 * 1024
@@ -106,6 +113,11 @@ def _safe_preview_svg(raw: str | bytes) -> str:
     for parent in list(root.iter()):
         if parent.tag.rsplit("}", 1)[-1].casefold() in forbidden:
             raise CadAssetError("The CAD preview contains active or embedded content.")
+        for child in list(parent):
+            if child.tag.rsplit("}", 1)[-1].casefold() == "style":
+                css = str(child.text or "").casefold()
+                if "@import" in css or re.search(r"url\\(\\s*(?!#)", css):
+                    parent.remove(child)
         for key in list(parent.attrib):
             local_key = key.rsplit("}", 1)[-1].casefold()
             value = str(parent.attrib[key]).strip()
@@ -193,11 +205,9 @@ class EasyEdaCadProvider:
         request = Request(
             url,
             headers={
-                "Accept": "application/json, image/svg+xml, */*",
+                **_HEADERS,
                 "Accept-Language": "en-US,en;q=0.9",
                 "Origin": "https://easyeda.com",
-                "Referer": "https://easyeda.com/",
-                "User-Agent": _USER_AGENT,
             },
         )
         try:
