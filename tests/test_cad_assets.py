@@ -596,6 +596,35 @@ class CadAssetProviderTests(unittest.TestCase):
         self.assertEqual(cached.model_preview_png, b"\x89PNG\r\n\x1a\n3d-preview")
         self.assertEqual(len(opener.requests), 3)
 
+    def test_invalid_cached_step_model_is_treated_as_a_cache_miss(self):
+        folder = self.cache / "C12345"
+        model_directory = folder / "JLCPCB_C12345.3dshapes"
+        model_directory.mkdir(parents=True)
+        symbol_filename = "EasyEDA_01234567.kicad_sym"
+        (folder / symbol_filename).write_text(
+            '(kicad_symbol_lib (version 20231120) (generator "euc2k"))',
+            encoding="utf-8",
+        )
+        model_filename = "model-abcdef01.step"
+        (model_directory / model_filename).write_bytes(b"<html>corrupt cached model</html>")
+        manifest = {
+            "lcsc": "C12345",
+            "component_uuid": "0123456789abcdef0123456789abcdef",
+            "symbol_name": "Example",
+            "symbol_filename": symbol_filename,
+            "symbol_library_id": "EasyEDA_01234567:Example",
+            "footprint_name": "",
+            "footprint_filename": "",
+            "model_uuid": "abcdef0123456789abcdef0123456789",
+            "model_filename": model_filename,
+            "model_sha256": "",
+        }
+        (folder / "manifest.json").write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+
+        self.assertIsNone(self.provider._cache_result("C12345"))
+
     def test_kicad_cli_preview_renders_a_temporary_board_and_model(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
