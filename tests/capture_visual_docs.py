@@ -1696,18 +1696,31 @@ def _drive_populator_form(
             apply_tk_theme(root, "dark")
             populator._update_advanced_filter_button()
             root.update()
-            toolbar_foreground = populator.ttk.Style(root).lookup(
-                "ToolbarLabel.TLabel", "foreground"
+            toolbar_style = populator.ttk.Style(root)
+            toolbar_foreground = toolbar_style.lookup(
+                "Toolbar.TCheckbutton", "foreground"
             )
+            active_foreground = root._kicad_jlcpcb_palette["foreground"]
+            if toolbar_foreground.casefold() != active_foreground.casefold():
+                raise RuntimeError(
+                    "The search toolbar checkbutton style did not adopt the active "
+                    f"theme: style={toolbar_foreground!r}, palette={active_foreground!r}."
+                )
             icon_foreground = populator._filter_icon_image.get(10, 4)
             expected_icon_foreground = tuple(
                 int(toolbar_foreground[index:index + 2], 16)
                 for index in (1, 3, 5)
             )
-            if tuple(icon_foreground) != expected_icon_foreground:
+            displayed_image = str(populator.advanced_filters_button.cget("image"))
+            generated_image = str(populator._filter_icon_image)
+            if (
+                tuple(icon_foreground) != expected_icon_foreground
+                or displayed_image != generated_image
+            ):
                 raise RuntimeError(
-                    "The advanced-filter icon does not follow the active theme: "
-                    f"icon={icon_foreground!r}, expected={expected_icon_foreground!r}."
+                    "The advanced-filter button is not displaying its theme-aware icon: "
+                    f"pixels={icon_foreground!r}, expected={expected_icon_foreground!r}, "
+                    f"button_image={displayed_image!r}, generated_image={generated_image!r}."
                 )
             _capture_window(root, output_dir / dark_asset)
             apply_tk_theme(root, "light")
