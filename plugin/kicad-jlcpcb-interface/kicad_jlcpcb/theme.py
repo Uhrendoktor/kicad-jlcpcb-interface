@@ -349,6 +349,16 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         font=("TkDefaultFont", 10, "bold"),
     )
     style.configure(
+        "CopyablePartId.TLabel",
+        background=palette["surface"],
+        foreground=palette["accent"],
+        font=("TkDefaultFont", 10, "bold", "underline"),
+    )
+    style.map(
+        "CopyablePartId.TLabel",
+        foreground=[("active", palette["foreground"]), ("!disabled", palette["accent"])],
+    )
+    style.configure(
         "Warning.TLabel",
         background=palette["background"],
         foreground=palette["muted"],
