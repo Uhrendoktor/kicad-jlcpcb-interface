@@ -631,27 +631,54 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         "TNotebook",
         background=palette["background"],
         borderwidth=0,
-        bordercolor=palette["border"],
-        lightcolor=palette["border"],
-        darkcolor=palette["border"],
-        tabmargins=(2, 4, 2, 0),
+        bordercolor=palette["background"],
+        lightcolor=palette["background"],
+        darkcolor=palette["background"],
+        relief="flat",
+        tabmargins=(0, 4, 6, 0),
     )
     style.configure(
         "TNotebook.Tab",
         background=palette["surface_alt"],
         foreground=palette["muted"],
-        bordercolor=palette["border"],
-        padding=(13, 8),
+        borderwidth=0,
+        bordercolor=palette["surface_alt"],
+        lightcolor=palette["surface_alt"],
+        darkcolor=palette["surface_alt"],
+        relief="flat",
+        focuscolor=palette["accent"],
+        padding=(14, 8),
     )
     style.map(
         "TNotebook.Tab",
         background=[
-            ("selected", palette["surface"]),
+            ("selected", palette["selected"]),
             ("active", palette["hover"]),
         ],
         foreground=[
-            ("selected", palette["foreground"]),
+            ("selected", palette["accent"]),
             ("active", palette["foreground"]),
+        ],
+        bordercolor=[
+            ("selected", palette["selected"]),
+            ("active", palette["hover"]),
+            ("!selected", palette["surface_alt"]),
+        ],
+        lightcolor=[
+            ("selected", palette["selected"]),
+            ("!selected", palette["surface_alt"]),
+        ],
+        darkcolor=[
+            ("selected", palette["selected"]),
+            ("!selected", palette["surface_alt"]),
+        ],
+        relief=[
+            ("selected", "flat"),
+            ("!selected", "flat"),
+        ],
+        padding=[
+            ("selected", (14, 8)),
+            ("!selected", (14, 8)),
         ],
     )
     scrollbar_options = {
