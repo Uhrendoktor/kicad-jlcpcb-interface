@@ -330,9 +330,11 @@ class ComponentBrowser:
             list_frame.columnconfigure(0, weight=1)
             list_frame.rowconfigure(1, weight=1)
             body.add(list_frame, weight=1)
-            ttk.Label(list_frame, text="LINKED SCHEMATIC COMPONENTS", style="SectionTitle.TLabel").grid(
-                row=0, column=0, sticky="w", pady=(0, 8)
-            )
+            ttk.Label(
+                list_frame,
+                text="LINKED SCHEMATIC COMPONENTS",
+                style="SectionTitle.TLabel",
+            ).grid(row=0, column=0, sticky="w", pady=(0, 8))
             columns = ("reference", "value", "part", "footprint", "sheet")
             self.tree = ttk.Treeview(
                 list_frame, columns=columns, show="headings", selectmode="browse"
