@@ -6,7 +6,7 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 
 ## TODOs
 
-- [ ] **Fix Add-mode layout when CAD previews are unavailable.** When Add does not show a footprint or other CAD preview, reclaim the unused preview space instead of leaving an empty panel/margin. At minimum, the Properties section should expand cleanly to the right edge without a conspicuous blank gap.
+- [x] **Fix Add-mode layout when CAD previews are unavailable.** When Add does not show a footprint or other CAD preview, reclaim the unused preview space instead of leaving an empty panel/margin. At minimum, the Properties section should expand cleanly to the right edge without a conspicuous blank gap.
 
 - [ ] **Redesign the preview tab strip.** Remove the unattractive heavy tab borders, prevent the selected tab from shrinking, and give the active tab a clearer, more polished highlight.
 
@@ -25,6 +25,10 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 - [ ] **Preview and warn about compatibility-impacting changes in Update mode.** When an update would change the footprint, schematic symbol, or 3D model, show previews of the proposed change(s) and a clear warning that applying the update may break compatibility with the current schematic.
 
 - [ ] **Make scrollbars less intrusive.** Reduce their visual bulk and prominence. Investigate an auto-hide behavior that keeps the scrollbar hidden while idle and reveals it during scrolling, while retaining usable scrolling controls.
+
+## Progress
+
+- **Add-mode empty CAD preview layout — complete.** The CAD pane remains collapsed while EasyEDA is loading and when returned assets have no renderable Symbol, Footprint or 3D preview image. When a rendered preview is available, the two-column layout is restored. Verified with regression tests and the successful live KiCad CI capture on commit `d8754913886bb14e4c98c09b95b8c4c1e85d39d2`.
 
 ## Completion rule
 
