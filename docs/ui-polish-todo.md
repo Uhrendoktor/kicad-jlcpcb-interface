@@ -14,7 +14,7 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 
 - [x] **Restore card/container grouping in Component Overview.** Put the Properties and Prices content back inside clearly defined boxes/cards; they currently appear outside any box.
 
-- [ ] **Align Component Overview rows.** Make the left inset/padding consistent across all rows so that different rows do not start at different horizontal positions.
+- [x] **Align Component Overview rows.** Make the left inset/padding consistent across all rows so that different rows do not start at different horizontal positions.
 
 - [ ] **Broaden alternative matches for simple passive components.** For resistors, capacitors, and similar simple parts, do not rely exclusively on MPN search for the alternatives list. When MPN lookup returns fewer than five results, also search for other listings matching the component type, value, and footprint, and use those to fill the remaining results where available.
 
@@ -35,6 +35,8 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 - **Section-header styling — complete.** Replaced the mixed eyebrow/card/label-frame treatments with shared heading typography across the overview, properties, and Add/Update views. Page and card surfaces retain their own backgrounds; metadata labels remain compact. The live visual workflow asserts equal heading fonts and foregrounds across the styles, and the latest rendered captures were inspected.
 
 - **Component Overview cards — complete.** Put catalogue details (including price breaks) and schematic properties inside shared card containers with consistent padding, heading styles, and card-surface content. The live visual workflow asserts both containers use `Card.TFrame`; the rendered overview capture was inspected.
+
+- **Component Overview row alignment — complete.** The catalogue price/attribute rows and schematic-property labels use the same card padding and are measured in the live capture; the workflow asserts their rendered left edges are identical. The latest dark-theme overview screenshot was inspected.
 
 ## Completion rule
 
