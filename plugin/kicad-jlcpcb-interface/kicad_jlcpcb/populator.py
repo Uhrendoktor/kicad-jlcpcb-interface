@@ -584,8 +584,8 @@ class ComponentPopulator:
         self.review_workspace.grid(
             row=1, column=0, columnspan=2, sticky="nsew"
         )
-        self.review_workspace.columnconfigure(0, weight=3, uniform="review")
-        self.review_workspace.columnconfigure(1, weight=2, uniform="review")
+        self.review_workspace.columnconfigure(0, weight=2, uniform="review")
+        self.review_workspace.columnconfigure(1, weight=3, uniform="review")
         self.properties_column = ttk.Frame(self.review_workspace)
         self.preview_column = ttk.Frame(self.review_workspace)
         self.properties_column.grid(
@@ -1513,6 +1513,9 @@ class ComponentPopulator:
         self._cad_symbol_preview_ref = None
         self._cad_footprint_preview_ref = None
         self._cad_model_preview_ref = None
+        export_button = getattr(self, "export_button", None)
+        if export_button is not None:
+            export_button.configure(state="disabled")
         self.cad_preview.symbol_label.configure(
             image="", text="No symbol preview", padding=8
         )
@@ -1881,7 +1884,7 @@ class ComponentPopulator:
                     chosen = filedialog.askdirectory(
                         parent=dialog,
                         title=f"Choose {label.lower()}",
-                        initialdir=str(default),
+                        initialdir=str(default if default.is_dir() else default.parent),
                         mustexist=False,
                     )
                 if chosen:
