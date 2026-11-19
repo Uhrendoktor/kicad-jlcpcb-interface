@@ -622,21 +622,31 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
         table = (self.project / "fp-lib-table").read_text(encoding="utf-8")
         self.assertIn("ReusableFootprints.pretty", table)
 
-    def test_export_refuses_to_replace_a_user_footprint(self):
+    def test_export_refuses_to_replace_a_user_footprint_without_leaving_a_model(self):
+        model = self.project / "source-model.step"
+        model.write_bytes(b"ISO-10303-21;\\nEND-ISO-10303-21;")
+        self.source.write_text(
+            '(footprint "Example_0402" (model "${KIPRJMOD}/cache/source-model.step"))\\n',
+            encoding="utf-8",
+        )
         target_dir = self.project / "ReusableFootprints.pretty"
         target_dir.mkdir()
         target = target_dir / "Example_0402.kicad_mod"
         target.write_text('(footprint "UserEdited")\\n', encoding="utf-8")
         before = target.read_bytes()
+        model_directory = self.project / "Reusable3D"
 
         with self.assertRaises(SymbolLibraryConflict):
             export_cad_assets_to_libraries(
                 self.project,
                 footprint_source=self.source,
                 footprint_library=target_dir,
+                model_source=model,
+                model_directory=model_directory,
             )
 
         self.assertEqual(target.read_bytes(), before)
+        self.assertFalse((model_directory / model.name).exists())
         self.assertFalse((self.project / "fp-lib-table").exists())
 
     def test_registers_step_model_with_owned_portable_footprint_reference(self):
