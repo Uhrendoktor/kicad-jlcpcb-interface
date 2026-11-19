@@ -11,8 +11,11 @@ PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.theme import (  # noqa: E402
-    THEME_ENVIRONMENT_VARIABLE, UI_FONT_SIZES, UI_SPACING,
-    palette_for_theme, resolve_theme,
+    THEME_ENVIRONMENT_VARIABLE,
+    UI_FONT_SIZES,
+    UI_SPACING,
+    palette_for_theme,
+    resolve_theme,
 )
 
 

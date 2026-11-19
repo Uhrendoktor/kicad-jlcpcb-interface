@@ -167,45 +167,151 @@ class ComponentBrowser:
         self.root.rowconfigure(1, weight=1)
 
         header = ttk.Frame(
-            self.root, padding=(UI_SPACING["lg"], UI_SPACING["md"], UI_SPACING["lg"], UI_SPACING["sm"])
+            self.root,
+            padding=(
+                UI_SPACING["lg"],
+                UI_SPACING["md"],
+                UI_SPACING["lg"],
+                UI_SPACING["sm"],
+            ),
         )
         header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(1, weight=1)
         ttk.Label(
             header,
-            text="JLCPCB Component Properties" if self.selected_component is not None else "JLCPCB Component Overview",
+            text=(
+                "JLCPCB Component Properties"
+                if self.selected_component is not None
+                else "JLCPCB Component Overview"
+            ),
             style="Title.TLabel",
         ).grid(row=0, column=0, columnspan=5, sticky="w")
 
         if self.selected_component is None:
-            ttk.Label(header, text="Search").grid(row=1, column=0, sticky="w", padx=(0, UI_SPACING["sm"]))
+            ttk.Label(header, text="Search").grid(
+                row=1,
+                column=0,
+                sticky="w",
+                padx=(0, UI_SPACING["sm"]),
+            )
             search = ttk.Entry(header, textvariable=self.search_var)
-            search.grid(row=1, column=1, sticky="ew", padx=(0, UI_SPACING["md"]))
+            search.grid(
+                row=1,
+                column=1,
+                sticky="ew",
+                padx=(0, UI_SPACING["md"]),
+            )
             search.bind("<Return>", lambda _event: self._apply_filter())
-            self.search_var.trace_add("write", lambda *_args: self._apply_filter())
-            ttk.Label(header, text="Part-link field").grid(row=1, column=2, sticky="e", padx=(0, UI_SPACING["xs"]))
-            field_entry = ttk.Entry(header, textvariable=self.field_var, width=20)
-            field_entry.grid(row=1, column=3, sticky="e", padx=(0, UI_SPACING["sm"]))
-            ttk.Button(header, text="Refresh", command=self.refresh, style="Primary.TButton").grid(row=1, column=4, sticky="e")
+            self.search_var.trace_add(
+                "write", lambda *_args: self._apply_filter()
+            )
+            ttk.Label(header, text="Part-link field").grid(
+                row=1,
+                column=2,
+                sticky="e",
+                padx=(0, UI_SPACING["xs"]),
+            )
+            field_entry = ttk.Entry(
+                header, textvariable=self.field_var, width=20
+            )
+            field_entry.grid(
+                row=1,
+                column=3,
+                sticky="e",
+                padx=(0, UI_SPACING["sm"]),
+            )
+            ttk.Button(
+                header,
+                text="Refresh",
+                command=self.refresh,
+                style="Primary.TButton",
+            ).grid(row=1, column=4, sticky="e")
 
-            overview = ttk.Frame(header, style="ProductPreview.TFrame", padding=(UI_SPACING["lg"], UI_SPACING["md"]))
-            overview.grid(row=2, column=0, columnspan=5, sticky="ew", pady=(UI_SPACING["md"], 0))
+            overview = ttk.Frame(
+                header,
+                style="ProductPreview.TFrame",
+                padding=(UI_SPACING["lg"], UI_SPACING["md"]),
+            )
+            overview.grid(
+                row=2,
+                column=0,
+                columnspan=5,
+                sticky="ew",
+                pady=(UI_SPACING["md"], 0),
+            )
             overview.columnconfigure((0, 1, 2, 3), weight=1)
-            ttk.Label(overview, text="DESIGN OVERVIEW", style="ProductEyebrow.TLabel").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, UI_SPACING["sm"]))
-            for column, (label, key) in enumerate((
-                ("LINKED COMPONENTS", "components"), ("UNIQUE PARTS", "parts"),
-                ("ESTIMATED TOTAL · USD", "total"), ("STOCK COVERAGE", "availability"),
-            )):
-                cell = ttk.Frame(overview, style="ProductPreview.TFrame", padding=(5, 0))
+            ttk.Label(
+                overview,
+                text="DESIGN OVERVIEW",
+                style="ProductEyebrow.TLabel",
+            ).grid(
+                row=0,
+                column=0,
+                columnspan=4,
+                sticky="w",
+                pady=(0, UI_SPACING["sm"]),
+            )
+            for column, (label, key) in enumerate(
+                (
+                    ("LINKED COMPONENTS", "components"),
+                    ("UNIQUE PARTS", "parts"),
+                    ("ESTIMATED TOTAL · USD", "total"),
+                    ("STOCK COVERAGE", "availability"),
+                )
+            ):
+                cell = ttk.Frame(
+                    overview,
+                    style="ProductPreview.TFrame",
+                    padding=(5, 0),
+                )
                 cell.grid(row=1, column=column, sticky="ew")
-                ttk.Label(cell, text=label, style="ProductKey.TLabel").pack(anchor="w")
-                ttk.Label(cell, textvariable=self.summary_vars[key], style="ProductMetric.TLabel").pack(anchor="w", pady=(UI_SPACING["xs"], 0))
-            ttk.Label(overview, textvariable=self.summary_status_var, style="ProductMeta.TLabel", wraplength=1150).grid(row=2, column=0, columnspan=4, sticky="w", pady=(UI_SPACING["xs"], 0))
+                ttk.Label(
+                    cell,
+                    text=label,
+                    style="ProductKey.TLabel",
+                ).pack(anchor="w")
+                ttk.Label(
+                    cell,
+                    textvariable=self.summary_vars[key],
+                    style="ProductMetric.TLabel",
+                ).pack(
+                    anchor="w",
+                    pady=(UI_SPACING["xs"], 0),
+                )
+            ttk.Label(
+                overview,
+                textvariable=self.summary_status_var,
+                style="ProductMeta.TLabel",
+                wraplength=1150,
+            ).grid(
+                row=2,
+                column=0,
+                columnspan=4,
+                sticky="w",
+                pady=(UI_SPACING["xs"], 0),
+            )
         else:
-            ttk.Label(header, text="Part-link field").grid(row=1, column=0, sticky="w", padx=(0, UI_SPACING["sm"]))
-            field_entry = ttk.Entry(header, textvariable=self.field_var, width=24)
-            field_entry.grid(row=1, column=1, sticky="w", padx=(0, UI_SPACING["md"]))
-            ttk.Button(header, text="Refresh", command=self.refresh, style="Primary.TButton").grid(row=1, column=2, sticky="w")
+            ttk.Label(header, text="Part-link field").grid(
+                row=1,
+                column=0,
+                sticky="w",
+                padx=(0, UI_SPACING["sm"]),
+            )
+            field_entry = ttk.Entry(
+                header, textvariable=self.field_var, width=24
+            )
+            field_entry.grid(
+                row=1,
+                column=1,
+                sticky="w",
+                padx=(0, UI_SPACING["md"]),
+            )
+            ttk.Button(
+                header,
+                text="Refresh",
+                command=self.refresh,
+                style="Primary.TButton",
+            ).grid(row=1, column=2, sticky="w")
 
         # In overview mode the linked-parts table needs little vertical space,
         # while the combined photo/catalogue/MPN details need the full window
@@ -852,7 +958,9 @@ class ComponentBrowser:
                     self._alternative_price(details),
                 ),
             )
-        self.alternatives_status_var.set(f"{len(alternatives)} purchasable listings · double-click to open")
+        self.alternatives_status_var.set(
+            f"{len(alternatives)} purchasable listings · double-click to open"
+        )
 
     def open_selected_alternative(self) -> None:
         selected = self.alternatives_tree.selection()
