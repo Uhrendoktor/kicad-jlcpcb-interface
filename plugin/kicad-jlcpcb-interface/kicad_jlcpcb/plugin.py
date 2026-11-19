@@ -426,21 +426,34 @@ class ComponentBrowser:
         self.image_label = self.product_preview.image_label
         self._image_ref = None
 
-        catalogue_extra = ttk.Frame(content)
+        catalogue_extra = ttk.Frame(
+            content,
+            style="Card.TFrame",
+            padding=UI_SPACING["md"],
+        )
+        self.catalogue_details_card = catalogue_extra
         catalogue_extra.grid(
             row=1, column=0, columnspan=2, sticky="ew", pady=(0, 10)
         )
         catalogue_extra.columnconfigure(1, weight=1)
+        ttk.Label(
+            catalogue_extra,
+            text="CATALOGUE DETAILS",
+            style="SectionTitleSurface.TLabel",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
         for row, (label, key) in enumerate((
             ("Price breaks", "price_breaks"),
             ("Attributes", "attributes"),
-        )):
-            ttk.Label(catalogue_extra, text=label, style="Section.TLabel").grid(
+        ), start=1):
+            ttk.Label(
+                catalogue_extra, text=label, style="CardMeta.TLabel"
+            ).grid(
                 row=row, column=0, sticky="nw", padx=(0, 14), pady=3
             )
             ttk.Label(
                 catalogue_extra,
                 textvariable=self.detail_vars[key],
+                style="Card.TLabel",
                 wraplength=860,
                 justify="left",
             ).grid(row=row, column=1, sticky="ew", pady=3)
@@ -494,9 +507,19 @@ class ComponentBrowser:
             wraplength=850,
         ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
 
-        schematic = ttk.LabelFrame(content, text="Schematic properties", padding=UI_SPACING["md"])
+        schematic = ttk.Frame(
+            content,
+            style="Card.TFrame",
+            padding=UI_SPACING["md"],
+        )
+        self.schematic_properties_card = schematic
         schematic.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         schematic.columnconfigure(1, weight=1)
+        ttk.Label(
+            schematic,
+            text="SCHEMATIC PROPERTIES",
+            style="SectionTitleSurface.TLabel",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
         schematic_fields = (
             ("Reference", "reference"),
             ("Value", "value"),
@@ -506,13 +529,14 @@ class ComponentBrowser:
             ("Datasheet", "datasheet"),
             ("Sheet", "sheet"),
         )
-        for row, (label, key) in enumerate(schematic_fields):
-            ttk.Label(schematic, text=label).grid(
+        for row, (label, key) in enumerate(schematic_fields, start=1):
+            ttk.Label(schematic, text=label, style="CardMeta.TLabel").grid(
                 row=row, column=0, sticky="nw", padx=(0, 12), pady=3
             )
             ttk.Label(
                 schematic,
                 textvariable=self.detail_vars[key],
+                style="Card.TLabel",
                 wraplength=430,
                 justify="left",
             ).grid(row=row, column=1, sticky="ew", pady=3)
