@@ -893,9 +893,22 @@ class ComponentPopulator:
         """Create a compact funnel icon with a theme-coloured active badge."""
         image = self.tk.PhotoImage(width=22, height=20)
         palette = getattr(self.root, "_kicad_jlcpcb_palette", self.palette)
-        foreground = palette.get("foreground", "#30343b")
-        surface = palette.get("surface", palette.get("background", "#f4f5f6"))
-        accent = palette.get("accent", "#4c789f")
+        # Ask ttk for the live widget colors instead of relying only on the
+        # palette snapshot captured during window construction. This keeps the
+        # PhotoImage legible when the desktop theme is changed at runtime.
+        style = self.ttk.Style(self.root)
+        foreground = (
+            style.lookup("ToolbarLabel.TLabel", "foreground")
+            or palette.get("foreground", "#30343b")
+        )
+        surface = (
+            style.lookup("Toolbar.TFrame", "background")
+            or palette.get("surface", palette.get("background", "#f4f5f6"))
+        )
+        accent = (
+            style.lookup("ToolbarLink.TButton", "foreground")
+            or palette.get("accent", "#4c789f")
+        )
 
         funnel_rows = (
             (2, 15),
