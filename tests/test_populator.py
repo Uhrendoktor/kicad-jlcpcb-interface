@@ -863,6 +863,23 @@ class CadSuggestionTests(unittest.TestCase):
         self.assertEqual(populator.draft.symbol_hint, populator.symbol_hint_var.get())
         self.assertEqual(populator.draft.footprint, populator.footprint_var.get())
 
+    def test_cad_preview_candidate_replaces_existing_local_footprint_proposal(self):
+        populator = self.populator(create_mode=True)
+        populator.footprint_var.set("Stock_Footprints:Existing_Local")
+        populator.draft = replace(self.draft, footprint="Stock_Footprints:Existing_Local")
+
+        with patch(
+            "kicad_jlcpcb.populator.footprint_library_entry_available",
+            return_value=True,
+        ):
+            populator._apply_cad_suggestions(self.assets)
+
+        self.assertEqual(
+            populator.footprint_var.get(),
+            self.assets.footprint_library_id,
+        )
+        self.assertEqual(populator.draft.footprint, self.assets.footprint_library_id)
+
     def test_late_cad_result_does_not_replace_a_manually_edited_footprint(self):
         populator = self.populator(create_mode=True, manual_fields={"footprint"})
         populator.footprint_var.set("My_Footprints:Verified")
