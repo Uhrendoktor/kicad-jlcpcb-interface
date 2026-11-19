@@ -996,6 +996,7 @@ class FieldFeedbackTests(unittest.TestCase):
         populator.create_mode = False
         populator.closed = False
         populator.selected_details = None
+        populator._cad_assets = None
         populator.symbol = SimpleNamespace()
         populator.library_id = "Device:R"
         populator.schematic = SimpleNamespace(get_project=lambda: None)
