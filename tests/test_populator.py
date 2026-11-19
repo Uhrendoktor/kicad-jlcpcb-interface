@@ -960,6 +960,69 @@ class CadSuggestionTests(unittest.TestCase):
         self.assertEqual(notebook.selected, [labels.model_tab])
         self.assertIn("3D model", populator.cad_status_var.get())
 
+    def _preview_layout_populator(self):
+        populator = object.__new__(ComponentPopulator)
+        populator.properties_column = Mock()
+        populator.preview_column = Mock()
+        populator.root = object()
+        populator.cad_status_var = self.Variable()
+        populator.cad_preview = SimpleNamespace(
+            frame=Mock(),
+            notebook=Mock(),
+            symbol_tab=object(),
+            footprint_tab=object(),
+            model_tab=object(),
+            symbol_label=Mock(),
+            footprint_label=Mock(),
+            model_label=Mock(),
+        )
+        return populator
+
+    def test_hides_empty_cad_preview_column_when_no_rendered_images_exist(self):
+        populator = self._preview_layout_populator()
+
+        with patch(
+            "kicad_jlcpcb.populator.display_product_image", return_value=None
+        ):
+            populator._show_cad_assets(self.assets)
+
+        populator.properties_column.grid_configure.assert_called_once_with(
+            columnspan=2
+        )
+        populator.preview_column.grid_remove.assert_called_once_with()
+        populator.cad_preview.frame.grid_remove.assert_called_once_with()
+        populator.preview_column.grid.assert_not_called()
+
+    def test_expands_cad_preview_column_when_an_image_is_available(self):
+        populator = self._preview_layout_populator()
+        assets = replace(self.assets, symbol_preview_png=b"symbol-preview")
+
+        with patch(
+            "kicad_jlcpcb.populator.display_product_image", return_value=object()
+        ):
+            populator._show_cad_assets(assets)
+
+        populator.properties_column.grid_configure.assert_called_once_with(
+            columnspan=1
+        )
+        populator.preview_column.grid.assert_called_once_with()
+        populator.cad_preview.frame.grid.assert_called_once_with()
+        populator.preview_column.grid_remove.assert_not_called()
+
+    def test_hides_cad_preview_column_when_lookup_returns_no_assets(self):
+        populator = self._preview_layout_populator()
+
+        with patch(
+            "kicad_jlcpcb.populator.display_product_image", return_value=None
+        ):
+            populator._show_cad_assets(None)
+
+        populator.properties_column.grid_configure.assert_called_once_with(
+            columnspan=2
+        )
+        populator.preview_column.grid_remove.assert_called_once_with()
+        populator.cad_preview.frame.grid_remove.assert_called_once_with()
+
     def test_update_mode_only_prefills_footprint_and_never_symbol(self):
         populator = self.populator(create_mode=False)
         populator._apply_cad_suggestions(self.assets)
