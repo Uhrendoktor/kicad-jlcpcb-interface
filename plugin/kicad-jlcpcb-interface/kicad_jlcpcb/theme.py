@@ -10,6 +10,10 @@ from typing import Any
 
 THEME_ENVIRONMENT_VARIABLE = "KICAD_JLCPCB_THEME"
 
+# Shared layout and typography tokens for every Tk window.
+UI_SPACING = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24}
+UI_FONT_SIZES = {"caption": 8, "body": 9, "section": 9, "metric": 10, "card_title": 11, "title": 16}
+
 _PALETTES: dict[str, dict[str, str]] = {
     "dark": {
         "background": "#171c21",
@@ -17,7 +21,7 @@ _PALETTES: dict[str, dict[str, str]] = {
         "surface_alt": "#2b343d",
         "field": "#171c21",
         "hover": "#33404a",
-        "selected": "#355169",
+        "selected": "#2d4352",
         "foreground": "#e8edf2",
         "muted": "#a7b2bd",
         "border": "#414c56",
@@ -36,7 +40,7 @@ _PALETTES: dict[str, dict[str, str]] = {
         "surface_alt": "#edf1f5",
         "field": "#ffffff",
         "hover": "#e7eff6",
-        "selected": "#d5e6f4",
+        "selected": "#e2edf6",
         "foreground": "#202934",
         "muted": "#647180",
         "border": "#d6dee6",
@@ -240,7 +244,7 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         root.option_add(option, value)
 
     style.configure("TFrame", background=palette["background"])
-    style.configure("TPanedwindow", background=palette["background"])
+    style.configure("TPanedwindow", background=palette["background"], borderwidth=0, relief="flat")
     style.configure(
         "Toolbar.TFrame",
         background=palette["surface_alt"],
@@ -375,12 +379,13 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         "TLabel",
         background=palette["background"],
         foreground=palette["foreground"],
+        font=("TkDefaultFont", UI_FONT_SIZES["body"]),
     )
     style.configure(
         "Title.TLabel",
         background=palette["background"],
         foreground=palette["foreground"],
-        font=("TkDefaultFont", 16, "bold"),
+        font=("TkDefaultFont", UI_FONT_SIZES["title"], "bold"),
     )
     style.configure(
         "Subtitle.TLabel",
@@ -474,22 +479,15 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         foreground=palette["foreground"],
         font=("TkDefaultFont", 10, "bold"),
     )
+    # Prefer surface contrast and whitespace over nested outlines.
     style.configure(
-        "TLabelframe",
-        background=palette["background"],
-        foreground=palette["foreground"],
-        bordercolor=palette["border"],
-        lightcolor=palette["border"],
-        darkcolor=palette["border"],
-        relief="solid",
-        borderwidth=1,
+        "TLabelframe", background=palette["background"], foreground=palette["foreground"],
+        bordercolor=palette["background"], lightcolor=palette["background"],
+        darkcolor=palette["background"], relief="flat", borderwidth=0,
     )
     style.configure(
-        "TLabelframe.Label",
-        background=palette["surface"],
-        foreground=palette["muted"],
-        padding=(4, 0),
-        font=("TkDefaultFont", 9, "bold"),
+        "TLabelframe.Label", background=palette["background"], foreground=palette["muted"],
+        padding=(0, 0), font=("TkDefaultFont", UI_FONT_SIZES["section"], "bold"),
     )
     style.configure(
         "TButton",
@@ -498,7 +496,7 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         bordercolor=palette["border"],
         focuscolor=palette["accent"],
         focusthickness=1,
-        padding=(11, 7),
+        padding=(10, 6),
         relief="flat",
     )
     style.map(
@@ -525,9 +523,9 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         bordercolor=palette["accent"],
         focuscolor=palette["accent"],
         focusthickness=1,
-        padding=(13, 8),
+        padding=(12, 7),
         relief="flat",
-        font=("TkDefaultFont", 9, "bold"),
+        font=("TkDefaultFont", UI_FONT_SIZES["body"], "bold"),
     )
     style.map(
         "Primary.TButton",
@@ -606,7 +604,7 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         rowheight=29,
         relief="flat",
         borderwidth=0,
-        padding=(4, 2),
+        padding=(2, 1),
     )
     style.map(
         "Treeview",

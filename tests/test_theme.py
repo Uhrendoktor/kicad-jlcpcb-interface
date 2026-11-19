@@ -11,13 +11,18 @@ PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.theme import (  # noqa: E402
-    THEME_ENVIRONMENT_VARIABLE,
-    palette_for_theme,
-    resolve_theme,
+    THEME_ENVIRONMENT_VARIABLE, UI_FONT_SIZES, UI_SPACING,
+    palette_for_theme, resolve_theme,
 )
 
 
 class ThemeResolutionTests(unittest.TestCase):
+    def test_shared_ui_tokens_define_spacing_and_typography(self):
+        self.assertEqual(UI_SPACING, {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24})
+        self.assertEqual(UI_FONT_SIZES["caption"], 8)
+        self.assertEqual(UI_FONT_SIZES["body"], 9)
+        self.assertEqual(UI_FONT_SIZES["title"], 16)
+
     def test_explicit_theme_overrides_the_desktop(self):
         with patch("kicad_jlcpcb.theme._desktop_prefers_dark", return_value=False):
             self.assertEqual(resolve_theme("dark"), "dark")
