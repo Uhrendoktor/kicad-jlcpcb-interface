@@ -968,5 +968,46 @@ class CadSuggestionTests(unittest.TestCase):
 
 
 
+class FieldFeedbackTests(unittest.TestCase):
+    def test_invalid_footprint_identifier_is_a_blocking_update_error(self):
+        populator = object.__new__(ComponentPopulator)
+        populator.draft = SimpleNamespace()
+        populator.create_mode = False
+        populator.schematic = SimpleNamespace(get_project=lambda: None)
+        populator.kicad = None
+        populator._cad_assets = None
+        populator.footprint_var = SimpleNamespace(get=lambda: "Broken::Footprint")
+        populator._set_field_feedback = Mock()
+
+        with patch(
+            "kicad_jlcpcb.populator.footprint_library_entry_available"
+        ) as available:
+            errors = populator._update_field_feedback()
+
+        self.assertEqual(errors, {"footprint"})
+        available.assert_not_called()
+        self.assertEqual(
+            populator._set_field_feedback.call_args.args[:2],
+            ("footprint", "error"),
+        )
+
+    def test_update_apply_is_disabled_while_inline_error_remains(self):
+        populator = object.__new__(ComponentPopulator)
+        populator.closed = False
+        populator.draft = SimpleNamespace(proposed_fields=(("Value", "10k"),))
+        populator.create_mode = False
+        populator.symbol = object()
+        populator.apply_button = Mock()
+        populator._update_field_feedback = Mock(return_value={"footprint"})
+        populator.status_var = Mock()
+
+        populator._refresh_readiness()
+
+        populator.apply_button.configure.assert_called_once_with(state="disabled")
+        populator.status_var.set.assert_called_once_with(
+            "Fix the highlighted fields before applying the proposal."
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
