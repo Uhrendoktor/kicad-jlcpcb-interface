@@ -1495,10 +1495,11 @@ def _drive_populator_form(
                 populator.draft is None
                 or str(populator.apply_button.cget("state")) != "normal"
                 or populator._image_pending
+                or populator._cad_pending
             ):
                 if time.monotonic() >= state["deadline"]:
                     raise TimeoutError(
-                        "The LCSC review form did not receive an applicable live draft: "
+                        "The LCSC review form or its asynchronous previews did not settle: "
                         f"status={populator.status_var.get()!r}"
                     )
                 root.after(150, advance)
