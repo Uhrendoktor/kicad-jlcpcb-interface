@@ -933,6 +933,7 @@ class CadSuggestionTests(unittest.TestCase):
 
         notebook = Notebook()
         labels = SimpleNamespace(
+            frame=Mock(),
             notebook=notebook,
             symbol_tab=object(),
             footprint_tab=object(),
@@ -942,6 +943,8 @@ class CadSuggestionTests(unittest.TestCase):
             model_label=Label(),
         )
         populator = object.__new__(ComponentPopulator)
+        populator.properties_column = Mock()
+        populator.preview_column = Mock()
         populator.cad_preview = labels
         populator.root = object()
         populator.cad_status_var = self.Variable()
@@ -958,6 +961,11 @@ class CadSuggestionTests(unittest.TestCase):
         self.assertEqual(displayed[2][1], b"3d-preview")
         self.assertEqual(displayed[2][3], (400, 210))
         self.assertEqual(notebook.selected, [labels.model_tab])
+        populator.properties_column.grid_configure.assert_called_once_with(
+            columnspan=1
+        )
+        populator.preview_column.grid.assert_called_once_with()
+        labels.frame.grid.assert_called_once_with()
         self.assertIn("3D model", populator.cad_status_var.get())
 
     def _preview_layout_populator(self):
