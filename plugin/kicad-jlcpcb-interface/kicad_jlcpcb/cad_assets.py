@@ -198,6 +198,28 @@ def _format_rotation(values: tuple[float, float, float]) -> list[Any]:
     ]
 
 
+def _hide_footprint_reference_text(footprint: list[Any]) -> int:
+    """Hide reference-designator text in the temporary 3D preview footprint only."""
+    hidden = 0
+    for node in footprint:
+        if (
+            not isinstance(node, list)
+            or len(node) < 3
+            or not isinstance(node[0], Atom)
+            or node[0].value != "fp_text"
+            or not isinstance(node[1], (Atom, Quoted))
+            or node[1].value.casefold() != "reference"
+        ):
+            continue
+        if not any(
+            isinstance(child, Atom) and child.value == "hide"
+            for child in node[2:]
+        ):
+            node.append(Atom("hide"))
+        hidden += 1
+    return hidden
+
+
 def render_step_preview(footprint_file: Path, model_file: Path) -> bytes:
     """Render one candidate footprint using KiCad's native 3D ray-tracing CLI."""
     cli = shutil.which("kicad-cli") or shutil.which("kicad-cli-nightly")
@@ -216,6 +238,9 @@ def render_step_preview(footprint_file: Path, model_file: Path) -> bytes:
         or footprint[0].value != "footprint"
     ):
         raise CadAssetError("The converted footprint is not a valid KiCad footprint.")
+    # Hide the reference text in this temporary board only. The cached and
+    # imported footprint file retains its normal PCB reference/silkscreen.
+    _hide_footprint_reference_text(footprint)
     model_nodes = [
         item for item in footprint
         if (
