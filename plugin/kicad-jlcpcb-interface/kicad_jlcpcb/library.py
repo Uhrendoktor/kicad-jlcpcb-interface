@@ -924,7 +924,9 @@ def generate_project_library_symbol(
     if library_changed:
         _atomic_write(library_path, dump_sexpr(library_root), backup=library_existed)
     if entry_added:
-        _atomic_write(table_path, dump_sexpr(table), backup=table_path.exists())
+        _atomic_write(
+            table_path, dump_sexpr(table), backup=table_path.exists()
+        )
 
     return GeneratedLibrarySymbol(
         project_directory=project_dir,
@@ -1231,7 +1233,9 @@ def register_project_footprint_library(
             ]
         )
         try:
-            _atomic_write(table_path, dump_sexpr(table), backup=table_path.exists())
+            _atomic_write(
+            table_path, dump_sexpr(table), backup=table_path.exists()
+        )
         except Exception:
             if created:
                 shutil.rmtree(library_path, ignore_errors=True)
@@ -1288,15 +1292,23 @@ def _register_selected_library(
         try:
             table = parse_sexpr(table_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, SymbolLibraryError) as exc:
-            raise SymbolLibraryError(f"Could not read project library table {table_path}: {exc}") from exc
+            raise SymbolLibraryError(
+                f"Could not read project library table {table_path}: {exc}"
+            ) from exc
         if _head(table) != root_name:
-            raise SymbolLibraryError(f"Project library table {table_path} has an invalid root node.")
+            raise SymbolLibraryError(
+                f"Project library table {table_path} has an invalid root node."
+            )
     else:
         table = [Atom(root_name), [Atom("version"), Atom("7")]]
     if _find_direct(table, "version") is None:
         table.insert(1, [Atom("version"), Atom("7")])
 
-    base = library_path.name[:-7] if library_path.name.endswith(".pretty") else library_path.stem
+    base = (
+        library_path.name[:-7]
+        if library_path.name.endswith(".pretty")
+        else library_path.stem
+    )
     if not re.fullmatch(r"[A-Za-z0-9_+-]{1,80}", base):
         raise SymbolLibraryError(
             "Choose a library path whose name uses letters, numbers, underscores, plus or hyphen."
@@ -1322,7 +1334,9 @@ def _register_selected_library(
                 [Atom("descr"), Quoted(description[:240])],
             ]
         )
-        _atomic_write(table_path, dump_sexpr(table), backup=table_path.exists())
+        _atomic_write(
+            table_path, dump_sexpr(table), backup=table_path.exists()
+        )
         return nickname
     raise SymbolLibraryConflict("Could not allocate a free KiCad library nickname for the selected path.")
 
@@ -1374,7 +1388,9 @@ def _export_symbol_to_library(
     try:
         source_root = parse_sexpr(source_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, SymbolLibraryError) as exc:
-        raise SymbolLibraryError(f"Could not read the selected CAD symbol library: {exc}") from exc
+        raise SymbolLibraryError(
+            f"Could not read the selected CAD symbol library: {exc}"
+        ) from exc
     if _head(source_root) != "kicad_symbol_lib":
         raise SymbolLibraryError("The selected CAD symbol file has an invalid KiCad library root.")
     safe_name = str(symbol_name or "").strip()
@@ -1388,7 +1404,9 @@ def _export_symbol_to_library(
             "The selected CAD symbol extends another symbol and cannot be exported alone. "
             "Choose a standalone definition."
         )
-    if not any(_head(node) == "pin" for node in _walk(source_symbol)):
+    if not any(
+        _head(node) == "pin" for node in _walk(source_symbol)
+    ):
         raise SymbolLibraryError("The selected CAD symbol has no pins and cannot be used as a component.")
 
     existed = target_path.exists()
@@ -1398,9 +1416,13 @@ def _export_symbol_to_library(
             original_text = target_path.read_text(encoding="utf-8")
             target_root = parse_sexpr(original_text)
         except (OSError, UnicodeError, SymbolLibraryError) as exc:
-            raise SymbolLibraryConflict(f"Could not safely inspect {target_path}: {exc}") from exc
+            raise SymbolLibraryConflict(
+                f"Could not safely inspect {target_path}: {exc}"
+            ) from exc
         if _head(target_root) != "kicad_symbol_lib":
-            raise SymbolLibraryConflict(f"Selected file {target_path.name} is not a KiCad symbol library.")
+            raise SymbolLibraryConflict(
+                f"Selected file {target_path.name} is not a KiCad symbol library."
+            )
     else:
         target_root = _root_header(source_root)
 
@@ -1478,11 +1500,17 @@ def _export_footprint_to_library(
             not model_source.is_file()
             or model_source.suffix.casefold() != ".step"
             or len(model_bytes) > 32 * 1024 * 1024
-            or not model_bytes.lstrip(b"\xef\xbb\xbf \t\r\n").upper().startswith(b"ISO-10303-21;")
+            or not model_bytes.lstrip(b"\xef\xbb\xbf \t\r\n")
+            .upper()
+            .startswith(b"ISO-10303-21;")
         ):
-            raise SymbolLibraryError("The selected 3D asset is not a valid STEP file (maximum 32 MiB).")
+            raise SymbolLibraryError(
+                "The selected 3D asset is not a valid STEP file (maximum 32 MiB)."
+            )
         if len(model_nodes) != 1 or len(model_nodes[0]) < 2:
-            raise SymbolLibraryError("The selected footprint must contain exactly one 3D model reference.")
+            raise SymbolLibraryError(
+                "The selected footprint must contain exactly one 3D model reference."
+            )
         model_dir = Path(model_directory).expanduser()
         if _path_has_symlink_component(model_dir):
             raise SymbolLibraryConflict(
@@ -1497,10 +1525,13 @@ def _export_footprint_to_library(
             not copied_model.is_file() or copied_model.read_bytes() != model_bytes
         ):
             raise SymbolLibraryConflict(
-                f"{copied_model.name} already exists with different content. It was not overwritten."
+                f"{copied_model.name} already exists with different content. "
+                "It was not overwritten."
             )
         try:
-            relative = copied_model.resolve(strict=False).relative_to(project_dir.resolve(strict=False))
+            relative = copied_model.resolve(strict=False).relative_to(
+                project_dir.resolve(strict=False)
+            )
             model_uri = "$" + "{KIPRJMOD}/" + relative.as_posix()
         except ValueError:
             model_uri = str(copied_model.resolve(strict=False))
@@ -1522,10 +1553,13 @@ def _export_footprint_to_library(
         try:
             original_text = target_file.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
-            raise SymbolLibraryConflict(f"Could not inspect existing footprint {target_file}: {exc}") from exc
+            raise SymbolLibraryConflict(
+                f"Could not inspect existing footprint {target_file}: {exc}"
+            ) from exc
         if original_text != new_text:
             raise SymbolLibraryConflict(
-                f"Footprint {footprint_name!r} already exists in {target_dir.name} with different content. "
+                f"Footprint {footprint_name!r} already exists in {target_dir.name} "
+                "with different content. "
                 "It was not overwritten."
             )
 
@@ -1655,7 +1689,9 @@ def _registered_user_symbol_library(
                 raise SymbolLibraryError(f"Symbol library {resolved} is not writable.")
             return resolved
         except (OSError, UnicodeError, ValueError) as exc:
-            raise SymbolLibraryError(f"Could not inspect registered symbol library {table_path}: {exc}") from exc
+            raise SymbolLibraryError(
+                f"Could not inspect registered symbol library {table_path}: {exc}"
+            ) from exc
     raise SymbolLibraryError(
         f"Symbol library {nickname!r} is not registered in the active project or user KiCad table. "
         "Export it to a writable library before syncing."
