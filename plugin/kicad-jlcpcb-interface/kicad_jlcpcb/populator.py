@@ -1827,14 +1827,17 @@ class ComponentPopulator:
         project = self.schematic.get_project()
         raw_project = getattr(project, "path", project)
         project_path = Path(str(raw_project)).expanduser()
-        if project_path.is_file() or project_path.suffix.casefold() in {".kicad_pro", ".kicad_sch"}:
+        if project_path.is_file() or project_path.suffix.casefold() in {
+            ".kicad_pro", ".kicad_sch"
+        }:
             project_dir = project_path.parent
         else:
             project_dir = project_path
         if not project_dir.is_dir():
             self.messagebox.showerror(
                 "Save the KiCad project first",
-                "Exported libraries are registered in the active project. Save the project before exporting.",
+                "Exported libraries are registered in the active project. "
+                "Save the project before exporting.",
                 parent=self.root,
             )
             return
@@ -1846,7 +1849,10 @@ class ComponentPopulator:
         ttk = self.ttk
         ttk.Label(
             dialog,
-            text="Choose a destination for each available asset. New libraries are registered in this project.",
+            text=(
+                "Choose a destination for each available asset. "
+                "New libraries are registered in this project."
+            ),
             wraplength=660,
             justify="left",
         ).grid(row=0, column=0, columnspan=3, sticky="w", padx=16, pady=(14, 10))
@@ -1918,7 +1924,10 @@ class ComponentPopulator:
 
         ttk.Label(
             dialog,
-            text="Existing items with different content are never replaced. The model path in the exported footprint is updated to the selected 3D folder.",
+            text=(
+                "Existing items with different content are never replaced. "
+                "The model path in the exported footprint is updated to the selected 3D folder."
+            ),
             wraplength=660,
             justify="left",
             style="Muted.TLabel",
@@ -1931,7 +1940,9 @@ class ComponentPopulator:
                     project,
                     symbol_source=assets.symbol_library_path if has_symbol else None,
                     symbol_name=assets.symbol_name if has_symbol else "",
-                    symbol_library=variables.get("symbol_library").get() if has_symbol else None,
+                    symbol_library=(
+                        variables.get("symbol_library").get() if has_symbol else None
+                    ),
                     footprint_source=assets.footprint_path if has_footprint else None,
                     footprint_library=variables.get("footprint_library").get() if has_footprint else None,
                     model_source=assets.model_path if has_model else None,
@@ -1972,13 +1983,18 @@ class ComponentPopulator:
                 if result.footprint_id:
                     exported.append(f"footprint {result.footprint_id}")
                 if result.model_path:
-                    exported.append(f"3D model {result.model_path}")
+                    exported.append(
+                        f"3D model {result.model_path}"
+                    )
                 self.status_var.set("Exported " + "; ".join(exported) + ".")
                 self._set_notes(("Info: Exported assets are registered in this project's KiCad library tables.",))
                 dialog.destroy()
                 self.messagebox.showinfo(
                     "CAD assets exported",
-                    "The selected assets are now available through this project's KiCad libraries.\n\n"
+                    (
+                        "The selected assets are now available through this project's "
+                        "KiCad libraries.\n\n"
+                    )
                     + "\n".join(exported),
                     parent=self.root,
                 )
@@ -2112,8 +2128,11 @@ class ComponentPopulator:
             self._set_notes((f"Error: Library sync failed: {exc}",))
             self.messagebox.showerror(
                 "Library sync failed",
-                "The library and schematic could not both be synced. "
-                "Rollback was attempted for both the library file and affected schematic symbols.\n\n"
+                (
+                    "The library and schematic could not both be synced. "
+                    "Rollback was attempted for both the library file and affected "
+                    "schematic symbols.\n\n"
+                )
                 + str(exc),
                 parent=self.root,
             )
@@ -2123,7 +2142,10 @@ class ComponentPopulator:
             f"Synced {len(matching)} schematic instance(s) and {library_path.name}."
         )
         self._set_notes((
-            "Info: The reviewed properties were written to the registered library and all matching schematic instances.",
+            (
+                "Info: The reviewed properties were written to the registered library "
+                "and all matching schematic instances."
+            ),
         ))
     def _set_notes(self, lines: tuple[str, ...]) -> None:
         """Render review notes with explicit severity icons, labels and text."""
