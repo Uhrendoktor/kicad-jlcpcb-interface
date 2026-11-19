@@ -545,16 +545,6 @@ class ComponentPopulator:
         )
         def fit_workspace(event) -> None:
             self.content_canvas.itemconfigure(content_window, width=event.width)
-            wrap = max(280, int(event.width) - 190)
-            for label in getattr(self, "_proposal_value_labels", ()):
-                label.configure(wraplength=wrap)
-            notes = getattr(self, "notes", None)
-            if notes is not None:
-                wrap = max(300, int(event.width) - 40)
-                for row in notes.winfo_children():
-                    for child in row.winfo_children():
-                        if str(child.cget("style") or "") == "Note.TLabel":
-                            child.configure(wraplength=wrap)
 
         self.content_canvas.bind("<Configure>", fit_workspace)
 
@@ -771,7 +761,7 @@ class ComponentPopulator:
                 component_section,
                 text="",
                 style="CardMeta.TLabel",
-                wraplength=760,
+                wraplength=max(160, self.properties_column.winfo_width() - 30),
                 justify="left",
             )
             self.passive_mapping_label.grid(
@@ -783,13 +773,16 @@ class ComponentPopulator:
                 "The generated symbol is inserted at the current sheet center, "
                 "brought into view and selected. Use KiCad's Move tool to position it."
             )
-            ttk.Label(
+            self.placement_note_label = ttk.Label(
                 component_section,
                 text=placement_note,
                 style="CardMeta.TLabel",
-                wraplength=760,
+                wraplength=max(160, self.properties_column.winfo_width() - 30),
                 justify="left",
-            ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(7, 2))
+            )
+            self.placement_note_label.grid(
+                row=row, column=0, columnspan=2, sticky="w", pady=(7, 2)
+            )
             row += 1
 
         proposal_section = ttk.Frame(
@@ -820,6 +813,28 @@ class ComponentPopulator:
         self.notes.grid(row=0, column=0, sticky="ew")
         self.notes.grid_remove()
         self.notes_section.grid_remove()
+
+        def fit_properties_column(_event=None) -> None:
+            width = int(self.properties_column.winfo_width())
+            if width <= 1:
+                return
+            field_wrap = max(150, width - 165)
+            proposal_wrap = max(150, width - 165)
+            note_wrap = max(150, width - 85)
+            for _entry, label in self._field_feedback.values():
+                label.configure(wraplength=field_wrap)
+            for label in self._proposal_value_labels:
+                label.configure(wraplength=proposal_wrap)
+            for name in ("passive_mapping_label", "placement_note_label"):
+                label = getattr(self, name, None)
+                if label is not None:
+                    label.configure(wraplength=max(150, width - 30))
+            for row in self.notes.winfo_children():
+                for child in row.winfo_children():
+                    if str(child.cget("style") or "") == "Note.TLabel":
+                        child.configure(wraplength=note_wrap)
+
+        self.properties_column.bind("<Configure>", fit_properties_column)
 
         footer = ttk.Frame(outer)
         footer.grid(row=3, column=0, sticky="ew", pady=(8, 0))
@@ -2205,7 +2220,9 @@ class ComponentPopulator:
                 row,
                 text=message,
                 style="Note.TLabel",
-                wraplength=max(300, self.content_canvas.winfo_width() - 50),
+                wraplength=max(
+                    150, self.properties_column.winfo_width() - 85
+                ),
                 justify="left",
             ).grid(row=0, column=2, sticky="ew")
         self.notes.grid()
@@ -2251,7 +2268,9 @@ class ComponentPopulator:
                 row,
                 text=self._proposal_display_value(name, value),
                 style="Card.TLabel",
-                wraplength=max(280, self.content_canvas.winfo_width() - 190),
+                wraplength=max(
+                    150, self.properties_column.winfo_width() - 165
+                ),
                 justify="left",
             )
             value_label.grid(row=0, column=1, sticky="ew")
