@@ -558,6 +558,25 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         lightcolor=[("focus", palette["accent"])],
         darkcolor=[("focus", palette["accent"])],
     )
+    for severity in ("Error", "Warning", "Info"):
+        color = palette[severity.casefold()]
+        entry_style = f"Validation{severity}.TEntry"
+        style.configure(
+            entry_style,
+            fieldbackground=palette["field"],
+            foreground=palette["foreground"],
+            insertcolor=palette["foreground"],
+            bordercolor=color,
+            lightcolor=color,
+            darkcolor=color,
+            padding=(7, 5),
+        )
+        style.map(
+            entry_style,
+            bordercolor=[("focus", color), ("!focus", color)],
+            lightcolor=[("focus", color), ("!focus", color)],
+            darkcolor=[("focus", color), ("!focus", color)],
+        )
     style.configure(
         "TCombobox",
         fieldbackground=palette["field"],
