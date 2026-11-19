@@ -5,6 +5,7 @@ import json
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -20,13 +21,17 @@ from kicad_jlcpcb.library import (  # noqa: E402
     SymbolLibraryError,
     _atomic_write,
     dump_sexpr,
+    export_cad_assets_to_libraries,
     footprint_library_entry_available,
     generate_project_library_symbol,
     parse_sexpr,
     register_project_cad_credits,
     register_project_footprint_library,
     reload_project_symbol_library,
+    restore_symbol_library_snapshot,
     symbol_library_entry_available,
+    sync_symbol_library_properties,
+    writable_user_symbol_library_available,
 )
 
 DEVICE_LIBRARY = r'''
@@ -239,6 +244,223 @@ class ProjectLibraryTests(unittest.TestCase):
         table_text = self.table.read_text(encoding="utf-8")
         self.assertIn("JLCPCB_Generated.kicad_sym", table_text)
 
+
+    def test_export_avoids_a_nickname_already_registered_globally(self):
+        with tempfile.TemporaryDirectory() as home_directory:
+            global_directory = Path(home_directory) / ".config" / "kicad" / "11.0"
+            global_directory.mkdir(parents=True)
+            global_table = global_directory / "sym-lib-table"
+            global_library = global_directory / "ReusableParts.kicad_sym"
+            global_library.write_text(DEVICE_LIBRARY, encoding="utf-8")
+            global_table.write_text(
+                TABLE_WITH_USER_ENTRY.replace(
+                    "UserLibrary", "ReusableParts"
+                ).replace(
+                    "${KIPRJMOD}/ReusableParts.kicad_sym",
+                    str(global_library),
+                ),
+                encoding="utf-8",
+            )
+            destination = self.project / "ReusableParts.kicad_sym"
+
+            with patch(
+                "kicad_jlcpcb.library._global_library_tables",
+                return_value=(global_table,),
+            ):
+                result = export_cad_assets_to_libraries(
+                    self.project,
+                    symbol_source=self.device,
+                    symbol_name="R",
+                    symbol_library=destination,
+                )
+
+        self.assertEqual(result.symbol_id, "ReusableParts_1:R")
+        self.assertIn(
+            '"ReusableParts_1"',
+            (self.project / "sym-lib-table").read_text(encoding="utf-8"),
+        )
+
+    def test_exports_selected_symbol_to_user_library_and_registers_project_table(self):
+        destination = self.project / "ReusableParts.kicad_sym"
+
+        result = export_cad_assets_to_libraries(
+            self.project,
+            symbol_source=self.device,
+            symbol_name="R",
+            symbol_library=destination,
+        )
+
+        self.assertEqual(result.symbol_id, "ReusableParts:R")
+        self.assertTrue(destination.is_file())
+        self.assertTrue(
+            symbol_library_entry_available(
+                result.symbol_id, project_or_path=self.project
+            )
+        )
+        table = self.table.read_text(encoding="utf-8")
+        self.assertIn("ReusableParts.kicad_sym", table)
+        self.assertIn("${KIPRJMOD}/ReusableParts.kicad_sym", table)
+
+        again = export_cad_assets_to_libraries(
+            self.project,
+            symbol_source=self.device,
+            symbol_name="R",
+            symbol_library=destination,
+        )
+        self.assertEqual(again.symbol_id, result.symbol_id)
+
+    def test_symbol_library_sync_updates_properties_and_can_restore_snapshot(self):
+        generated = self.generate()
+        before = generated.library_path.read_text(encoding="utf-8")
+        revised = replace(
+            resistor_draft(),
+            value="22k",
+            footprint="Resistor_SMD:R_0603_1608Metric",
+            manufacturer="Vishay",
+            mpn="CRCW060322K0FKEA",
+        )
+
+        library_path, snapshot, scope = sync_symbol_library_properties(
+            self.project, generated.library_id, revised
+        )
+        self.assertEqual(scope, 2)
+        self.assertEqual(library_path, generated.library_path)
+        root = self.read_library(library_path)
+        symbol = next(
+            node for node in root
+            if isinstance(node, list) and node and node[0].value == "symbol"
+        )
+        properties = {
+            node[1].value: node[2].value
+            for node in symbol
+            if isinstance(node, list) and node and node[0].value == "property"
+        }
+        self.assertEqual(properties["Value"], "22k")
+        self.assertEqual(
+            properties["Footprint"], "Resistor_SMD:R_0603_1608Metric"
+        )
+        self.assertEqual(properties["Manufacturer"], "Vishay")
+        self.assertEqual(properties["MPN"], "CRCW060322K0FKEA")
+        self.assertTrue(list(self.project.glob("JLCPCB_Generated.kicad_sym.bak*")))
+
+        restore_symbol_library_snapshot(library_path, snapshot)
+        self.assertEqual(library_path.read_text(encoding="utf-8"), before)
+
+    def test_sync_preserves_library_fields_when_catalogue_omits_them(self):
+        generated = self.generate()
+        revised = replace(
+            resistor_draft(),
+            value="",
+            footprint="",
+            datasheet_url="",
+            description="",
+        )
+
+        library_path, _snapshot, scope = sync_symbol_library_properties(
+            self.project, generated.library_id, revised
+        )
+        self.assertEqual(scope, 2)
+        root = self.read_library(library_path)
+        symbol = next(
+            node for node in root
+            if isinstance(node, list) and node and node[0].value == "symbol"
+        )
+        properties = {
+            node[1].value: node[2].value
+            for node in symbol
+            if isinstance(node, list) and node and node[0].value == "property"
+        }
+        self.assertEqual(properties["Value"], "10k")
+        self.assertEqual(
+            properties["Footprint"], "Resistor_SMD:R_0402_1005Metric"
+        )
+        self.assertEqual(properties["Datasheet"], "https://example.test/resistor.pdf")
+        self.assertEqual(properties["Description"], resistor_draft().description)
+
+    def test_sync_uses_project_scope_when_global_table_has_same_nickname(self):
+        project_library = self.project / "UserLibrary.kicad_sym"
+        project_library.write_text(DEVICE_LIBRARY, encoding="utf-8")
+        self.table.write_text(TABLE_WITH_USER_ENTRY, encoding="utf-8")
+
+        with tempfile.TemporaryDirectory() as home_directory:
+            home = Path(home_directory)
+            global_directory = home / ".config" / "kicad" / "11.0"
+            global_directory.mkdir(parents=True)
+            global_table = global_directory / "sym-lib-table"
+            global_library = global_directory / "UserLibrary.kicad_sym"
+            global_library.write_text(DEVICE_LIBRARY, encoding="utf-8")
+            global_before = global_library.read_text(encoding="utf-8")
+            global_table.write_text(
+                TABLE_WITH_USER_ENTRY.replace(
+                    "${KIPRJMOD}/UserLibrary.kicad_sym",
+                    str(global_library),
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                patch("kicad_jlcpcb.library.Path.home", return_value=home),
+                patch(
+                    "kicad_jlcpcb.library._global_library_tables",
+                    return_value=(global_table,),
+                ),
+            ):
+                library_path, _snapshot, scope = sync_symbol_library_properties(
+                    self.project, "UserLibrary:R", resistor_draft(value="22k")
+                )
+
+            self.assertEqual(library_path, project_library.resolve())
+            self.assertEqual(scope, 2)
+            self.assertIn('"22k"', project_library.read_text(encoding="utf-8"))
+            self.assertEqual(global_library.read_text(encoding="utf-8"), global_before)
+
+    def test_sync_uses_global_scope_when_project_has_no_nickname_override(self):
+        with tempfile.TemporaryDirectory() as home_directory:
+            home = Path(home_directory)
+            global_directory = home / ".config" / "kicad" / "11.0"
+            global_directory.mkdir(parents=True)
+            global_table = global_directory / "sym-lib-table"
+            global_library = global_directory / "UserLibrary.kicad_sym"
+            global_library.write_text(DEVICE_LIBRARY, encoding="utf-8")
+            global_table.write_text(
+                TABLE_WITH_USER_ENTRY.replace(
+                    "${KIPRJMOD}/UserLibrary.kicad_sym",
+                    str(global_library),
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                patch("kicad_jlcpcb.library.Path.home", return_value=home),
+                patch(
+                    "kicad_jlcpcb.library._global_library_tables",
+                    return_value=(global_table,),
+                ),
+            ):
+                library_path, _snapshot, scope = sync_symbol_library_properties(
+                    self.project, "UserLibrary:R", resistor_draft(value="22k")
+                )
+
+            self.assertEqual(library_path, global_library.resolve())
+            self.assertEqual(scope, 1)
+            self.assertIn('"22k"', global_library.read_text(encoding="utf-8"))
+
+    def test_writable_library_check_only_accepts_registered_project_or_user_libraries(self):
+        generated = self.generate()
+        self.assertTrue(
+            writable_user_symbol_library_available(
+                self.project, generated.library_id
+            )
+        )
+        with patch(
+            "kicad_jlcpcb.library._global_library_tables",
+            return_value=(),
+        ):
+            self.assertFalse(
+                writable_user_symbol_library_available(
+                    self.project, "Device:R"
+                )
+            )
 
     def test_copies_a_multi_pin_non_passive_symbol_and_allows_missing_footprint(self):
         amplifier_library = self.project / "Amplifier_Operational.kicad_sym"
@@ -511,6 +733,74 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
         self.assertFalse(again.created)
 
 
+
+    def test_exports_footprint_and_step_model_to_user_selected_locations(self):
+        model = self.project / "source-model.step"
+        model.write_bytes(
+            b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"
+        )
+        reference = "${KIPRJMOD}/cache/source-model.step"
+        self.source.write_text(
+            '(footprint "Example_0402" (version 20240108) '
+            '(model "' + reference + '" (at (xyz 0 0 0)) '
+            '(scale (xyz 1 1 1)) (rotate (xyz 0 0 0))))\n',
+            encoding="utf-8",
+        )
+        footprint_library = self.project / "ReusableFootprints.pretty"
+        model_directory = self.project / "Reusable3D"
+
+        result = export_cad_assets_to_libraries(
+            self.project,
+            footprint_source=self.source,
+            footprint_library=footprint_library,
+            model_source=model,
+            model_directory=model_directory,
+        )
+
+        self.assertEqual(result.footprint_id, "ReusableFootprints:Example_0402")
+        self.assertEqual(result.model_path, model_directory / model.name)
+        self.assertEqual(result.model_path.read_bytes(), model.read_bytes())
+        self.assertTrue(
+            footprint_library_entry_available(
+                result.footprint_id, project_or_path=self.project
+            )
+        )
+        exported = (
+            footprint_library / "Example_0402.kicad_mod"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "${KIPRJMOD}/Reusable3D/source-model.step",
+            exported,
+        )
+        table = (self.project / "fp-lib-table").read_text(encoding="utf-8")
+        self.assertIn("ReusableFootprints.pretty", table)
+
+    def test_export_refuses_to_replace_a_user_footprint_without_leaving_a_model(self):
+        model = self.project / "source-model.step"
+        model.write_bytes(b"ISO-10303-21;\nEND-ISO-10303-21;")
+        self.source.write_text(
+            '(footprint "Example_0402" (model "${KIPRJMOD}/cache/source-model.step"))\n',
+            encoding="utf-8",
+        )
+        target_dir = self.project / "ReusableFootprints.pretty"
+        target_dir.mkdir()
+        target = target_dir / "Example_0402.kicad_mod"
+        target.write_text('(footprint "UserEdited")\n', encoding="utf-8")
+        before = target.read_bytes()
+        model_directory = self.project / "Reusable3D"
+
+        with self.assertRaises(SymbolLibraryConflict):
+            export_cad_assets_to_libraries(
+                self.project,
+                footprint_source=self.source,
+                footprint_library=target_dir,
+                model_source=model,
+                model_directory=model_directory,
+            )
+
+        self.assertEqual(target.read_bytes(), before)
+        self.assertFalse((model_directory / model.name).exists())
+        self.assertFalse((self.project / "fp-lib-table").exists())
 
     def test_registers_step_model_with_owned_portable_footprint_reference(self):
         model = self.project / "model-abcdef01.step"

@@ -647,12 +647,21 @@ def apply_component_draft_fields(
 
 def update_schematic_symbol(schematic: Any, symbol: Any) -> None:
     """Commit one updated symbol through KiCad's Schematic Editor IPC API."""
+    update_schematic_symbols(schematic, (symbol,))
+
+
+def update_schematic_symbols(schematic: Any, symbols: Any) -> None:
+    """Commit multiple updated symbols in one KiCad IPC transaction."""
     from kipy.proto.common.commands import editor_commands_pb2
     from kipy.util import pack_any
 
+    selected = tuple(symbols)
+    if not selected:
+        raise ValueError("At least one schematic symbol is required for an update.")
     command = editor_commands_pb2.UpdateItems()
     command.header.document.CopyFrom(schematic.document)
-    command.items.append(pack_any(symbol.proto))
+    for symbol in selected:
+        command.items.append(pack_any(symbol.proto))
     response = schematic.client.send(
         command, editor_commands_pb2.UpdateItemsResponse
     )
@@ -661,15 +670,21 @@ def update_schematic_symbol(schematic: Any, symbol: Any) -> None:
             "KiCad rejected the symbol update request "
             f"(request status {int(response.status)})."
         )
-    if len(response.updated_items) != 1:
+    if len(response.updated_items) != len(selected):
         raise RuntimeError(
             "KiCad returned an unexpected number of symbol update results: "
-            f"{len(response.updated_items)}."
+            f"{len(response.updated_items)} for {len(selected)} requested."
         )
-    status = response.updated_items[0].status
-    if int(status.code) != 1:
-        message = str(getattr(status, "error_message", "") or "").strip()
-        detail = f" {message}" if message else ""
+    failures = []
+    for index, item in enumerate(response.updated_items):
+        status = item.status
+        if int(status.code) != 1:
+            message = str(getattr(status, "error_message", "") or "").strip()
+            detail = f" {message}" if message else ""
+            failures.append(
+                f"symbol {index + 1}: item status {int(status.code)}.{detail}"
+            )
+    if failures:
         raise RuntimeError(
-            f"KiCad rejected the symbol update (item status {int(status.code)}).{detail}"
+            "KiCad rejected one or more symbol updates: " + " ".join(failures)
         )

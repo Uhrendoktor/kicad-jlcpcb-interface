@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import queue
+import re
 import threading
 import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -27,14 +28,19 @@ from .draft import (
     symbol_definition_matches_library,
     symbol_library_id,
     update_schematic_symbol,
+    update_schematic_symbols,
 )
 from .library import (
+    export_cad_assets_to_libraries,
     footprint_library_entry_available,
     generate_project_library_symbol,
     register_project_cad_credits,
     register_project_footprint_library,
     reload_project_symbol_library,
+    restore_symbol_library_snapshot,
     symbol_library_entry_available,
+    sync_symbol_library_properties,
+    writable_user_symbol_library_available,
 )
 from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
@@ -97,6 +103,8 @@ class _HoverTooltip:
         self._window = None
         widget.bind("<Enter>", self._schedule, add="+")
         widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<FocusIn>", self._schedule, add="+")
+        widget.bind("<FocusOut>", self._hide, add="+")
         widget.bind("<ButtonPress>", self._hide, add="+")
         widget.bind("<Destroy>", self._on_destroy, add="+")
 
@@ -264,8 +272,8 @@ class ComponentPopulator:
         self.palette = apply_tk_theme(self.root, theme)
         self.theme = self.root._kicad_jlcpcb_theme
         self.root.title("Component Workspace")
-        self.root.geometry("1120x860")
-        self.root.minsize(900, 660)
+        self.root.geometry("1180x860")
+        self.root.minsize(1020, 660)
         self._image_ref = None
         self._image_lcsc = ""
         self._image_pending = False
@@ -406,15 +414,14 @@ class ComponentPopulator:
             ),
         )
 
-        self._filter_icon_active = False
-        self._filter_icon_image = self._create_advanced_filter_icon(active=False)
+        self._filters_active = False
         self.advanced_filters_button = ttk.Button(
             search,
-            image=self._filter_icon_image,
+            text="Filters",
             command=self._toggle_advanced_filters,
-            padding=(3, 3),
+            style="ToolbarLink.TButton",
+            padding=(7, 3),
         )
-        self.advanced_filters_button.image = self._filter_icon_image
         self.advanced_filters_button.grid(
             row=0, column=3, sticky="e", padx=(0, 6)
         )
@@ -539,12 +546,6 @@ class ComponentPopulator:
         )
         def fit_workspace(event) -> None:
             self.content_canvas.itemconfigure(content_window, width=event.width)
-            wrap = max(280, int(event.width) - 190)
-            for label in getattr(self, "_proposal_value_labels", ()):
-                label.configure(wraplength=wrap)
-            notes = getattr(self, "notes", None)
-            if notes is not None:
-                notes.configure(wraplength=max(320, int(event.width) - 32))
 
         self.content_canvas.bind("<Configure>", fit_workspace)
 
@@ -567,6 +568,12 @@ class ComponentPopulator:
         self.content_canvas.bind("<Button-4>", scroll_content)
         self.content_canvas.bind("<Button-5>", scroll_content)
 
+        # The selected JLCPCB part stays in a full-width row. Below it, keep
+        # editable properties dominant and cap the CAD candidate pane at 40%.
+        content.columnconfigure(0, weight=1)
+        content.columnconfigure(1, weight=1)
+        self.workspace_content = content
+
         self.product_preview = build_product_preview(
             content,
             tk,
@@ -578,20 +585,37 @@ class ComponentPopulator:
             datasheet_command=self.open_datasheet,
         )
         self.product_preview.frame.grid(
-            row=1, column=0, sticky="ew", pady=(0, 12)
+            row=1, column=0, columnspan=2, sticky="ew", pady=(0, 12)
         )
         self.image_label = self.product_preview.image_label
         self.product_button = self.product_preview.product_button
         self.datasheet_button = self.product_preview.datasheet_button
         self._image_ref = None
+
+        self.review_workspace = ttk.Frame(content)
+        self.review_workspace.grid(
+            row=2, column=0, columnspan=2, sticky="nsew"
+        )
+        self.review_workspace.columnconfigure(0, weight=3, uniform="review")
+        self.review_workspace.columnconfigure(1, weight=2, uniform="review")
+        self.properties_column = ttk.Frame(self.review_workspace)
+        self.preview_column = ttk.Frame(self.review_workspace)
+        self.properties_column.columnconfigure(0, weight=1)
+        self.properties_column.grid(
+            row=0, column=0, sticky="nsew", padx=(0, 12)
+        )
+        self.properties_column.bind("<Configure>", self._fit_property_text)
+        self.preview_column.grid(row=0, column=1, sticky="nsew")
+        self.preview_column.columnconfigure(0, weight=1)
+
         self.cad_status_var = tk.StringVar(
             value="External CAD is requested only when a local KiCad mapping is missing."
         )
         self.cad_preview = build_cad_asset_preview(
-            content, ttk, self.cad_status_var
+            self.preview_column, ttk, self.cad_status_var
         )
         self.cad_preview.frame.grid(
-            row=2, column=0, sticky="ew", pady=(0, 12)
+            row=0, column=0, sticky="ew", pady=(0, 12)
         )
         self.cad_preview.frame.grid_remove()
 
@@ -627,11 +651,11 @@ class ComponentPopulator:
         )
         candidate_headings = {
             "part": ("LCSC", 88),
-            "mpn": ("MPN / value", 180),
-            "footprint": ("Footprint", 230),
+            "mpn": ("MPN / value", 160),
+            "footprint": ("Footprint", 270),
             "tolerance": ("Tolerance", 96),
             "library": ("Class", 88),
-            "stock": ("Stock", 110),
+            "stock": ("Stock", 100),
             "price": ("Unit price", 110),
         }
         for key, (label, width) in candidate_headings.items():
@@ -668,14 +692,14 @@ class ComponentPopulator:
             "<<TreeviewSelect>>", self._on_candidate_selected
         )
         self.candidate_section.grid(
-            row=0, column=0, sticky="ew", pady=(0, 12)
+            row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12)
         )
         self.candidate_section.grid_remove()
 
         component_section = ttk.Frame(
-            content, style="Card.TFrame", padding=12
+            self.properties_column, style="Card.TFrame", padding=12
         )
-        component_section.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        component_section.grid(row=0, column=0, sticky="ew", pady=(0, 12))
         component_section.columnconfigure(1, weight=1)
         ttk.Label(
             component_section,
@@ -684,6 +708,9 @@ class ComponentPopulator:
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
         row = 1
+        self._field_feedback: dict[str, tuple[Any, Any, Any]] = {}
+        self._field_feedback_messages: dict[str, str] = {}
+        self._field_tooltips: list[_HoverTooltip] = []
         self.symbol_hint_label = None
         self.reference_prefix_label = None
 
@@ -697,11 +724,40 @@ class ComponentPopulator:
             label_widget.grid(
                 row=row, column=0, sticky="w", padx=(0, 14), pady=4
             )
-            entry = ttk.Entry(component_section, textvariable=variable)
+            input_shell = ttk.Frame(component_section, style="Card.TFrame")
+            input_shell.grid(row=row, column=1, sticky="ew", pady=4)
+            input_shell.columnconfigure(0, weight=1)
+            entry = ttk.Entry(input_shell, textvariable=variable)
             if width is not None:
                 entry.configure(width=width)
-            entry.grid(row=row, column=1, sticky="ew", pady=4)
+            entry.grid(row=0, column=0, sticky="ew")
             entry.bind("<KeyRelease>", self._refresh_readiness)
+            field_key = {
+                "Symbol": "symbol",
+                "Value": "value",
+                "Footprint": "footprint",
+                "Reference prefix": "reference_prefix",
+            }.get(label)
+            if field_key:
+                indicator = ttk.Label(
+                    input_shell,
+                    text="",
+                    style="ValidationWarning.TLabel",
+                    width=2,
+                    anchor="center",
+                    padding=(3, 1),
+                    cursor="question_arrow",
+                )
+                indicator.grid(row=0, column=1, sticky="e", padx=(6, 0))
+                indicator.grid_remove()
+                self._field_feedback[field_key] = (
+                    entry, indicator, label_widget
+                )
+                def tooltip_text(key=field_key):
+                    return self._field_feedback_messages.get(key, "")
+
+                self._field_tooltips.append(_HoverTooltip(entry, tooltip_text))
+                self._field_tooltips.append(_HoverTooltip(indicator, tooltip_text))
             if label == "Symbol":
                 self.symbol_hint_label = label_widget
             elif label == "Reference prefix":
@@ -723,7 +779,7 @@ class ComponentPopulator:
                 component_section,
                 text="",
                 style="CardMeta.TLabel",
-                wraplength=760,
+                wraplength=max(160, self.properties_column.winfo_width() - 30),
                 justify="left",
             )
             self.passive_mapping_label.grid(
@@ -735,19 +791,22 @@ class ComponentPopulator:
                 "The generated symbol is inserted at the current sheet center, "
                 "brought into view and selected. Use KiCad's Move tool to position it."
             )
-            ttk.Label(
+            self.placement_note_label = ttk.Label(
                 component_section,
                 text=placement_note,
                 style="CardMeta.TLabel",
-                wraplength=760,
+                wraplength=max(160, self.properties_column.winfo_width() - 30),
                 justify="left",
-            ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(7, 2))
+            )
+            self.placement_note_label.grid(
+                row=row, column=0, columnspan=2, sticky="w", pady=(7, 2)
+            )
             row += 1
 
         proposal_section = ttk.Frame(
-            content, style="Card.TFrame", padding=12
+            self.properties_column, style="Card.TFrame", padding=12
         )
-        proposal_section.grid(row=4, column=0, sticky="ew", pady=(0, 12))
+        proposal_section.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         proposal_section.columnconfigure(0, weight=1)
         ttk.Label(
             proposal_section,
@@ -763,20 +822,21 @@ class ComponentPopulator:
         self.proposal_section = proposal_section
         proposal_section.grid_remove()
 
-        self.notes_section = ttk.Frame(
-            content, style="Note.TFrame", padding=(10, 8)
-        )
-        self.notes_section.grid(row=5, column=0, sticky="ew", pady=(0, 12))
-        self.notes_section.columnconfigure(0, weight=1)
-        self.notes = ttk.Label(
-            self.notes_section,
+        self._notes_messages: tuple[str, ...] = ()
+        self.notes_indicator = ttk.Label(
+            self.properties_column,
             text="",
-            style="Note.TLabel",
-            wraplength=900,
-            justify="left",
+            style="NoticeInfo.TLabel",
+            padding=(6, 3),
+            cursor="question_arrow",
         )
-        self.notes.pack(anchor="w", fill="x")
-        self.notes_section.grid_remove()
+        self.notes_indicator.grid(
+            row=2, column=0, sticky="w", pady=(0, 12)
+        )
+        self.notes_indicator.grid_remove()
+        self.notes_tooltip = _HoverTooltip(
+            self.notes_indicator, self._notes_tooltip_text
+        )
 
         footer = ttk.Frame(outer)
         footer.grid(row=3, column=0, sticky="ew", pady=(8, 0))
@@ -787,9 +847,25 @@ class ComponentPopulator:
             footer_row,
             textvariable=self.status_var,
             style="Muted.TLabel",
-            wraplength=680,
+            wraplength=420,
             justify="left",
         ).pack(side="left", fill="x", expand=True)
+        self.export_button = ttk.Button(
+            footer_row,
+            text="Export to library",
+            command=self.export_to_library,
+            state="disabled",
+        )
+        self.export_button.pack(side="right", padx=(8, 0))
+        self.sync_button = None
+        if not self.create_mode:
+            self.sync_button = ttk.Button(
+                footer_row,
+                text="Sync with library",
+                command=self.sync_with_library,
+                state="disabled",
+            )
+            self.sync_button.pack(side="right", padx=(8, 0))
         self.apply_button = ttk.Button(
             footer_row,
             text=(
@@ -811,46 +887,6 @@ class ComponentPopulator:
             bool(variable.get().strip())
             for variable in (self.footprint_filter_var, self.tolerance_filter_var)
         )
-
-    def _create_advanced_filter_icon(self, *, active: bool):
-        """Create a compact funnel icon with a theme-coloured active badge."""
-        image = self.tk.PhotoImage(width=22, height=20)
-        palette = getattr(self.root, "_kicad_jlcpcb_palette", self.palette)
-        foreground = palette.get("foreground", "#30343b")
-        surface = palette.get("surface", palette.get("background", "#f4f5f6"))
-        accent = palette.get("accent", "#4c789f")
-
-        funnel_rows = (
-            (2, 15),
-            (2, 15),
-            (3, 14),
-            (4, 13),
-            (5, 12),
-            (6, 11),
-            (7, 10),
-            (8, 9),
-        )
-        for y, (left, right) in enumerate(funnel_rows, start=2):
-            image.put(foreground, to=(left, y, right + 1, y + 1))
-        image.put(foreground, to=(8, 10, 10, 18))
-
-        if active:
-            center_x, center_y = 18, 3
-            for dy in range(-2, 3):
-                for dx in range(-2, 3):
-                    if dx * dx + dy * dy <= 5:
-                        image.put(
-                            surface,
-                            to=(center_x + dx, center_y + dy),
-                        )
-            for dy in range(-1, 2):
-                for dx in range(-1, 2):
-                    if dx * dx + dy * dy <= 2:
-                        image.put(
-                            accent,
-                            to=(center_x + dx, center_y + dy),
-                        )
-        return image
 
     @staticmethod
     def _short_filter_summary_value(value: str, limit: int = 14) -> str:
@@ -896,12 +932,12 @@ class ComponentPopulator:
         )
 
     def _update_advanced_filter_button(self, *_args) -> None:
-        """Refresh the funnel badge and compact active-filter summary."""
+        """Refresh the labelled filter control and compact active-filter summary."""
         active = bool(self._active_advanced_filter_count())
-        self._filter_icon_active = active
-        self._filter_icon_image = self._create_advanced_filter_icon(active=active)
-        self.advanced_filters_button.configure(image=self._filter_icon_image)
-        self.advanced_filters_button.image = self._filter_icon_image
+        self._filters_active = active
+        self.advanced_filters_button.configure(
+            text="Filters" if not active else f"Filters ({self._active_advanced_filter_count()})"
+        )
         summary = self._advanced_filter_summary_text()
         self.advanced_filter_summary.configure(text=summary)
         if summary:
@@ -1051,6 +1087,7 @@ class ComponentPopulator:
                             self._cad_pending = False
                             self._cad_attempted = True
                             self._show_cad_assets(None)
+                            self.export_button.configure(state="disabled")
                             self.cad_status_var.set(
                                 f"No downloadable CAD candidate: {exc}"
                             )
@@ -1089,6 +1126,13 @@ class ComponentPopulator:
                     self._cad_pending = False
                     self._cad_assets = result
                     self._show_cad_assets(result)
+                    self.export_button.configure(
+                        state=(
+                            "normal"
+                            if result.has_symbol or result.has_footprint
+                            else "disabled"
+                        )
+                    )
                     self._apply_cad_suggestions(result)
                     if self.draft is not None:
                         self._render_draft(
@@ -1447,6 +1491,9 @@ class ComponentPopulator:
         self._cad_symbol_preview_ref = None
         self._cad_footprint_preview_ref = None
         self._cad_model_preview_ref = None
+        export_button = getattr(self, "export_button", None)
+        if export_button is not None:
+            export_button.configure(state="disabled")
         self.cad_preview.symbol_label.configure(
             image="", text="No symbol preview", padding=8
         )
@@ -1550,17 +1597,12 @@ class ComponentPopulator:
                 )
                 if self.symbol_hint_var.get().strip() == assets.symbol_library_id:
                     updated = replace(updated, symbol_hint=assets.symbol_library_id)
-        current_footprint = self.footprint_var.get().strip()
-        project = self.schematic.get_project()
-        local_footprint_exists = bool(
-            current_footprint
-            and footprint_library_entry_available(
-                current_footprint, self.kicad, project
-            )
-        )
+        # A visible external footprint preview describes the selected CAD asset.
+        # Keep the editable Footprint field on that exact asset unless the user
+        # explicitly chose a different value; local mappings must not leave the
+        # preview and the schematic/export property out of sync.
         if (
             assets.has_footprint
-            and (not current_footprint or not local_footprint_exists)
             and "footprint" not in self._manual_proposal_fields
         ):
             self._set_proposal_field(
@@ -1600,11 +1642,25 @@ class ComponentPopulator:
                 )
             )
         if not needs_symbol and not needs_footprint:
+            # No external candidate is needed; let the property editor use the
+            # whole review row instead of leaving an empty 40% CAD column.
+            self.properties_column.grid_configure(columnspan=2)
+            self.preview_column.grid_remove()
             if self._cad_assets is None:
                 self.cad_status_var.set(
                     "A local KiCad symbol/footprint mapping is already available."
                 )
             return
+
+        # A completed lookup with no result has nothing to preview. Do not
+        # leave an empty candidate column taking 40% of the review workspace.
+        if self._cad_attempted and not self._cad_pending and self._cad_assets is None:
+            self.properties_column.grid_configure(columnspan=2)
+            self.preview_column.grid_remove()
+            return
+
+        self.properties_column.grid_configure(columnspan=1)
+        self.preview_column.grid()
         if self._cad_pending or self._cad_attempted:
             return
         self._cad_pending = True
@@ -1619,17 +1675,561 @@ class ComponentPopulator:
                 result_queue.put((completed, "cad", code))
         )
 
-    def _set_notes(self, lines: tuple[str, ...]) -> None:
-        visible = tuple(line.strip() for line in lines if line.strip())
-        if not visible:
-            self.notes.configure(text="")
-            self.notes_section.grid_remove()
+    def _set_field_feedback(
+        self, field_name: str, level: str | None, message: str = ""
+    ) -> None:
+        controls = getattr(self, "_field_feedback", {}).get(field_name)
+        if controls is None:
             return
-        self.notes.configure(
-            text="\n".join(f"• {line}" for line in visible),
-            wraplength=max(320, self.content_canvas.winfo_width() - 40),
+        entry, indicator, label = controls
+        messages = getattr(self, "_field_feedback_messages", None)
+        if messages is None:
+            self._field_feedback_messages = {}
+            messages = self._field_feedback_messages
+        if not message:
+            messages.pop(field_name, None)
+            entry.configure(style="TEntry")
+            indicator.configure(text="")
+            indicator.grid_remove()
+            label.configure(style="CardMeta.TLabel")
+            return
+        level = level if level in {"error", "warning", "info"} else "warning"
+        icon = {"error": "✕", "warning": "⚠", "info": "ℹ"}[level]
+        caption = {"error": "Error", "warning": "Warning", "info": "Info"}[level]
+        messages[field_name] = f"{caption}: {message}"
+        entry.configure(style=f"Validation{caption}.TEntry")
+        indicator.configure(
+            text=icon, style=f"Validation{caption}.TLabel"
         )
-        self.notes_section.grid()
+        indicator.grid()
+        label.configure(style=f"Validation{caption}.TLabel")
+
+    def _update_field_feedback(self) -> set[str]:
+        """Validate editable KiCad inputs and attach guidance to their source fields."""
+        errors: set[str] = set()
+        if self.draft is None:
+            return errors
+
+        project = self.schematic.get_project()
+        assets = getattr(self, "_cad_assets", None)
+        if self.create_mode:
+            symbol_id = self.symbol_hint_var.get().strip()
+            symbol_is_candidate = bool(
+                assets is not None
+                and assets.has_symbol
+                and symbol_id == assets.symbol_library_id
+            )
+            if not symbol_id or ":" not in symbol_id:
+                self._set_field_feedback(
+                    "symbol", "error",
+                    "Enter a KiCad Library:Symbol identifier, for example Device:R.",
+                )
+                errors.add("symbol")
+            elif not symbol_is_candidate and not symbol_library_entry_available(
+                symbol_id, self.kicad, project
+            ):
+                self._set_field_feedback(
+                    "symbol", "error",
+                    "This symbol is not available in the active project or KiCad libraries. "
+                    "Choose an existing symbol or export the CAD candidate first.",
+                )
+                errors.add("symbol")
+            else:
+                self._set_field_feedback("symbol", None)
+
+            value = self.value_var.get().strip()
+            fallback = str(
+                getattr(self.selected_details, "manufacturer_part_number", "")
+                or getattr(self.selected_details, "lcsc", "")
+                or ""
+            ).strip()
+            if not value and not self.draft.value and not fallback:
+                self._set_field_feedback(
+                    "value", "error",
+                    "Enter a component value or select a catalogue part with an MPN.",
+                )
+                errors.add("value")
+            else:
+                self._set_field_feedback("value", None)
+        else:
+            self._set_field_feedback("value", None)
+
+        footprint = self.footprint_var.get().strip()
+        if footprint:
+            parts = footprint.split(":")
+            valid_format = (
+                len(parts) == 2
+                and bool(re.fullmatch(r"[A-Za-z0-9_+-]{1,80}", parts[0]))
+                and bool(re.fullmatch(r"[A-Za-z0-9_+.-]{1,120}", parts[1]))
+            )
+            if not valid_format:
+                self._set_field_feedback(
+                    "footprint", "error",
+                    "Use a KiCad Library:Footprint identifier, for example "
+                    "Resistor_SMD:R_0603_1608Metric.",
+                )
+                errors.add("footprint")
+            else:
+                candidate_match = bool(
+                    assets is not None
+                    and assets.has_footprint
+                    and footprint == assets.footprint_library_id
+                )
+                if not candidate_match and not footprint_library_entry_available(
+                    footprint, self.kicad, project
+                ):
+                    self._set_field_feedback(
+                        "footprint", "warning",
+                        "This footprint is not registered in the active project or KiCad. "
+                        "Choose an available footprint or export the CAD candidate.",
+                    )
+                else:
+                    self._set_field_feedback("footprint", None)
+        elif self.create_mode:
+            self._set_field_feedback(
+                "footprint", "warning",
+                "A footprint is optional for schematic placement, but is needed before PCB layout.",
+            )
+        else:
+            self._set_field_feedback("footprint", None)
+
+        if self.create_mode:
+            prefix = self.reference_prefix_var.get().strip()
+            if prefix and re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,7}", prefix) is None:
+                self._set_field_feedback(
+                    "reference_prefix", "error",
+                    "Use a short reference prefix such as R, C, D or U.",
+                )
+                errors.add("reference_prefix")
+            else:
+                self._set_field_feedback("reference_prefix", None)
+        return errors
+
+    def _refresh_readiness(self, _event=None) -> None:
+        if self.closed or self.draft is None:
+            return
+        errors = self._update_field_feedback()
+        compatible = self.create_mode or self.symbol is not None
+        ready = (
+            not errors
+            and bool(self.draft.proposed_fields)
+            and compatible
+        )
+        self.apply_button.configure(state="normal" if ready else "disabled")
+        if errors:
+            self.status_var.set("Fix the highlighted fields before applying the proposal.")
+        elif self.create_mode and not ready:
+            self.status_var.set(
+                "A reviewed catalogue proposal, symbol and component value are required."
+            )
+
+    def export_to_library(self) -> None:
+        """Let the user choose reusable destinations for the available CAD assets."""
+        assets = getattr(self, "_cad_assets", None)
+        has_symbol = bool(assets is not None and assets.has_symbol)
+        has_footprint = bool(assets is not None and assets.has_footprint)
+        has_model = bool(
+            has_footprint and assets is not None and assets.has_3d_model
+        )
+        if not any((has_symbol, has_footprint, has_model)):
+            self.status_var.set("No downloadable CAD assets are available to export.")
+            return
+
+        from tkinter import filedialog
+
+        project = self.schematic.get_project()
+        raw_project = getattr(project, "path", project)
+        project_path = Path(str(raw_project)).expanduser()
+        if project_path.is_file() or project_path.suffix.casefold() in {
+            ".kicad_pro", ".kicad_sch"
+        }:
+            project_dir = project_path.parent
+        else:
+            project_dir = project_path
+        if not project_dir.is_dir():
+            self.messagebox.showerror(
+                "Save the KiCad project first",
+                "Exported libraries are registered in the active project. "
+                "Save the project before exporting.",
+                parent=self.root,
+            )
+            return
+
+        dialog = self.tk.Toplevel(self.root)
+        dialog.title("Export CAD assets to libraries")
+        dialog.transient(self.root)
+        dialog.columnconfigure(1, weight=1)
+        ttk = self.ttk
+        ttk.Label(
+            dialog,
+            text=(
+                "Choose a destination for each available asset. "
+                "New libraries are registered in this project."
+            ),
+            wraplength=660,
+            justify="left",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=16, pady=(14, 10))
+        variables: dict[str, Any] = {}
+        row = 1
+
+        def add_destination(
+            key: str,
+            label: str,
+            default: Path,
+            *,
+            file_target: bool,
+            extension: str = "",
+        ) -> None:
+            nonlocal row
+            variable = self.tk.StringVar(value=str(default))
+            variables[key] = variable
+            ttk.Label(dialog, text=label).grid(
+                row=row, column=0, sticky="w", padx=(16, 10), pady=5
+            )
+            ttk.Entry(dialog, textvariable=variable).grid(
+                row=row, column=1, sticky="ew", pady=5
+            )
+
+            def browse() -> None:
+                if file_target:
+                    chosen = filedialog.asksaveasfilename(
+                        parent=dialog,
+                        title=f"Choose {label.lower()}",
+                        initialdir=str(default.parent),
+                        initialfile=default.name,
+                        defaultextension=extension,
+                        filetypes=(("KiCad symbol libraries", "*.kicad_sym"), ("All files", "*.*")),
+                    )
+                else:
+                    chosen = filedialog.askdirectory(
+                        parent=dialog,
+                        title=f"Choose {label.lower()}",
+                        initialdir=str(default if default.is_dir() else default.parent),
+                        mustexist=False,
+                    )
+                if chosen:
+                    variable.set(chosen)
+
+            ttk.Button(dialog, text="Browse…", command=browse).grid(
+                row=row, column=2, sticky="e", padx=(8, 16), pady=5
+            )
+            row += 1
+
+        lcsc = str(assets.lcsc or "Part").strip()
+        symbol_default = project_dir / "JLCPCB_Assets.kicad_sym"
+        footprint_default = project_dir / f"JLCPCB_{lcsc}.pretty"
+        model_default = project_dir / f"JLCPCB_{lcsc}.3dshapes"
+        if has_symbol:
+            add_destination(
+                "symbol_library", "Schematic symbol library",
+                symbol_default, file_target=True, extension=".kicad_sym",
+            )
+        if has_footprint:
+            add_destination(
+                "footprint_library", "Footprint library (.pretty)",
+                footprint_default, file_target=False,
+            )
+        if has_model:
+            add_destination(
+                "model_directory", "3D model directory",
+                model_default, file_target=False,
+            )
+
+        ttk.Label(
+            dialog,
+            text=(
+                "Existing items with different content are never replaced. "
+                "The model path in the exported footprint is updated to the selected 3D folder."
+            ),
+            wraplength=660,
+            justify="left",
+            style="Muted.TLabel",
+        ).grid(row=row, column=0, columnspan=3, sticky="w", padx=16, pady=(8, 12))
+        row += 1
+
+        def do_export() -> None:
+            try:
+                result = export_cad_assets_to_libraries(
+                    project,
+                    kicad=self.kicad,
+                    symbol_source=assets.symbol_library_path if has_symbol else None,
+                    symbol_name=assets.symbol_name if has_symbol else "",
+                    symbol_library=(
+                        variables.get("symbol_library").get() if has_symbol else None
+                    ),
+                    footprint_source=assets.footprint_path if has_footprint else None,
+                    footprint_library=(
+                        variables.get("footprint_library").get()
+                        if has_footprint
+                        else None
+                    ),
+                    model_source=assets.model_path if has_model else None,
+                    model_directory=variables.get("model_directory").get() if has_model else None,
+                )
+                credits_path = getattr(assets, "credits_path", None)
+                if credits_path is not None and Path(credits_path).is_file():
+                    register_project_cad_credits(project, credits_path, lcsc=assets.lcsc)
+
+                updates = {}
+                if result.symbol_id and self.create_mode:
+                    updates["symbol_hint"] = result.symbol_id
+                if result.footprint_id:
+                    updates["footprint"] = result.footprint_id
+                if self.draft is not None and updates:
+                    if "symbol_hint" in updates:
+                        self._manual_proposal_fields.discard("symbol")
+                    if "footprint" in updates:
+                        self._manual_proposal_fields.discard("footprint")
+                    self._setting_proposal_field = True
+                    try:
+                        if "symbol_hint" in updates:
+                            self.symbol_hint_var.set(result.symbol_id)
+                        if "footprint" in updates:
+                            self.footprint_var.set(result.footprint_id)
+                    finally:
+                        self._setting_proposal_field = False
+                    self.draft = replace(self.draft, **updates)
+                    self._render_draft(
+                        self.draft,
+                        bool(self.selected_details and (
+                            self.selected_details.is_cached or self.selected_details.stale
+                        )),
+                    )
+                exported = []
+                if result.symbol_id:
+                    exported.append(f"symbol {result.symbol_id}")
+                if result.footprint_id:
+                    exported.append(f"footprint {result.footprint_id}")
+                if result.model_path:
+                    exported.append(
+                        f"3D model {result.model_path}"
+                    )
+                self.status_var.set("Exported " + "; ".join(exported) + ".")
+                self._set_notes((
+                    "Info: Exported assets are registered in this project's KiCad "
+                    "library tables.",
+                ))
+                dialog.destroy()
+                self.messagebox.showinfo(
+                    "CAD assets exported",
+                    (
+                        "The selected assets are now available through this project's "
+                        "KiCad libraries.\n\n"
+                    )
+                    + "\n".join(exported),
+                    parent=self.root,
+                )
+            except Exception as exc:
+                self._set_notes((f"Error: CAD library export failed: {exc}",))
+                self.status_var.set(f"CAD library export failed: {exc}")
+                self.messagebox.showerror(
+                    "CAD library export failed", str(exc), parent=dialog
+                )
+
+        actions = ttk.Frame(dialog)
+        actions.grid(row=row, column=0, columnspan=3, sticky="e", padx=16, pady=(0, 14))
+        ttk.Button(actions, text="Cancel", command=dialog.destroy).pack(side="right")
+        ttk.Button(
+            actions, text="Export assets", command=do_export, style="Primary.TButton"
+        ).pack(side="right", padx=(0, 8))
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.grab_set()
+        dialog.wait_window()
+
+    def sync_with_library(self) -> None:
+        """Update the source library and every schematic instance that uses it."""
+        if self.create_mode or self.draft is None:
+            return
+        errors = self._update_field_feedback()
+        if errors:
+            self.status_var.set("Fix the highlighted fields before syncing the library.")
+            return
+        draft = replace(
+            self.draft,
+            value=self.value_var.get().strip() or self.draft.value,
+            footprint=self.footprint_var.get().strip(),
+        )
+        matching = [
+            symbol for symbol in iter_schematic_symbols(self.schematic)
+            if symbol_library_id(symbol) == self.library_id
+        ]
+        if not matching:
+            self._set_notes((
+                f"Error: No schematic instances using {self.library_id!r} were found to sync.",
+            ))
+            return
+        references = [
+            str(getattr(symbol, "reference", "") or "unannotated")
+            for symbol in matching
+        ]
+        prompt = (
+            f"Sync {self.library_id} with the reviewed catalogue properties?\n\n"
+            f"This updates the writable library definition and all {len(matching)} schematic "
+            f"instance(s): {', '.join(references[:8])}"
+            + ("…" if len(references) > 8 else "")
+            + "\n\nSymbol graphics, pins, units and library identity are preserved. "
+            "System-wide KiCad libraries are not modified."
+        )
+        if not self.messagebox.askyesno(
+            "Sync with library", prompt, parent=self.root
+        ):
+            return
+
+        original_protos = []
+        for symbol in matching:
+            snapshot = type(symbol.proto)()
+            snapshot.CopyFrom(symbol.proto)
+            original_protos.append(snapshot)
+
+        library_path = None
+        original_library = None
+        ipc_update_attempted = False
+        try:
+            project = self.schematic.get_project()
+            if self.kicad is None:
+                raise RuntimeError("The KiCad library connection is unavailable.")
+            library_path, original_library, library_scope = (
+                sync_symbol_library_properties(project, self.library_id, draft)
+            )
+            try:
+                nickname = self.library_id.split(":", 1)[0]
+                self.kicad.reload_library(
+                    type=1, scope=library_scope, nicknames=[nickname]
+                )
+                statuses = self.kicad.wait_for_libraries(
+                    types=[1], scope=library_scope, timeout_s=60.0
+                )
+                failures = [
+                    str(item.error_message)
+                    for item in statuses
+                    if getattr(item, "nickname", None) == nickname
+                    and getattr(item, "error_message", None)
+                ]
+                if failures:
+                    raise RuntimeError(
+                        "KiCad could not reload the updated library: "
+                        + "; ".join(failures)
+                    )
+                for symbol in matching:
+                    apply_component_draft_fields(
+                        symbol,
+                        draft,
+                        expected_library_id=self.library_id,
+                        allow_symbol_mismatch=True,
+                    )
+                ipc_update_attempted = True
+                update_schematic_symbols(self.schematic, matching)
+                self.schematic.save()
+            except Exception:
+                rollback_errors = []
+                try:
+                    for symbol, snapshot in zip(matching, original_protos):
+                        symbol.proto.CopyFrom(snapshot)
+                    if ipc_update_attempted:
+                        update_schematic_symbols(self.schematic, matching)
+                        self.schematic.save()
+                except Exception as rollback_exc:
+                    rollback_errors.append(f"schematic rollback failed: {rollback_exc}")
+                try:
+                    restore_symbol_library_snapshot(library_path, original_library)
+                    if self.kicad is not None:
+                        nickname = self.library_id.split(":", 1)[0]
+                        self.kicad.reload_library(
+                            type=1, scope=library_scope, nicknames=[nickname]
+                        )
+                        self.kicad.wait_for_libraries(
+                            types=[1], scope=library_scope, timeout_s=60.0
+                        )
+                except Exception as rollback_exc:
+                    rollback_errors.append(f"library rollback failed: {rollback_exc}")
+                if rollback_errors:
+                    raise RuntimeError(
+                        "Sync failed and rollback was incomplete. "
+                        + "; ".join(rollback_errors)
+                    )
+                raise
+        except Exception as exc:
+            self.status_var.set(f"Library sync failed: {exc}")
+            self._set_notes((f"Error: Library sync failed: {exc}",))
+            self.messagebox.showerror(
+                "Library sync failed",
+                (
+                    "The library and schematic could not both be synced. "
+                    "Rollback was attempted for both the library file and affected "
+                    "schematic symbols.\n\n"
+                )
+                + str(exc),
+                parent=self.root,
+            )
+            return
+
+        self.status_var.set(
+            f"Synced {len(matching)} schematic instance(s) and {library_path.name}."
+        )
+        self._set_notes((
+            (
+                "Info: The reviewed properties were written to the registered library "
+                "and all matching schematic instances."
+            ),
+        ))
+    def _set_notes(self, lines: tuple[str, ...]) -> None:
+        """Summarize general review notes; their full text stays in a hover tooltip."""
+        self._notes_messages = tuple(
+            str(line).strip() for line in lines if str(line).strip()
+        )
+        if not self._notes_messages:
+            self.notes_indicator.configure(text="")
+            self.notes_indicator.grid_remove()
+            return
+
+        levels = []
+        for raw in self._notes_messages:
+            prefix = raw.split(":", 1)[0].casefold()
+            levels.append(
+                prefix if prefix in {"error", "warning", "info"} else "warning"
+            )
+        level = (
+            "error" if "error" in levels
+            else "warning" if "warning" in levels
+            else "info"
+        )
+        icon = {"error": "✕", "warning": "⚠", "info": "ℹ"}[level]
+        self.notes_indicator.configure(
+            text=f"{icon} Review notes ({len(self._notes_messages)})",
+            style=f"Notice{level.title()}.TLabel",
+        )
+        self.notes_indicator.grid()
+        self._fit_property_text()
+
+    def _notes_tooltip_text(self) -> str:
+        """Return complete review guidance for the compact notes indicator."""
+        details = []
+        for raw in getattr(self, "_notes_messages", ()):
+            prefix, separator, message = raw.partition(":")
+            level = (
+                prefix.title()
+                if separator and prefix.casefold() in {"error", "warning", "info"}
+                else "Warning"
+            )
+            details.append(f"{level}: {message.strip() if separator else raw}")
+        return "\n".join(details)
+
+    def _fit_property_text(self, _event=None) -> None:
+        """Keep proposed field values and guidance within the properties column."""
+        properties_column = getattr(self, "properties_column", None)
+        if properties_column is None:
+            return
+        width = int(properties_column.winfo_width())
+        if width <= 1:
+            return
+
+        proposal_wrap = max(160, width - 235)
+        for label in getattr(self, "_proposal_value_labels", ()):
+            label.configure(wraplength=proposal_wrap)
+        for name in ("passive_mapping_label", "placement_note_label"):
+            label = getattr(self, name, None)
+            if label is not None:
+                label.configure(wraplength=max(160, width - 30))
 
     def _clear_proposal_rows(self) -> None:
         for child in self.proposal_rows.winfo_children():
@@ -1671,7 +2271,9 @@ class ComponentPopulator:
                 row,
                 text=self._proposal_display_value(name, value),
                 style="Card.TLabel",
-                wraplength=max(280, self.content_canvas.winfo_width() - 190),
+                wraplength=max(
+                    160, self.properties_column.winfo_width() - 235
+                ),
                 justify="left",
             )
             value_label.grid(row=0, column=1, sticky="ew")
@@ -1680,7 +2282,7 @@ class ComponentPopulator:
             self.proposal_section.grid()
         else:
             self.proposal_section.grid_remove()
-
+        self._fit_property_text()
 
     def _render_draft(self, draft: ComponentDraft, cached: bool) -> None:
         if self.selected_details is not None:
@@ -1772,6 +2374,18 @@ class ComponentPopulator:
                 "electrical/mechanical equivalents. Check pin numbers, pad geometry and "
                 "ratings against the datasheet before using the board."
             )
+        if self.sync_button is not None:
+            sync_available = writable_user_symbol_library_available(
+                self.schematic.get_project(), self.library_id
+            )
+            self.sync_button.configure(
+                state="normal" if sync_available else "disabled"
+            )
+            if not sync_available:
+                notes.append(
+                    "Info: Sync with library is available only for writable project/user "
+                    "libraries. System-wide KiCad stock libraries are left unchanged."
+                )
         self._set_notes(tuple(notes))
         can_apply = (
             compatible
@@ -1793,25 +2407,7 @@ class ComponentPopulator:
         self.apply_button.configure(state="normal" if can_apply else "disabled")
         if self.selected_details is not None:
             self._request_cad_assets(self.selected_details, draft)
-
-    def _refresh_readiness(self, _event=None) -> None:
-        if self.closed or not self.create_mode or self.draft is None:
-            return
-        hint = self.symbol_hint_var.get().strip() or self.draft.symbol_hint
-        ready = (
-            bool(
-                self.value_var.get().strip()
-                or self.draft.value
-                or self.selected_details
-            )
-            and bool(self.draft.proposed_fields)
-            and ":" in hint
-        )
-        self.apply_button.configure(state="normal" if ready else "disabled")
-        if not ready:
-            self.status_var.set(
-                "Enter a KiCad Library:Symbol and component value before generation."
-            )
+        self._refresh_readiness()
 
     def apply(self) -> None:
         draft = self.draft
@@ -1838,6 +2434,11 @@ class ComponentPopulator:
                 value=selected_value,
             )
             if ":" not in draft.symbol_hint or not draft.value:
+                self._refresh_readiness()
+                if ":" not in draft.symbol_hint:
+                    self.symbol_hint_entry.focus_set()
+                elif not draft.value:
+                    self.value_entry.focus_set()
                 self.messagebox.showerror(
                     "Component details incomplete",
                     "Choose a KiCad Library:Symbol and provide a component value or MPN. "
@@ -1926,6 +2527,7 @@ class ComponentPopulator:
                     self.root.lift()
                     self.root.update_idletasks()
                 self.status_var.set(f"Project library generation failed: {exc}")
+                self._set_notes((f"Error: Project library generation failed: {exc}",))
                 self.messagebox.showerror(
                     "Component library generation failed", str(exc), parent=self.root
                 )
@@ -1979,6 +2581,7 @@ class ComponentPopulator:
             self.schematic.save()
         except Exception as exc:
             self.status_var.set(f"KiCad update failed: {exc}")
+            self._set_notes((f"Error: KiCad update failed: {exc}",))
             self.messagebox.showerror(
                 "Component update failed",
                 f"KiCad did not confirm the complete symbol update.\n\n{exc}",

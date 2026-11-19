@@ -863,6 +863,23 @@ class CadSuggestionTests(unittest.TestCase):
         self.assertEqual(populator.draft.symbol_hint, populator.symbol_hint_var.get())
         self.assertEqual(populator.draft.footprint, populator.footprint_var.get())
 
+    def test_cad_preview_candidate_replaces_existing_local_footprint_proposal(self):
+        populator = self.populator(create_mode=True)
+        populator.footprint_var.set("Stock_Footprints:Existing_Local")
+        populator.draft = replace(self.draft, footprint="Stock_Footprints:Existing_Local")
+
+        with patch(
+            "kicad_jlcpcb.populator.footprint_library_entry_available",
+            return_value=True,
+        ):
+            populator._apply_cad_suggestions(self.assets)
+
+        self.assertEqual(
+            populator.footprint_var.get(),
+            self.assets.footprint_library_id,
+        )
+        self.assertEqual(populator.draft.footprint, self.assets.footprint_library_id)
+
     def test_late_cad_result_does_not_replace_a_manually_edited_footprint(self):
         populator = self.populator(create_mode=True, manual_fields={"footprint"})
         populator.footprint_var.set("My_Footprints:Verified")
@@ -949,6 +966,83 @@ class CadSuggestionTests(unittest.TestCase):
         self.assertEqual(populator.footprint_var.get(), self.assets.footprint_library_id)
         self.assertEqual(populator.draft.symbol_hint, "")
 
+
+
+class FieldFeedbackTests(unittest.TestCase):
+    def test_invalid_footprint_identifier_is_a_blocking_update_error(self):
+        populator = object.__new__(ComponentPopulator)
+        populator.draft = SimpleNamespace()
+        populator.create_mode = False
+        populator.schematic = SimpleNamespace(get_project=lambda: None)
+        populator.kicad = None
+        populator._cad_assets = None
+        populator.footprint_var = SimpleNamespace(get=lambda: "Broken::Footprint")
+        populator._set_field_feedback = Mock()
+
+        with patch(
+            "kicad_jlcpcb.populator.footprint_library_entry_available"
+        ) as available:
+            errors = populator._update_field_feedback()
+
+        self.assertEqual(errors, {"footprint"})
+        available.assert_not_called()
+        self.assertEqual(
+            populator._set_field_feedback.call_args.args[:2],
+            ("footprint", "error"),
+        )
+
+    def test_sync_button_remains_disabled_for_non_writable_libraries(self):
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = False
+        populator.closed = False
+        populator.selected_details = None
+        populator._cad_assets = None
+        populator.symbol = SimpleNamespace()
+        populator.library_id = "Device:R"
+        populator.schematic = SimpleNamespace(get_project=lambda: None)
+        populator.draft = SimpleNamespace(
+            value="10k",
+            footprint="Resistor_SMD:R_0402_1005Metric",
+            symbol_hint="",
+            proposed_fields=(("Value", "10k"),),
+            warnings=(),
+        )
+        populator.value_var = SimpleNamespace()
+        populator.footprint_var = SimpleNamespace()
+        populator._set_proposal_field = Mock()
+        populator._render_proposal_rows = Mock()
+        populator._set_notes = Mock()
+        populator._refresh_readiness = Mock()
+        populator._request_cad_assets = Mock()
+        populator.status_var = Mock()
+        populator.apply_button = Mock()
+        populator.sync_button = Mock()
+
+        with patch(
+            "kicad_jlcpcb.populator.writable_user_symbol_library_available",
+            return_value=False,
+        ) as available:
+            populator._render_draft(populator.draft, cached=False)
+
+        available.assert_called_once_with(populator.schematic.get_project(), "Device:R")
+        populator.sync_button.configure.assert_called_once_with(state="disabled")
+
+    def test_update_apply_is_disabled_while_inline_error_remains(self):
+        populator = object.__new__(ComponentPopulator)
+        populator.closed = False
+        populator.draft = SimpleNamespace(proposed_fields=(("Value", "10k"),))
+        populator.create_mode = False
+        populator.symbol = object()
+        populator.apply_button = Mock()
+        populator._update_field_feedback = Mock(return_value={"footprint"})
+        populator.status_var = Mock()
+
+        populator._refresh_readiness()
+
+        populator.apply_button.configure.assert_called_once_with(state="disabled")
+        populator.status_var.set.assert_called_once_with(
+            "Fix the highlighted fields before applying the proposal."
+        )
 
 
 if __name__ == "__main__":

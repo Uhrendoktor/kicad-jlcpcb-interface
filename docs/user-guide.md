@@ -166,6 +166,14 @@ Both contexts use the same workspace hierarchy: a compact search toolbar, Basic-
 4. Review the proposed fields, inference confidence, catalogue source/freshness and warnings before applying anything. Edit **Value**, **Footprint**, and (in Add mode) **KiCad Library:Symbol** as needed. Downloaded CAD is a candidate, not a verified electrical/mechanical equivalent; your manual edits take precedence over late search results.
 5. In Update mode, click **Update component** to write the reviewed fields directly to the selected symbol. If the Footprint field still matches the downloaded candidate, its project-local footprint library is registered first. The selected symbol identity, graphics, pins, units and electrical types remain unchanged. In Add mode, **Generate & select component** imports the reviewed CAD assets into project-local libraries, creates the project-local symbol and inserts it into the schematic. Neither action opens an extra confirmation window.
 
+The review workspace keeps editable KiCad properties and field-specific guidance in
+the left column, with the supplier record and tabbed Symbol, Footprint and 3D model
+previews in the right column. An invalid symbol or footprint identifier is called out
+directly below its input; a missing required symbol or component value blocks
+generation. Optional footprints are warnings rather than blocking errors. The review
+notes use explicit **Error**, **Warning** and **Info** labels as well as icons and
+theme-aware colors, so severity is never communicated by color alone.
+
 The review controls are deliberately editable. An uncertain symbol or footprint is not silently treated as correct, and an optional footprint can be filled in later. Catalogue images and CAD previews load in the background; stale search results are ignored and user-edited fields are not overwritten. A missing CAD record, unavailable preview or conversion error leaves the existing manual workflow usable.
 
 ### Understand the inference confidence
@@ -192,6 +200,12 @@ The proposal can include Value, Footprint, Datasheet, Description, LCSC, Manufac
 
 Existing fields with matching names are updated; unrelated custom fields are preserved. Leaving Value or Footprint blank does not clear an existing field. New catalogue metadata fields are hidden in the schematic drawing. The action saves the schematic after KiCad confirms the IPC write-back.
 
+#### Sync reviewed properties with the symbol library
+
+When the selected part has changed and you want the same reviewed properties applied to all instances of this symbol, use **Sync with library** in Update mode. The action summarizes the affected references and asks for confirmation. It then updates Value, Footprint, Datasheet, Description and catalogue metadata in the symbol definition, followed by every schematic instance that uses the same `Library:Symbol` identity. Graphics, pins, units and library identity are preserved.
+
+Sync is limited to writable project-local or user-owned symbol libraries. KiCad stock/system libraries are deliberately left untouched. For a stock symbol, first use KiCad Symbol Editor to copy the symbol into a project or user library and select that library in the schematic. If the schematic write-back fails, the add-on attempts to restore both the library file and the affected schematic symbols.
+
 ### Add a new project-local symbol
 
 Use add mode when nothing is selected in Eeschema. The add-on creates or reuses a project-local symbol copied from a standalone KiCad stock-library symbol, inserts it at the current sheet center through KiCad IPC, and leaves it selected in the editor.
@@ -205,6 +219,12 @@ Use add mode when nothing is selected in Eeschema. The add-on creates or reuses 
 Automatic symbol suggestions currently cover common resistors, capacitors, inductors, diodes, LEDs, fuses and crystals. The suggestions are generic symbol templates, not manufacturer-specific pin maps. When classification is ambiguous or a local stock symbol is missing, a public EasyEDA CAD lookup can provide a downloadable symbol candidate keyed by the LCSC part number. The original pin definitions are copied as supplied; pin equivalence is never inferred from the catalogue description.
 
 Package mappings are narrower than symbol classification. When no reviewed local mapping exists, the same public lookup can provide footprint geometry and a separate SVG preview. The imported footprint is stored in a project-local `.pretty` library and registered in `fp-lib-table`. Footprint is optional for symbol generation, but a suitable footprint is needed before normal PCB layout.
+
+#### Export CAD assets to reusable libraries
+
+When a CAD candidate is available, choose **Export to library** to save the available assets into locations you select. Symbol destinations must be `.kicad_sym` files, footprint destinations must be `.pretty` directories, and a STEP model is saved to a separate directory together with its footprint. The add-on registers symbol and footprint destinations in the active project's `sym-lib-table` and `fp-lib-table`. A STEP reference is written relative to ${KIPRJMOD} when the model directory is inside the project; an external directory is stored as an absolute path and is less portable.
+
+An existing symbol or footprint with the same name is reused only when its contents match exactly. Different content is reported as a conflict instead of silently replacing the existing library item. Exporting a CAD symbol in Update mode does not replace the selected schematic symbol or its pin mapping.
 
 #### What is generated
 

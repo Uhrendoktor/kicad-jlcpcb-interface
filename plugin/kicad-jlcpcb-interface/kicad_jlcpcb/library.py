@@ -9,7 +9,7 @@ import os
 import re
 import shutil
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 
@@ -924,7 +924,9 @@ def generate_project_library_symbol(
     if library_changed:
         _atomic_write(library_path, dump_sexpr(library_root), backup=library_existed)
     if entry_added:
-        _atomic_write(table_path, dump_sexpr(table), backup=table_path.exists())
+        _atomic_write(
+            table_path, dump_sexpr(table), backup=table_path.exists()
+        )
 
     return GeneratedLibrarySymbol(
         project_directory=project_dir,
@@ -1231,7 +1233,9 @@ def register_project_footprint_library(
             ]
         )
         try:
-            _atomic_write(table_path, dump_sexpr(table), backup=table_path.exists())
+            _atomic_write(
+            table_path, dump_sexpr(table), backup=table_path.exists()
+        )
         except Exception:
             if created:
                 shutil.rmtree(library_path, ignore_errors=True)
@@ -1250,6 +1254,656 @@ def register_project_footprint_library(
         already_present=already_present,
     )
 
+
+
+@dataclass(frozen=True, slots=True)
+class ExportedCadAssets:
+    """Locations and KiCad identifiers for assets added to selected libraries."""
+
+    symbol_id: str = ""
+    footprint_id: str = ""
+    symbol_library_path: Path | None = None
+    footprint_library_path: Path | None = None
+    model_path: Path | None = None
+
+
+def _project_library_uri(project_dir: Path, library_path: Path) -> str:
+    resolved = library_path.resolve(strict=False)
+    try:
+        relative = resolved.relative_to(project_dir.resolve(strict=False))
+    except ValueError:
+        return str(resolved)
+    return "$" + "{KIPRJMOD}/" + relative.as_posix()
+
+
+def _stock_footprint_library_exists(nickname: str, kicad=None) -> bool:
+    """Return whether KiCad already supplies a footprint library with this nickname."""
+    candidates: list[Path] = []
+    if kicad is not None:
+        try:
+            candidates.extend(
+                Path(value).expanduser()
+                for value in kicad.get_paths().values()
+                if value
+            )
+        except Exception:
+            pass
+    for variable in (
+        "KICAD_FOOTPRINT_DIR",
+        "KICAD8_FOOTPRINT_DIR",
+        "KICAD9_FOOTPRINT_DIR",
+        "KICAD10_FOOTPRINT_DIR",
+        "KICAD11_FOOTPRINT_DIR",
+    ):
+        value = os.environ.get(variable, "").strip()
+        if value:
+            candidates.append(Path(value).expanduser())
+    candidates.extend(
+        Path(value)
+        for value in (
+            "/usr/share/kicad-nightly/footprints",
+            "/usr/share/kicad/footprints",
+            "/usr/local/share/kicad/footprints",
+            "/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints",
+            "C:/Program Files/KiCad/share/kicad/footprints",
+        )
+    )
+    seen: set[Path] = set()
+    for candidate in candidates:
+        for root in (
+            candidate,
+            candidate / "footprints",
+            candidate / "share" / "kicad" / "footprints",
+        ):
+            root = root.resolve(strict=False)
+            if root in seen:
+                continue
+            seen.add(root)
+            library = root / f"{nickname}.pretty"
+            if library.is_dir() and not library.is_symlink():
+                return True
+    return False
+
+
+def _register_selected_library(
+    project_dir: Path,
+    *,
+    table_filename: str,
+    root_name: str,
+    library_path: Path,
+    description: str,
+    kicad=None,
+) -> str:
+    """Register a selected library in the active project without shadowing another path."""
+    table_path = project_dir / table_filename
+    if table_path.is_symlink():
+        raise SymbolLibraryConflict(f"Refusing to modify symlinked {table_filename}.")
+    if table_path.exists():
+        try:
+            table = parse_sexpr(table_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, SymbolLibraryError) as exc:
+            raise SymbolLibraryError(
+                f"Could not read project library table {table_path}: {exc}"
+            ) from exc
+        if _head(table) != root_name:
+            raise SymbolLibraryError(
+                f"Project library table {table_path} has an invalid root node."
+            )
+    else:
+        table = [Atom(root_name), [Atom("version"), Atom("7")]]
+    if _find_direct(table, "version") is None:
+        table.insert(1, [Atom("version"), Atom("7")])
+
+    global_paths: dict[str, Path | None] = {}
+    for global_table_path in _global_library_tables(table_filename):
+        if not global_table_path.is_file() or global_table_path.is_symlink():
+            continue
+        try:
+            global_table = parse_sexpr(
+                global_table_path.read_text(encoding="utf-8")
+            )
+            if _head(global_table) != root_name:
+                continue
+            for global_entry in _direct(global_table, "lib"):
+                global_name = _entry_text(global_entry, "name")
+                if global_name and global_name not in global_paths:
+                    global_paths[global_name] = _uri_path(
+                        global_table_path.parent,
+                        _entry_text(global_entry, "uri"),
+                    )
+        except (OSError, UnicodeError, SymbolLibraryError):
+            continue
+
+    base = (
+        library_path.name[:-7]
+        if library_path.name.endswith(".pretty")
+        else library_path.stem
+    )
+    if not re.fullmatch(r"[A-Za-z0-9_+-]{1,80}", base):
+        raise SymbolLibraryError(
+            "Choose a library path whose name uses letters, numbers, underscores, plus or hyphen."
+        )
+    for suffix in range(100):
+        nickname = base if suffix == 0 else f"{base}_{suffix}"
+        entry = _table_entry(table, nickname)
+        if entry is not None:
+            existing_path = _uri_path(project_dir, _entry_text(entry, "uri"))
+            if (
+                _entry_text(entry, "type") == "KiCad"
+                and existing_path == library_path.resolve(strict=False)
+            ):
+                return nickname
+            continue
+        global_path = global_paths.get(nickname, ...)
+        if global_path is not ...:
+            if global_path == library_path.resolve(strict=False):
+                return nickname
+            continue
+        if table_filename == "sym-lib-table":
+            try:
+                find_symbol_library(
+                    nickname, kicad, project_or_path=project_dir
+                )
+            except SymbolLibraryError:
+                pass
+            else:
+                continue
+        elif _stock_footprint_library_exists(nickname, kicad):
+            continue
+        table.append(
+            [
+                Atom("lib"),
+                [Atom("name"), Quoted(nickname)],
+                [Atom("type"), Quoted("KiCad")],
+                [Atom("uri"), Quoted(_project_library_uri(project_dir, library_path))],
+                [Atom("options"), Quoted("")],
+                [Atom("descr"), Quoted(description[:240])],
+            ]
+        )
+        _atomic_write(
+            table_path, dump_sexpr(table), backup=table_path.exists()
+        )
+        return nickname
+    raise SymbolLibraryConflict(
+        "Could not allocate a free KiCad library nickname for the selected path."
+    )
+
+
+def _path_has_symlink_component(path: str | Path) -> bool:
+    """Detect symlinks in a destination path, including parent directories."""
+    candidate = Path(os.path.abspath(Path(path).expanduser()))
+    return any(part.is_symlink() for part in (candidate, *candidate.parents))
+
+
+def _atomic_write_bytes(path: Path, content: bytes) -> None:
+    if path.is_symlink():
+        raise SymbolLibraryConflict(f"Refusing to replace symlinked asset {path}.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _export_symbol_to_library(
+    project_dir: Path,
+    source_file: str | Path,
+    symbol_name: str,
+    target_file: str | Path,
+    kicad=None,
+) -> tuple[str, Path]:
+    source_path = Path(source_file).expanduser()
+    if source_path.is_symlink():
+        raise SymbolLibraryConflict("Refusing to export a symlinked source symbol library.")
+    source_path = source_path.resolve(strict=True)
+    target_path = Path(target_file).expanduser()
+    if target_path.suffix.casefold() != ".kicad_sym":
+        raise SymbolLibraryError(
+            "Select a KiCad schematic symbol library file ending in .kicad_sym."
+        )
+    if _path_has_symlink_component(target_path):
+        raise SymbolLibraryConflict(
+            "Refusing to export into a symbol library path containing a symlink."
+        )
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        source_root = parse_sexpr(source_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SymbolLibraryError) as exc:
+        raise SymbolLibraryError(
+            f"Could not read the selected CAD symbol library: {exc}"
+        ) from exc
+    if _head(source_root) != "kicad_symbol_lib":
+        raise SymbolLibraryError("The selected CAD symbol file has an invalid KiCad library root.")
+    safe_name = str(symbol_name or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_+.-]{1,120}", safe_name):
+        raise SymbolLibraryError("The selected CAD symbol has an unsafe library name.")
+    source_symbol = _root_symbol(source_root, safe_name)
+    if source_symbol is None:
+        raise SymbolLibraryError(f"The CAD library does not contain symbol {safe_name!r}.")
+    if _direct(source_symbol, "extends"):
+        raise SymbolLibraryError(
+            "The selected CAD symbol extends another symbol and cannot be exported alone. "
+            "Choose a standalone definition."
+        )
+    existed = target_path.exists()
+    original_text = None
+    if existed:
+        try:
+            original_text = target_path.read_text(encoding="utf-8")
+            target_root = parse_sexpr(original_text)
+        except (OSError, UnicodeError, SymbolLibraryError) as exc:
+            raise SymbolLibraryConflict(
+                f"Could not safely inspect {target_path}: {exc}"
+            ) from exc
+        if _head(target_root) != "kicad_symbol_lib":
+            raise SymbolLibraryConflict(
+                f"Selected file {target_path.name} is not a KiCad symbol library."
+            )
+    else:
+        target_root = _root_header(source_root)
+
+    existing = _root_symbol(target_root, safe_name)
+    if existing is not None:
+        if dump_sexpr(existing) != dump_sexpr(source_symbol):
+            raise SymbolLibraryConflict(
+                f"Symbol {safe_name!r} already exists in {target_path.name} "
+                "with different content. "
+                "It was not overwritten."
+            )
+    else:
+        target_root.append(copy.deepcopy(source_symbol))
+        _atomic_write(target_path, dump_sexpr(target_root), backup=existed)
+
+    try:
+        nickname = _register_selected_library(
+            project_dir,
+            table_filename="sym-lib-table",
+            root_name="sym_lib_table",
+            library_path=target_path,
+            description="User-selected library containing reviewed JLCPCB/EasyEDA symbols.",
+            kicad=kicad,
+        )
+    except Exception:
+        if not existed and target_path.exists():
+            target_path.unlink(missing_ok=True)
+        elif original_text is not None:
+            _atomic_write(target_path, original_text, backup=False)
+        raise
+    return f"{nickname}:{safe_name}", target_path
+
+
+def _export_footprint_to_library(
+    project_dir: Path,
+    source_file: str | Path,
+    target_library: str | Path,
+    *,
+    model_file: str | Path | None = None,
+    model_directory: str | Path | None = None,
+    kicad=None,
+) -> tuple[str, Path, Path | None]:
+    """Export one footprint and optional STEP file without replacing user content."""
+    source_path = Path(source_file).expanduser()
+    if source_path.is_symlink():
+        raise SymbolLibraryConflict("Refusing to export a symlinked source footprint.")
+    source_path = source_path.resolve(strict=True)
+    target_dir = Path(target_library).expanduser()
+    if target_dir.suffix.casefold() != ".pretty":
+        raise SymbolLibraryError("Select a KiCad footprint library directory ending in .pretty.")
+    if _path_has_symlink_component(target_dir):
+        raise SymbolLibraryConflict(
+            "Refusing to export into a footprint library path containing a symlink."
+        )
+    target_dir.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        footprint_root = parse_sexpr(source_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SymbolLibraryError) as exc:
+        raise SymbolLibraryError(f"Could not read the selected CAD footprint: {exc}") from exc
+    if _head(footprint_root) != "footprint" or len(footprint_root) < 2:
+        raise SymbolLibraryError("The selected CAD footprint has an invalid KiCad footprint root.")
+    footprint_name = _string_value(footprint_root[1]).strip()
+    if not re.fullmatch(r"[A-Za-z0-9_+.-]{1,120}", footprint_name):
+        raise SymbolLibraryError("The selected CAD footprint has an unsafe library name.")
+    model_nodes = _direct(footprint_root, "model")
+    model_bytes = None
+    copied_model: Path | None = None
+    if model_file is not None:
+        if model_directory is None:
+            raise SymbolLibraryError("Choose a destination directory for the 3D model.")
+        model_source = Path(model_file).expanduser()
+        if model_source.is_symlink():
+            raise SymbolLibraryConflict("Refusing to export a symlinked STEP model.")
+        model_source = model_source.resolve(strict=True)
+        model_bytes = model_source.read_bytes()
+        if (
+            not model_source.is_file()
+            or model_source.suffix.casefold() != ".step"
+            or len(model_bytes) > 32 * 1024 * 1024
+            or not model_bytes.lstrip(b"\xef\xbb\xbf \t\r\n")
+            .upper()
+            .startswith(b"ISO-10303-21;")
+        ):
+            raise SymbolLibraryError(
+                "The selected 3D asset is not a valid STEP file (maximum 32 MiB)."
+            )
+        if len(model_nodes) != 1 or len(model_nodes[0]) < 2:
+            raise SymbolLibraryError(
+                "The selected footprint must contain exactly one 3D model reference."
+            )
+        model_dir = Path(model_directory).expanduser()
+        if _path_has_symlink_component(model_dir):
+            raise SymbolLibraryConflict(
+                "Refusing to export into a 3D model path containing a symlink."
+            )
+        copied_model = model_dir / model_source.name
+        if _path_has_symlink_component(copied_model):
+            raise SymbolLibraryConflict(
+                "The destination STEP model path contains a symlink."
+            )
+        if copied_model.exists() and (
+            not copied_model.is_file() or copied_model.read_bytes() != model_bytes
+        ):
+            raise SymbolLibraryConflict(
+                f"{copied_model.name} already exists with different content. "
+                "It was not overwritten."
+            )
+        try:
+            relative = copied_model.resolve(strict=False).relative_to(
+                project_dir.resolve(strict=False)
+            )
+            model_uri = "$" + "{KIPRJMOD}/" + relative.as_posix()
+        except ValueError:
+            model_uri = str(copied_model.resolve(strict=False))
+        model_nodes[0][1] = Quoted(model_uri)
+    elif model_nodes:
+        raise SymbolLibraryError(
+            "This footprint references a 3D model. Export its STEP file with the footprint "
+            "or remove the unavailable model reference."
+        )
+
+    target_dir_existed = target_dir.exists()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_file = target_dir / f"{footprint_name}.kicad_mod"
+    if target_file.is_symlink():
+        raise SymbolLibraryConflict("The destination footprint is a symlink.")
+    new_text = dump_sexpr(footprint_root)
+    existed = target_file.exists()
+    if existed:
+        try:
+            original_text = target_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise SymbolLibraryConflict(
+                f"Could not inspect existing footprint {target_file}: {exc}"
+            ) from exc
+        if original_text != new_text:
+            raise SymbolLibraryConflict(
+                f"Footprint {footprint_name!r} already exists in {target_dir.name} "
+                "with different content. "
+                "It was not overwritten."
+            )
+
+    model_created = False
+    target_created = False
+    model_dir_existed = bool(copied_model and copied_model.parent.exists())
+    try:
+        if copied_model is not None and model_bytes is not None:
+            copied_model.parent.mkdir(parents=True, exist_ok=True)
+            if not copied_model.exists():
+                _atomic_write_bytes(copied_model, model_bytes)
+                model_created = True
+        if not existed:
+            _atomic_write(target_file, new_text, backup=False)
+            target_created = True
+
+        nickname = _register_selected_library(
+            project_dir,
+            table_filename="fp-lib-table",
+            root_name="fp_lib_table",
+            library_path=target_dir,
+            description="User-selected library containing reviewed JLCPCB/EasyEDA footprints.",
+            kicad=kicad,
+        )
+    except Exception:
+        if target_created:
+            target_file.unlink(missing_ok=True)
+        if model_created and copied_model is not None:
+            copied_model.unlink(missing_ok=True)
+        if copied_model is not None and not model_dir_existed:
+            try:
+                copied_model.parent.rmdir()
+            except OSError:
+                pass
+        if not target_dir_existed:
+            try:
+                target_dir.rmdir()
+            except OSError:
+                pass
+        raise
+    return f"{nickname}:{footprint_name}", target_dir, copied_model
+
+def export_cad_assets_to_libraries(
+    project_or_path,
+    *,
+    symbol_source: str | Path | None = None,
+    symbol_name: str = "",
+    symbol_library: str | Path | None = None,
+    footprint_source: str | Path | None = None,
+    footprint_library: str | Path | None = None,
+    model_source: str | Path | None = None,
+    model_directory: str | Path | None = None,
+    kicad=None,
+) -> ExportedCadAssets:
+    """Add selected CAD assets to user-chosen, project-registered KiCad libraries.
+
+    Existing assets are reused only when their contents match exactly. Different
+    content is always treated as a conflict; user library content is never replaced.
+    """
+    project_dir = _project_directory(project_or_path)
+    if not any((symbol_source, footprint_source, model_source)):
+        raise SymbolLibraryError("No CAD assets were selected for export.")
+    if symbol_source and (not symbol_library or not symbol_name):
+        raise SymbolLibraryError("Choose a destination symbol library.")
+    if footprint_source and not footprint_library:
+        raise SymbolLibraryError("Choose a destination footprint library.")
+    if model_source and (not footprint_source or not model_directory):
+        raise SymbolLibraryError("A 3D model must be exported together with its footprint.")
+
+    result = ExportedCadAssets()
+    if symbol_source:
+        symbol_id, symbol_path = _export_symbol_to_library(
+            project_dir, symbol_source, symbol_name, symbol_library, kicad=kicad
+        )
+        result = replace(
+            result,
+            symbol_id=symbol_id,
+            symbol_library_path=symbol_path,
+        )
+    if footprint_source:
+        footprint_id, footprint_path, model_path = _export_footprint_to_library(
+            project_dir,
+            footprint_source,
+            footprint_library,
+            model_file=model_source,
+            model_directory=model_directory,
+            kicad=kicad,
+        )
+        result = replace(
+            result,
+            footprint_id=footprint_id,
+            footprint_library_path=footprint_path,
+            model_path=model_path,
+        )
+    return result
+
+
+def _registered_user_symbol_library(
+    project_dir: Path,
+    nickname: str,
+) -> tuple[Path, int]:
+    """Resolve a writable registered user library and its KiCad table scope."""
+    # KiCad resolves duplicate nicknames from the project table first.
+    tables = [(project_dir / "sym-lib-table", project_dir, 2)]
+    tables.extend(
+        (path, path.parent, 1)
+        for path in _global_library_tables("sym-lib-table")
+    )
+    for table_path, base_dir, table_scope in tables:
+        if not table_path.is_file() or table_path.is_symlink():
+            continue
+        try:
+            table = parse_sexpr(table_path.read_text(encoding="utf-8"))
+            if _head(table) != "sym_lib_table":
+                continue
+            entry = _table_entry(table, nickname)
+            if entry is None:
+                continue
+            if _entry_text(entry, "type") != "KiCad":
+                raise SymbolLibraryError(f"Library {nickname!r} is not a KiCad symbol library.")
+            library_path = _uri_path(base_dir, _entry_text(entry, "uri"))
+            if library_path is None or library_path.is_symlink() or not library_path.is_file():
+                raise SymbolLibraryError(f"Registered symbol library {nickname!r} is missing.")
+            # Sync is deliberately limited to project-local or user-owned libraries.
+            resolved = library_path.resolve(strict=True)
+            roots = (project_dir.resolve(strict=False), Path.home().resolve(strict=False))
+            if not any(resolved == root or root in resolved.parents for root in roots):
+                raise SymbolLibraryError(
+                    "Sync with library is disabled for system-wide symbol libraries. "
+                    "Use KiCad Symbol Editor to copy this symbol into a writable project "
+                    "or user library, then select that library in the schematic."
+                )
+            if not os.access(resolved, os.W_OK):
+                raise SymbolLibraryError(f"Symbol library {resolved} is not writable.")
+            return resolved, table_scope
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise SymbolLibraryError(
+                f"Could not inspect registered symbol library {table_path}: {exc}"
+            ) from exc
+    raise SymbolLibraryError(
+        f"Symbol library {nickname!r} is not registered in the active project or user KiCad table. "
+        "Export it to a writable library before syncing."
+    )
+
+
+def writable_user_symbol_library_available(
+    project_or_path,
+    library_id: str,
+) -> bool:
+    """Return whether a symbol resolves to a writable project/user library."""
+    parts = str(library_id or "").strip().split(":", 1)
+    if len(parts) != 2 or not all(parts):
+        return False
+    try:
+        _registered_user_symbol_library(
+            _project_directory(project_or_path), parts[0]
+        )
+    except (OSError, SymbolLibraryError, ValueError):
+        return False
+    return True
+
+
+def sync_symbol_library_properties(
+    project_or_path,
+    library_id: str,
+    draft,
+) -> tuple[Path, str, int]:
+    """Sync reviewed properties and return the library file and table scope.
+
+    The previous file text is returned so callers can restore it if schematic
+    write-back fails after the library definition has been saved.
+    """
+    project_dir = _project_directory(project_or_path)
+    parts = str(library_id or "").strip().split(":", 1)
+    if len(parts) != 2 or not all(parts):
+        raise SymbolLibraryError("The selected symbol has no valid Library:Symbol identity.")
+    nickname, symbol_name = parts
+    if (
+        not re.fullmatch(r"[A-Za-z0-9_+-]{1,80}", nickname)
+        or not re.fullmatch(r"[A-Za-z0-9_+.-]{1,120}", symbol_name)
+    ):
+        raise SymbolLibraryError("The selected symbol library identifier is invalid.")
+
+    library_path, table_scope = _registered_user_symbol_library(
+        project_dir, nickname
+    )
+    try:
+        original_text = library_path.read_text(encoding="utf-8")
+        root = parse_sexpr(original_text)
+    except (OSError, UnicodeError, SymbolLibraryError) as exc:
+        raise SymbolLibraryError(f"Could not read symbol library {library_path}: {exc}") from exc
+    if _head(root) != "kicad_symbol_lib":
+        raise SymbolLibraryError(f"{library_path.name} is not a KiCad symbol library.")
+    symbol = _root_symbol(root, symbol_name)
+    if symbol is None:
+        raise SymbolLibraryError(f"Symbol {library_id!r} was not found in its registered library.")
+
+    for name, value in (
+        ("Value", draft.value),
+        ("Footprint", draft.footprint),
+        ("Datasheet", draft.datasheet_url),
+        ("Description", draft.description),
+    ):
+        # Match schematic write-back semantics: blank catalogue values do not
+        # erase an existing library property merely because the provider omitted it.
+        if not str(value or "").strip():
+            continue
+        prop = _property(symbol, name)
+        if prop is not None and len(prop) >= 3:
+            prop[2] = Quoted(str(value))
+        elif name in {"Value", "Footprint"}:
+            raise SymbolLibraryError(
+                f"Library symbol {library_id!r} has no {name} property; sync was stopped."
+            )
+
+    template = _property(symbol, "Description") or _property(symbol, "Datasheet")
+    if template is None:
+        template = _property(symbol, "Value")
+    if template is None:
+        raise SymbolLibraryError("The library symbol has no property template for custom metadata.")
+
+    next_id = max(
+        (
+            value for prop in _direct(symbol, "property")
+            if (value := _property_id(prop)) is not None
+        ),
+        default=4,
+    ) + 1
+    for field_name, field_value in draft.custom_fields:
+        name = str(field_name or "").strip()
+        value = str(field_value or "").strip()
+        normalized = re.sub(r"[^a-z0-9]", "", name.casefold())
+        if (
+            not name or not value or len(name) > 64
+            or normalized in _RESERVED_NORMALIZED
+            or name.casefold().startswith("ki_")
+        ):
+            continue
+        prop = _property(symbol, name)
+        if prop is not None and len(prop) >= 3:
+            prop[2] = Quoted(value)
+        else:
+            _add_hidden_property(symbol, template, name, value, next_id)
+            next_id += 1
+
+    _atomic_write(library_path, dump_sexpr(root), backup=True)
+    return library_path, original_text, table_scope
+
+
+def restore_symbol_library_snapshot(library_path: str | Path, original_text: str) -> None:
+    """Restore a symbol library after a failed matching schematic sync."""
+    path = Path(library_path)
+    if path.is_symlink():
+        raise SymbolLibraryConflict("Refusing to restore a symlinked symbol library.")
+    _atomic_write(path, original_text, backup=False)
 
 def reload_project_symbol_library(kicad, generated: GeneratedLibrarySymbol) -> None:
     """Reload the generated project library in the active Eeschema session."""

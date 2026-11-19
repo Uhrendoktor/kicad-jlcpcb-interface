@@ -22,6 +22,7 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
+from kicad_jlcpcb import populator as populator_module  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -1365,10 +1366,21 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
         raise RuntimeError("The Basic-only checkbox did not return to its off state.")
 
     active_count = populator._active_advanced_filter_count()
-    if populator._filter_icon_active != bool(active_count):
-        raise RuntimeError("The funnel badge does not reflect whether filters are active.")
-    if not populator.advanced_filters_button.cget("image"):
-        raise RuntimeError("The compact filter button has no funnel icon image.")
+    expected_button_text = (
+        "Filters" if not active_count else f"Filters ({active_count})"
+    )
+    if (
+        populator._filters_active != bool(active_count)
+        or populator.advanced_filters_button.cget("text") != expected_button_text
+        or populator.advanced_filters_button.cget("style") != "ToolbarLink.TButton"
+        or populator.advanced_filters_button.winfo_reqwidth() < 54
+    ):
+        raise RuntimeError(
+            "The labelled Filters control is not visibly reflecting the active filters: "
+            f"text={populator.advanced_filters_button.cget('text')!r}, "
+            f"expected={expected_button_text!r}, "
+            f"width={populator.advanced_filters_button.winfo_reqwidth()}."
+        )
     summary = populator.advanced_filter_summary.cget("text")
     if active_count:
         if "Pkg:" not in summary or "Tol:" not in summary:
@@ -1525,6 +1537,15 @@ def _drive_populator_form(
                 raise RuntimeError(
                     "Update-mode passive search did not display multiple alternatives."
                 )
+            footprint_column_width = int(
+                populator.candidate_tree.column("footprint", "width")
+            )
+            if footprint_column_width < 270:
+                raise RuntimeError(
+                    "The passive-match Footprint column is too narrow to show a "
+                    "standard full KiCad identifier: "
+                    f"width={footprint_column_width}px."
+                )
             if assert_basic_shortlist:
                 if len(candidate_iids) > 5:
                     raise RuntimeError(
@@ -1585,6 +1606,98 @@ def _drive_populator_form(
                     f"footprint={draft.footprint!r}, source={draft.source_label!r}"
                 )
             root.update_idletasks()
+
+            workspace_width = int(populator.review_workspace.winfo_width())
+            properties_width = int(populator.properties_column.winfo_width())
+            preview_width = int(populator.preview_column.winfo_width())
+            selected_part_width = int(populator.product_preview.frame.winfo_width())
+            content_width = int(populator.workspace_content.winfo_width())
+            cad_visible = populator.cad_preview.frame.winfo_ismapped()
+            if workspace_width <= 0:
+                raise RuntimeError("The component review workspace has no measurable width.")
+            if cad_visible:
+                if preview_width / workspace_width > 0.42:
+                    raise RuntimeError(
+                        "The KiCad CAD candidate pane exceeds its 40% width budget: "
+                        f"preview={preview_width}px workspace={workspace_width}px."
+                    )
+                if properties_width / workspace_width < 0.58:
+                    raise RuntimeError(
+                        "The KiCad properties pane is narrower than the 60% layout target: "
+                        f"properties={properties_width}px workspace={workspace_width}px."
+                    )
+            elif (
+                populator.preview_column.winfo_ismapped()
+                or properties_width / workspace_width < 0.94
+            ):
+                raise RuntimeError(
+                    "The unused CAD column did not collapse to give the properties "
+                    "editor the full review row: "
+                    f"properties={properties_width}px workspace={workspace_width}px "
+                    f"preview_mapped={populator.preview_column.winfo_ismapped()}."
+                )
+            if selected_part_width < content_width * 0.95:
+                raise RuntimeError(
+                    "The JLCPCB selected-part section does not span the entire row: "
+                    f"card={selected_part_width}px content={content_width}px."
+                )
+            if populator.footprint_entry.winfo_width() < 220:
+                raise RuntimeError(
+                    "The Footprint property editor is too narrow to review its value: "
+                    f"width={populator.footprint_entry.winfo_width()}px."
+                )
+            if (
+                populator.notes_indicator.winfo_ismapped()
+                and populator.notes_indicator.winfo_height() > 36
+            ):
+                raise RuntimeError(
+                    "The general review-notes indicator is not compact: "
+                    f"height={populator.notes_indicator.winfo_height()}px."
+                )
+
+            # Exercise the actual field-attached error marker and hover tooltip.
+            populator._set_field_feedback(
+                "footprint",
+                "error",
+                "Use a KiCad Library:Footprint identifier, for example "
+                "Resistor_SMD:R_0603_1608Metric.",
+            )
+            root.update()
+            _entry, marker, field_label = populator._field_feedback["footprint"]
+            if (
+                _entry.cget("style") != "ValidationError.TEntry"
+                or field_label.cget("style") != "ValidationError.TLabel"
+                or not marker.winfo_ismapped()
+            ):
+                raise RuntimeError(
+                    "The invalid Footprint field is not visibly highlighted."
+                )
+            marker.event_generate("<Enter>")
+            time.sleep(0.5)
+            root.update()
+            tooltip = next(
+                (
+                    item._window for item in populator._field_tooltips
+                    if item.widget is marker
+                ),
+                None,
+            )
+            tooltip_text = " ".join(
+                str(child.cget("text"))
+                for child in tooltip.winfo_children()
+                if child.winfo_class() == "Label"
+            ) if tooltip is not None and tooltip.winfo_exists() else ""
+            if "KiCad Library:Footprint identifier" not in tooltip_text:
+                raise RuntimeError(
+                    "The Footprint error tooltip does not explain the required format: "
+                    f"{tooltip_text!r}."
+                )
+            marker.event_generate("<Leave>")
+            root.update()
+            populator._set_field_feedback("footprint", None)
+            populator._update_field_feedback()
+            root.update()
+
             if not populator.proposal_rows.winfo_children():
                 raise RuntimeError("The LCSC review form contains no proposed fields.")
             if not populator.apply_button.winfo_viewable():
@@ -1603,6 +1716,33 @@ def _drive_populator_form(
             apply_tk_theme(root, "dark")
             populator._update_advanced_filter_button()
             root.update()
+            toolbar_style = populator.ttk.Style(root)
+            toolbar_foreground = toolbar_style.lookup(
+                "ToolbarLink.TButton", "foreground"
+            )
+            active_accent = root._kicad_jlcpcb_palette["accent"]
+            if toolbar_foreground.casefold() != active_accent.casefold():
+                raise RuntimeError(
+                    "The Filters button text did not adopt the active theme accent: "
+                    f"style={toolbar_foreground!r}, palette={active_accent!r}."
+                )
+            active_filter_count = populator._active_advanced_filter_count()
+            expected_filter_label = (
+                "Filters"
+                if not active_filter_count
+                else f"Filters ({active_filter_count})"
+            )
+            if (
+                populator.advanced_filters_button.cget("text") != expected_filter_label
+                or populator.advanced_filters_button.winfo_width() < 54
+                or not populator.advanced_filters_button.winfo_viewable()
+            ):
+                raise RuntimeError(
+                    "The labelled Filters control is clipped or not visible in dark mode: "
+                    f"text={populator.advanced_filters_button.cget('text')!r}, "
+                    f"expected={expected_filter_label!r}, "
+                    f"width={populator.advanced_filters_button.winfo_width()}."
+                )
             _capture_window(root, output_dir / dark_asset)
             apply_tk_theme(root, "light")
             populator._update_advanced_filter_button()
@@ -1723,8 +1863,22 @@ def _capture_passive_component_workflows(
     # Keep the Update example on its known local Device:R footprint. The
     # dedicated Add-mode fixture below exercises the live EasyEDA CAD fallback
     # and captures the selected 3D tab; do not let that optional lookup replace
-    # this deterministic stock-mapping review example.
-    populate._request_cad_assets = lambda _details, _draft: None
+    # this deterministic stock-mapping review example. Run the real layout
+    # decision as a local mapping, but keep the ordinary field validator intact
+    # so its warning and tooltip remain visible in the captured review form.
+    request_cad_assets = populate._request_cad_assets
+
+    def request_local_stock_mapping(details: Any, draft: ComponentDraft) -> None:
+        availability_check = populator_module.footprint_library_entry_available
+        try:
+            populator_module.footprint_library_entry_available = (
+                lambda *_args, **_kwargs: True
+            )
+            request_cad_assets(details, draft)
+        finally:
+            populator_module.footprint_library_entry_available = availability_check
+
+    populate._request_cad_assets = request_local_stock_mapping
     populate.lookup()
 
     def validate_populate_result(populator: ComponentPopulator) -> None:
@@ -1931,10 +2085,13 @@ def _capture_easyeda_3d_preview(
             target=populator,
             request=original_request,
         ) -> None:
-            # Force the app's supported fallback path without marking the empty
-            # footprint as a deliberate user edit.
-            target.footprint_var.set("")
-            target._manual_proposal_fields.discard("footprint")
+            # Clear the initial proposal once to force the app's supported
+            # fallback path. _render_draft requests again after the result arrives;
+            # clearing on that second call would undo the synchronized candidate.
+            requested_code = str(details.lcsc or "").strip().upper()
+            if target._cad_lcsc != requested_code:
+                target.footprint_var.set("")
+                target._manual_proposal_fields.discard("footprint")
             request(details, draft)
 
         populator._request_cad_assets = request_external_cad
@@ -1978,6 +2135,20 @@ def _capture_easyeda_3d_preview(
                     raise RuntimeError(
                         f"EasyEDA returned no usable footprint for {lcsc}: "
                         f"{assets.warnings!r}"
+                    )
+                if populator.footprint_var.get().strip() != assets.footprint_library_id:
+                    raise RuntimeError(
+                        "The Footprint field is not synchronized to the visible CAD "
+                        "candidate: "
+                        f"field={populator.footprint_var.get()!r}, "
+                        f"candidate={assets.footprint_library_id!r}"
+                    )
+                if populator.draft.footprint != assets.footprint_library_id:
+                    raise RuntimeError(
+                        "The component draft Footprint does not match the visible CAD "
+                        "candidate: "
+                        f"draft={populator.draft.footprint!r}, "
+                        f"candidate={assets.footprint_library_id!r}"
                     )
                 if not assets.has_3d_model or not assets.model_preview_png:
                     raise RuntimeError(

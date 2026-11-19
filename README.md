@@ -88,6 +88,13 @@ When a catalogue row needs closer inspection, **Select in schematic** takes you 
 
 Both contexts use the same review-first dialog, which shows inference confidence, catalogue source/freshness and warnings. Its heading and available controls adapt to the selection: update mode edits catalogue fields on the selected symbol; add mode exposes symbol overrides only when automatic mapping is uncertain. Routine resistor/capacitor value searches select the stock symbol and reference prefix automatically. Value and Footprint remain editable; Footprint is optional during symbol creation.
 
+The review workspace places editable KiCad properties and proposal metadata in the
+left column, with the supplier record and tabbed Symbol / Footprint / 3D model
+previews in the right column. Missing or invalid entries show feedback directly below
+the affected field. Review notes use explicit **Error**, **Warning** and **Info**
+labels alongside icons and theme-aware colors, so severity is not conveyed by color
+alone.
+
 The screenshots below are full-height captures of the production Add/Update window.
 They include the complete scrollable workspace in one image, rather than separate
 screenshots for the top and lower scroll positions. Open an image at full size to read
@@ -121,6 +128,10 @@ into the project retains its original Reference property and silkscreen settings
 For exact resistor/capacitor values such as `10k`, `4k7` or `100nF`, Add mode shows at most five exact matches. Basic listings rank first across passive-value and general keyword searches. The **Basic parts only** checkbox hides Extended and unclassified results; leaving it unchecked keeps those alternatives available behind Basic parts. A direct LCSC-number lookup always returns the exact requested record. Selecting a passive automatically chooses `Device:R` or `Device:C`, its reference prefix, a reviewed package-to-footprint mapping when available, and the catalogue fields. You can still edit Value and Footprint. For other part searches, the suggested generic stock symbol remains editable; enter a KiCad identifier manually (for example, `Amplifier_Operational:LM358`) whenever the mapping is uncertain. The project-local library copies the chosen standalone symbol's original pins, units and graphics; it does not infer a manufacturer-specific pinout.
 
 Clicking **Generate & select component** immediately uses KiCad schematic IPC to insert the generated project-local symbol at the current sheet center, bring it into view and select it—without a second confirmation window. Use KiCad's Move tool to position it where needed. No X/Y placement fields or coordinate entry are exposed.
+
+When downloadable EasyEDA CAD is available, **Export to library** lets you choose a schematic symbol library (`.kicad_sym`), footprint library (`.pretty`) and 3D-model directory. The assets are registered in the active project's KiCad library tables; the STEP path in the exported footprint is updated to the selected model folder. Keep these destinations inside the project for portable ${KIPRJMOD} references. Existing assets with different content are never overwritten.
+
+In Update mode, **Sync with library** can apply the reviewed part properties to the writable symbol-library definition and every schematic instance using that same `Library:Symbol` identity. It requires confirmation and does not modify KiCad's system libraries; symbols from stock libraries must first be copied to a project or user library with KiCad Symbol Editor.
 
 > **First use in a project:** when the generated-library table entry does not yet exist, the open Eeschema session may not recognize the new library immediately. The library and table entry are saved, but no instance is placed. Close and reopen the project, then repeat the same add-mode search; the existing generated symbol is reused.
 

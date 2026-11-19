@@ -117,16 +117,22 @@ def build_product_preview(
         ("UNIT PRICE", "price"),
         ("LIBRARY", "library"),
     )
+    metric_labels = []
     for column, (caption, key) in enumerate(metric_specs):
         cell = ttk.Frame(metrics, style="ProductPreview.TFrame")
         cell.grid(row=0, column=column, sticky="ew", padx=(0, 10))
-        ttk.Label(cell, text=caption, style="ProductKey.TLabel").pack(anchor="w")
-        ttk.Label(
+        caption_label = ttk.Label(
+            cell, text=caption, style="ProductKey.TLabel", wraplength=148
+        )
+        caption_label.pack(anchor="w")
+        value_label = ttk.Label(
             cell,
             textvariable=variables[keys[key]],
             style="ProductMetric.TLabel",
             wraplength=148,
-        ).pack(anchor="w", pady=(3, 0))
+        )
+        value_label.pack(anchor="w", pady=(3, 0))
+        metric_labels.extend((caption_label, value_label))
 
     links = ttk.Frame(details, style="ProductPreview.TFrame")
     links.grid(row=4, column=0, sticky="ew", pady=(6, 1))
@@ -165,11 +171,15 @@ def build_product_preview(
     status_label.grid(row=6, column=0, sticky="w", pady=(1, 0))
 
     def fit_text(event) -> None:
-        wrap = max(280, int(event.width) - 16)
+        width = int(event.width)
+        wrap = max(180, width - 16)
         description_label.configure(wraplength=wrap)
         mpn_label.configure(wraplength=wrap)
         source_label.configure(wraplength=wrap)
         status_label.configure(wraplength=wrap)
+        metric_wrap = max(56, width // 5 - 18)
+        for label in metric_labels:
+            label.configure(wraplength=metric_wrap)
 
     details.bind("<Configure>", fit_text)
     return ProductPreviewControls(
@@ -250,7 +260,7 @@ def build_cad_asset_preview(
         tab.rowconfigure(0, weight=1)
         notebook.add(tab, text=caption)
         preview_surface = ttk.Frame(
-            tab, style="ProductImage.TFrame", width=460, height=250
+            tab, style="ProductImage.TFrame", width=320, height=220
         )
         preview_surface.grid(row=0, column=0, sticky="nsew")
         preview_surface.grid_propagate(False)
@@ -261,19 +271,25 @@ def build_cad_asset_preview(
             justify="center",
             padding=8,
             style="ProductImage.TLabel",
-            wraplength=420,
+            wraplength=290,
         )
         label.pack(fill="both", expand=True)
         tabs.append(tab)
         labels.append(label)
 
-    ttk.Label(
+    status_label = ttk.Label(
         surface,
         textvariable=status_var,
         style="ProductMeta.TLabel",
-        wraplength=700,
+        wraplength=300,
         justify="left",
-    ).grid(row=2, column=0, sticky="w", pady=(7, 0))
+    )
+    status_label.grid(row=2, column=0, sticky="ew", pady=(7, 0))
+
+    def fit_status(event) -> None:
+        status_label.configure(wraplength=max(160, int(event.width) - 24))
+
+    surface.bind("<Configure>", fit_status)
 
     return CadAssetPreviewControls(
         frame=surface,

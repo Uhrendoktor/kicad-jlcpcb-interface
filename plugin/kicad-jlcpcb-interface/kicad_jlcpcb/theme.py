@@ -24,6 +24,9 @@ _PALETTES: dict[str, dict[str, str]] = {
         "accent": "#79b8e4",
         "accent_foreground": "#17232e",
         "basic_foreground": "#9bd8b7",
+        "error": "#ff7770",
+        "warning": "#f5c56b",
+        "info": "#84caff",
         "scroll_thumb": "#505d69",
         "scroll_trough": "#1d242a",
     },
@@ -40,6 +43,9 @@ _PALETTES: dict[str, dict[str, str]] = {
         "accent": "#2f6f9f",
         "accent_foreground": "#ffffff",
         "basic_foreground": "#24684b",
+        "error": "#b42318",
+        "warning": "#9a6700",
+        "info": "#175cd3",
         "scroll_thumb": "#c1cbd5",
         "scroll_trough": "#e8edf2",
     },
@@ -393,6 +399,42 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         foreground=palette["muted"],
     )
     style.configure(
+        "ValidationError.TLabel",
+        background=palette["surface"],
+        foreground=palette["error"],
+        font=("TkDefaultFont", 9),
+    )
+    style.configure(
+        "ValidationWarning.TLabel",
+        background=palette["surface"],
+        foreground=palette["warning"],
+        font=("TkDefaultFont", 9),
+    )
+    style.configure(
+        "ValidationInfo.TLabel",
+        background=palette["surface"],
+        foreground=palette["info"],
+        font=("TkDefaultFont", 9),
+    )
+    style.configure(
+        "NoticeError.TLabel",
+        background=palette["surface_alt"],
+        foreground=palette["error"],
+        font=("TkDefaultFont", 9, "bold"),
+    )
+    style.configure(
+        "NoticeWarning.TLabel",
+        background=palette["surface_alt"],
+        foreground=palette["warning"],
+        font=("TkDefaultFont", 9, "bold"),
+    )
+    style.configure(
+        "NoticeInfo.TLabel",
+        background=palette["surface_alt"],
+        foreground=palette["info"],
+        font=("TkDefaultFont", 9, "bold"),
+    )
+    style.configure(
         "Accent.TLabel",
         background=palette["background"],
         foreground=palette["accent"],
@@ -516,6 +558,25 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         lightcolor=[("focus", palette["accent"])],
         darkcolor=[("focus", palette["accent"])],
     )
+    for severity in ("Error", "Warning", "Info"):
+        color = palette[severity.casefold()]
+        entry_style = f"Validation{severity}.TEntry"
+        style.configure(
+            entry_style,
+            fieldbackground=palette["field"],
+            foreground=palette["foreground"],
+            insertcolor=palette["foreground"],
+            bordercolor=color,
+            lightcolor=color,
+            darkcolor=color,
+            padding=(7, 5),
+        )
+        style.map(
+            entry_style,
+            bordercolor=[("focus", color), ("!focus", color)],
+            lightcolor=[("focus", color), ("!focus", color)],
+            darkcolor=[("focus", color), ("!focus", color)],
+        )
     style.configure(
         "TCombobox",
         fieldbackground=palette["field"],

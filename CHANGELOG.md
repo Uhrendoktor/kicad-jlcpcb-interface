@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Place editable KiCad properties and proposal metadata in a left column beside supplier details and tabbed CAD previews on the right; synchronize the Footprint field to the visible CAD candidate unless the user explicitly overrides it.
+- Show field-specific validation below its source input, block generation on missing required fields, and classify review notes with explicit Error, Warning or Info labels, readable icons and theme-aware severity colors.
+- Export downloaded schematic symbols, footprints and optional STEP models to user-selected KiCad libraries; register the libraries in the active project and refuse conflicting user-owned content.
+- Add a confirmed Sync with library action that updates writable project/user symbol definitions and every schematic instance using the same library symbol, with rollback attempts on failed schematic write-back.
 - Discover public EasyEDA CAD by LCSC number when local KiCad symbol or footprint mappings are missing. No credentials are required; symbol and footprint assets are independent, cached, previewed with SVG rendering and proposed in editable Add/Update fields.
 - Convert EasyEDA 2D CAD through the independent MIT-licensed `euc2k` package; use the shared `resvg_py` renderer for 2D CAD previews. Preserve upstream source/author/licence notes in the CAD cache.
 - Fetch optional upstream EasyEDA STEP models, attach portable project-relative references to accepted footprints, and render a 3D review thumbnail with KiCad CLI when available. Model files and previews are independently cached and integrity checked.

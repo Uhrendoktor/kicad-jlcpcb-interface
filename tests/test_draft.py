@@ -3,7 +3,8 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
@@ -13,6 +14,7 @@ from kicad_jlcpcb.draft import (  # noqa: E402
     apply_component_draft_fields,
     build_component_draft,
     symbol_library_id,
+    update_schematic_symbols,
 )
 from kicad_jlcpcb.provider import JlcPartDetails  # noqa: E402
 
@@ -383,6 +385,141 @@ class ComponentDraftTests(unittest.TestCase):
             symbol.footprint_field.text.value,
             "Resistor_SMD:R_0402_1005Metric",
         )
+
+
+    def test_update_schematic_symbols_packs_all_items_in_one_ipc_request(self):
+        class CopyField:
+            def CopyFrom(self, value):
+                self.value = value
+
+        class FakeUpdateItems:
+            def __init__(self):
+                self.header = SimpleNamespace(document=CopyField())
+                self.items = []
+
+        editor_module = ModuleType("editor_commands_pb2")
+        editor_module.UpdateItems = FakeUpdateItems
+        editor_module.UpdateItemsResponse = object
+
+        commands_module = ModuleType("kipy.proto.common.commands")
+        commands_module.__path__ = []
+        commands_module.editor_commands_pb2 = editor_module
+        common_module = ModuleType("kipy.proto.common")
+        common_module.__path__ = []
+        proto_module = ModuleType("kipy.proto")
+        proto_module.__path__ = []
+        kipy_module = ModuleType("kipy")
+        kipy_module.__path__ = []
+        util_module = ModuleType("kipy.util")
+        util_module.pack_any = lambda value: ("packed", value)
+
+        statuses = [
+            SimpleNamespace(code=1, error_message=""),
+            SimpleNamespace(code=1, error_message=""),
+        ]
+        response = SimpleNamespace(
+            status=1,
+            updated_items=[
+                SimpleNamespace(status=status) for status in statuses
+            ],
+        )
+        sent = {}
+
+        def send(command, response_type):
+            sent["command"] = command
+            sent["response_type"] = response_type
+            return response
+
+        document = object()
+        first_proto = object()
+        second_proto = object()
+        schematic = SimpleNamespace(
+            document=document,
+            client=SimpleNamespace(send=send),
+        )
+        symbols = (
+            SimpleNamespace(proto=first_proto),
+            SimpleNamespace(proto=second_proto),
+        )
+        modules = {
+            "kipy": kipy_module,
+            "kipy.proto": proto_module,
+            "kipy.proto.common": common_module,
+            "kipy.proto.common.commands": commands_module,
+            "kipy.proto.common.commands.editor_commands_pb2": editor_module,
+            "kipy.util": util_module,
+        }
+
+        with patch.dict(sys.modules, modules):
+            update_schematic_symbols(schematic, symbols)
+
+        command = sent["command"]
+        self.assertIs(command.header.document.value, document)
+        self.assertEqual(
+            command.items,
+            [("packed", first_proto), ("packed", second_proto)],
+        )
+        self.assertIs(sent["response_type"], object)
+
+    def test_update_schematic_symbols_reports_a_failed_item_status(self):
+        class CopyField:
+            def CopyFrom(self, value):
+                self.value = value
+
+        class FakeUpdateItems:
+            def __init__(self):
+                self.header = SimpleNamespace(document=CopyField())
+                self.items = []
+
+        editor_module = ModuleType("editor_commands_pb2")
+        editor_module.UpdateItems = FakeUpdateItems
+        editor_module.UpdateItemsResponse = object
+        commands_module = ModuleType("kipy.proto.common.commands")
+        commands_module.__path__ = []
+        commands_module.editor_commands_pb2 = editor_module
+        common_module = ModuleType("kipy.proto.common")
+        common_module.__path__ = []
+        proto_module = ModuleType("kipy.proto")
+        proto_module.__path__ = []
+        kipy_module = ModuleType("kipy")
+        kipy_module.__path__ = []
+        util_module = ModuleType("kipy.util")
+        util_module.pack_any = lambda value: value
+
+        response = SimpleNamespace(
+            status=1,
+            updated_items=[
+                SimpleNamespace(status=SimpleNamespace(code=1, error_message="")),
+                SimpleNamespace(
+                    status=SimpleNamespace(
+                        code=2, error_message="invalid item identity"
+                    )
+                ),
+            ],
+        )
+        schematic = SimpleNamespace(
+            document=object(),
+            client=SimpleNamespace(
+                send=lambda _command, _response_type: response
+            ),
+        )
+        modules = {
+            "kipy": kipy_module,
+            "kipy.proto": proto_module,
+            "kipy.proto.common": common_module,
+            "kipy.proto.common.commands": commands_module,
+            "kipy.proto.common.commands.editor_commands_pb2": editor_module,
+            "kipy.util": util_module,
+        }
+
+        with patch.dict(sys.modules, modules):
+            with self.assertRaisesRegex(
+                RuntimeError, "symbol 2: item status 2.*invalid item identity"
+            ):
+                update_schematic_symbols(
+                    schematic,
+                    (SimpleNamespace(proto=object()), SimpleNamespace(proto=object())),
+                )
 
 
 if __name__ == "__main__":

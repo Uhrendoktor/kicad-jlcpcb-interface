@@ -100,6 +100,11 @@ class ThemeResolutionTests(unittest.TestCase):
         self.assertIn("basic_foreground", dark)
         self.assertNotEqual(light["basic_foreground"], light["muted"])
         self.assertNotEqual(dark["basic_foreground"], dark["muted"])
+        for palette in (light, dark):
+            for severity in ("error", "warning", "info"):
+                self.assertIn(severity, palette)
+                self.assertNotEqual(palette[severity], palette["foreground"])
+                self.assertNotEqual(palette[severity], palette["muted"])
         light["background"] = "#000000"
         self.assertNotEqual(palette_for_theme("light")["background"], "#000000")
 
