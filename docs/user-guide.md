@@ -166,6 +166,14 @@ Both contexts use the same workspace hierarchy: a compact search toolbar, Basic-
 4. Review the proposed fields, inference confidence, catalogue source/freshness and warnings before applying anything. Edit **Value**, **Footprint**, and (in Add mode) **KiCad Library:Symbol** as needed. Downloaded CAD is a candidate, not a verified electrical/mechanical equivalent; your manual edits take precedence over late search results.
 5. In Update mode, click **Update component** to write the reviewed fields directly to the selected symbol. If the Footprint field still matches the downloaded candidate, its project-local footprint library is registered first. The selected symbol identity, graphics, pins, units and electrical types remain unchanged. In Add mode, **Generate & select component** imports the reviewed CAD assets into project-local libraries, creates the project-local symbol and inserts it into the schematic. Neither action opens an extra confirmation window.
 
+The review workspace keeps editable KiCad properties and field-specific guidance in
+the left column, with the supplier record and tabbed Symbol, Footprint and 3D model
+previews in the right column. An invalid symbol or footprint identifier is called out
+directly below its input; a missing required symbol or component value blocks
+generation. Optional footprints are warnings rather than blocking errors. The review
+notes use explicit **Error**, **Warning** and **Info** labels as well as icons and
+theme-aware colors, so severity is never communicated by color alone.
+
 The review controls are deliberately editable. An uncertain symbol or footprint is not silently treated as correct, and an optional footprint can be filled in later. Catalogue images and CAD previews load in the background; stale search results are ignored and user-edited fields are not overwritten. A missing CAD record, unavailable preview or conversion error leaves the existing manual workflow usable.
 
 ### Understand the inference confidence
