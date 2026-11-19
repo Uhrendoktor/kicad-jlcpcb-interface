@@ -1408,13 +1408,6 @@ def _export_symbol_to_library(
             "The selected CAD symbol extends another symbol and cannot be exported alone. "
             "Choose a standalone definition."
         )
-    if not any(
-        _head(node) == "pin" for node in _walk(source_symbol)
-    ):
-        raise SymbolLibraryError(
-            "The selected CAD symbol has no pins and cannot be used as a component."
-        )
-
     existed = target_path.exists()
     original_text = None
     if existed:
