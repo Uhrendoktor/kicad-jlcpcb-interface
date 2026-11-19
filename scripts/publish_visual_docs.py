@@ -32,8 +32,6 @@ ASSET_NAMES = {
     "populate-component-dark.png",
     "add-component-light.png",
     "add-component-dark.png",
-    "add-component-cad-preview-light.png",
-    "add-component-cad-preview-dark.png",
 }
 BRANCH = "docs/previews"
 
