@@ -2326,17 +2326,11 @@ class ComponentPopulator:
             and bool(draft.proposed_fields)
             and (not self.create_mode or complete_for_placement)
         )
-        if can_apply:
-            status = (
-                "Review the proposed properties, then generate the symbol and "
-                "place it at the sheet center."
-                if self.create_mode
-                else "Review the proposed properties, then update the selected symbol."
-            )
-        else:
-            status = (
-                "This proposal is incomplete or incompatible; automatic write-back is disabled."
-            )
+        status = (
+            ""
+            if can_apply
+            else "This proposal is incomplete or incompatible; automatic write-back is disabled."
+        )
         self.status_var.set(status)
         self.apply_button.configure(state="normal" if can_apply else "disabled")
         if self.selected_details is not None:
