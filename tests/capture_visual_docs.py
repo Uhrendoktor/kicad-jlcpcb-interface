@@ -1495,7 +1495,6 @@ def _drive_populator_form(
                 populator.draft is None
                 or str(populator.apply_button.cget("state")) != "normal"
                 or populator._image_pending
-                or populator._cad_pending
             ):
                 if time.monotonic() >= state["deadline"]:
                     raise TimeoutError(
@@ -1721,6 +1720,11 @@ def _capture_passive_component_workflows(
     populate.footprint_filter_var.set("0402")
     populate.tolerance_filter_var.set("5%")
     populate._toggle_advanced_filters()
+    # Keep the Update example on its known local Device:R footprint. The
+    # dedicated Add-mode fixture below exercises the live EasyEDA CAD fallback
+    # and captures the selected 3D tab; do not let that optional lookup replace
+    # this deterministic stock-mapping review example.
+    populate._request_cad_assets = lambda _details, _draft: None
     populate.lookup()
 
     def validate_populate_result(populator: ComponentPopulator) -> None:
