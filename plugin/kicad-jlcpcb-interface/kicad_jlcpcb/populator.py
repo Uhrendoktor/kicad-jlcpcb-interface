@@ -1683,11 +1683,18 @@ class ComponentPopulator:
                 )
             )
         if not needs_symbol and not needs_footprint:
+            # No external candidate is needed; let the property editor use the
+            # whole review row instead of leaving an empty 40% CAD column.
+            self.properties_column.grid_configure(columnspan=2)
+            self.preview_column.grid_remove()
             if self._cad_assets is None:
                 self.cad_status_var.set(
                     "A local KiCad symbol/footprint mapping is already available."
                 )
             return
+
+        self.properties_column.grid_configure(columnspan=1)
+        self.preview_column.grid()
         if self._cad_pending or self._cad_attempted:
             return
         self._cad_pending = True
