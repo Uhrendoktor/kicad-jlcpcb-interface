@@ -1931,10 +1931,13 @@ def _capture_easyeda_3d_preview(
             target=populator,
             request=original_request,
         ) -> None:
-            # Force the app's supported fallback path without marking the empty
-            # footprint as a deliberate user edit.
-            target.footprint_var.set("")
-            target._manual_proposal_fields.discard("footprint")
+            # Clear the initial proposal once to force the app's supported
+            # fallback path. _render_draft requests again after the result arrives;
+            # clearing on that second call would undo the synchronized candidate.
+            requested_code = str(details.lcsc or "").strip().upper()
+            if target._cad_lcsc != requested_code:
+                target.footprint_var.set("")
+                target._manual_proposal_fields.discard("footprint")
             request(details, draft)
 
         populator._request_cad_assets = request_external_cad
@@ -1978,6 +1981,20 @@ def _capture_easyeda_3d_preview(
                     raise RuntimeError(
                         f"EasyEDA returned no usable footprint for {lcsc}: "
                         f"{assets.warnings!r}"
+                    )
+                if populator.footprint_var.get().strip() != assets.footprint_library_id:
+                    raise RuntimeError(
+                        "The Footprint field is not synchronized to the visible CAD "
+                        "candidate: "
+                        f"field={populator.footprint_var.get()!r}, "
+                        f"candidate={assets.footprint_library_id!r}"
+                    )
+                if populator.draft.footprint != assets.footprint_library_id:
+                    raise RuntimeError(
+                        "The component draft Footprint does not match the visible CAD "
+                        "candidate: "
+                        f"draft={populator.draft.footprint!r}, "
+                        f"candidate={assets.footprint_library_id!r}"
                     )
                 if not assets.has_3d_model or not assets.model_preview_png:
                     raise RuntimeError(
