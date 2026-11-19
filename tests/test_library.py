@@ -632,13 +632,13 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
     def test_exports_footprint_and_step_model_to_user_selected_locations(self):
         model = self.project / "source-model.step"
         model.write_bytes(
-            b"ISO-10303-21;\\nHEADER;\\nENDSEC;\\nDATA;\\nENDSEC;\\nEND-ISO-10303-21;"
+            b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"
         )
         reference = "${KIPRJMOD}/cache/source-model.step"
         self.source.write_text(
             '(footprint "Example_0402" (version 20240108) '
             '(model "' + reference + '" (at (xyz 0 0 0)) '
-            '(scale (xyz 1 1 1)) (rotate (xyz 0 0 0))))\\n',
+            '(scale (xyz 1 1 1)) (rotate (xyz 0 0 0))))\n',
             encoding="utf-8",
         )
         footprint_library = self.project / "ReusableFootprints.pretty"
@@ -672,15 +672,15 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
 
     def test_export_refuses_to_replace_a_user_footprint_without_leaving_a_model(self):
         model = self.project / "source-model.step"
-        model.write_bytes(b"ISO-10303-21;\\nEND-ISO-10303-21;")
+        model.write_bytes(b"ISO-10303-21;\nEND-ISO-10303-21;")
         self.source.write_text(
-            '(footprint "Example_0402" (model "${KIPRJMOD}/cache/source-model.step"))\\n',
+            '(footprint "Example_0402" (model "${KIPRJMOD}/cache/source-model.step"))\n',
             encoding="utf-8",
         )
         target_dir = self.project / "ReusableFootprints.pretty"
         target_dir.mkdir()
         target = target_dir / "Example_0402.kicad_mod"
-        target.write_text('(footprint "UserEdited")\\n', encoding="utf-8")
+        target.write_text('(footprint "UserEdited")\n', encoding="utf-8")
         before = target.read_bytes()
         model_directory = self.project / "Reusable3D"
 
