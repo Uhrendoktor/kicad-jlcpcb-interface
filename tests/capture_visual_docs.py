@@ -1128,6 +1128,18 @@ def _assert_section_heading_typography(root: Any) -> None:
                 f"{heading_style}={(actual_font, actual_foreground)!r}."
             )
 
+def _assert_overview_detail_cards(browser: Any) -> None:
+    """Keep catalogue prices and schematic properties inside styled cards."""
+    for name, card in (
+        ("Catalogue details", browser.catalogue_details_card),
+        ("Schematic properties", browser.schematic_properties_card),
+    ):
+        if str(card.cget("style")) != "Card.TFrame":
+            raise RuntimeError(
+                f"{name} must use the shared card container style, "
+                f"not {card.cget('style')!r}."
+            )
+
 
 def _drive_overview(
     schematic: Any, output_dir: Path, cache_dir: Path
@@ -1137,6 +1149,7 @@ def _drive_overview(
     browser.root.geometry("1480x1250+20+20")
     root = browser.root
     _assert_section_heading_typography(root)
+    _assert_overview_detail_cards(browser)
     failures: list[str] = []
     frames = (
         output_dir / "component-browser-initial.png",
