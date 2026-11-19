@@ -1327,6 +1327,12 @@ def _register_selected_library(
     raise SymbolLibraryConflict("Could not allocate a free KiCad library nickname for the selected path.")
 
 
+def _path_has_symlink_component(path: str | Path) -> bool:
+    """Detect symlinks in a destination path, including parent directories."""
+    candidate = Path(os.path.abspath(Path(path).expanduser()))
+    return any(part.is_symlink() for part in (candidate, *candidate.parents))
+
+
 def _atomic_write_bytes(path: Path, content: bytes) -> None:
     if path.is_symlink():
         raise SymbolLibraryConflict(f"Refusing to replace symlinked asset {path}.")
@@ -1359,8 +1365,10 @@ def _export_symbol_to_library(
     target_path = Path(target_file).expanduser()
     if target_path.suffix.casefold() != ".kicad_sym":
         raise SymbolLibraryError("Select a KiCad schematic symbol library file ending in .kicad_sym.")
-    if target_path.is_symlink():
-        raise SymbolLibraryConflict("Refusing to export into a symlinked symbol library.")
+    if _path_has_symlink_component(target_path):
+        raise SymbolLibraryConflict(
+            "Refusing to export into a symbol library path containing a symlink."
+        )
     target_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -1375,6 +1383,13 @@ def _export_symbol_to_library(
     source_symbol = _root_symbol(source_root, safe_name)
     if source_symbol is None:
         raise SymbolLibraryError(f"The CAD library does not contain symbol {safe_name!r}.")
+    if _direct(source_symbol, "extends"):
+        raise SymbolLibraryError(
+            "The selected CAD symbol extends another symbol and cannot be exported alone. "
+            "Choose a standalone definition."
+        )
+    if not any(_head(node) == "pin" for node in _walk(source_symbol)):
+        raise SymbolLibraryError("The selected CAD symbol has no pins and cannot be used as a component.")
 
     existed = target_path.exists()
     original_text = None
@@ -1433,8 +1448,10 @@ def _export_footprint_to_library(
     target_dir = Path(target_library).expanduser()
     if target_dir.suffix.casefold() != ".pretty":
         raise SymbolLibraryError("Select a KiCad footprint library directory ending in .pretty.")
-    if target_dir.is_symlink():
-        raise SymbolLibraryConflict("Refusing to export into a symlinked footprint library.")
+    if _path_has_symlink_component(target_dir):
+        raise SymbolLibraryConflict(
+            "Refusing to export into a footprint library path containing a symlink."
+        )
     target_dir.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -1467,11 +1484,15 @@ def _export_footprint_to_library(
         if len(model_nodes) != 1 or len(model_nodes[0]) < 2:
             raise SymbolLibraryError("The selected footprint must contain exactly one 3D model reference.")
         model_dir = Path(model_directory).expanduser()
-        if model_dir.is_symlink():
-            raise SymbolLibraryConflict("Refusing to export into a symlinked 3D model directory.")
+        if _path_has_symlink_component(model_dir):
+            raise SymbolLibraryConflict(
+                "Refusing to export into a 3D model path containing a symlink."
+            )
         copied_model = model_dir / model_source.name
-        if copied_model.is_symlink():
-            raise SymbolLibraryConflict("The destination STEP model is a symlink.")
+        if _path_has_symlink_component(copied_model):
+            raise SymbolLibraryConflict(
+                "The destination STEP model path contains a symlink."
+            )
         if copied_model.exists() and (
             not copied_model.is_file() or copied_model.read_bytes() != model_bytes
         ):
