@@ -86,6 +86,73 @@ class FakeOpener:
         return FakeResponse(json.dumps(payload).encode("utf-8"), url)
 
 
+class StepPreviewRenderingTests(unittest.TestCase):
+    def test_temporary_3d_render_hides_only_reference_text(self):
+        from kicad_jlcpcb.library import Atom, parse_sexpr
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            footprint_path = root / "Example.kicad_mod"
+            model_path = root / "Example.step"
+            original = (
+                '(footprint "Example" (version 20240108) (generator "test") '
+                '(layer "F.Cu") '
+                '(fp_text reference "REF**" (at 0 0) (layer "F.SilkS") '
+                '(effects (font (size 1 1) (thickness 0.15)))) '
+                '(fp_text value "Example" (at 0 1) (layer "F.Fab") '
+                '(effects (font (size 1 1) (thickness 0.15)))) '
+                '(model "${KIPRJMOD}/JLCPCB_C12345.3dshapes/model.step" '
+                '(at (xyz 0 0 0)) (scale (xyz 1 1 1)) '
+                '(rotate (xyz 0 0 0))))'
+            )
+            footprint_path.write_text(original, encoding="utf-8")
+            model_path.write_bytes(b"ISO-10303-21;\\nEND-ISO-10303-21;")
+
+            captured = {}
+
+            def fake_render(command, **_kwargs):
+                board_path = Path(command[-1])
+                board = parse_sexpr(board_path.read_text(encoding="utf-8"))
+                footprint = next(
+                    node for node in board
+                    if isinstance(node, list)
+                    and node
+                    and isinstance(node[0], Atom)
+                    and node[0].value == "footprint"
+                )
+                texts = {
+                    node[1].value: node
+                    for node in footprint
+                    if isinstance(node, list)
+                    and len(node) >= 3
+                    and isinstance(node[0], Atom)
+                    and node[0].value == "fp_text"
+                }
+                captured["reference_hidden"] = any(
+                    isinstance(child, Atom) and child.value == "hide"
+                    for child in texts["reference"]
+                )
+                captured["value_hidden"] = any(
+                    isinstance(child, Atom) and child.value == "hide"
+                    for child in texts["value"]
+                )
+                output_path = Path(command[command.index("--output") + 1])
+                output_path.write_bytes(b"\\x89PNG\\r\\n\\x1a\\npreview")
+                return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+            with (
+                patch("kicad_jlcpcb.cad_assets.shutil.which", return_value="kicad-cli"),
+                patch("kicad_jlcpcb.cad_assets.subprocess.run", side_effect=fake_render),
+            ):
+                preview = render_step_preview(footprint_path, model_path)
+
+            self.assertTrue(preview.startswith(b"\\x89PNG\\r\\n\\x1a\\n"))
+            self.assertTrue(captured["reference_hidden"])
+            self.assertFalse(captured["value_hidden"])
+            self.assertEqual(footprint_path.read_text(encoding="utf-8"), original)
+            self.assertNotIn(" hide", footprint_path.read_text(encoding="utf-8"))
+
+
 class CadAssetProviderTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
