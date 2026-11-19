@@ -2030,25 +2030,50 @@ class ComponentPopulator:
         ):
             return
 
+        original_protos = []
+        for symbol in matching:
+            snapshot = type(symbol.proto)()
+            snapshot.CopyFrom(symbol.proto)
+            original_protos.append(snapshot)
+
         library_path = None
         original_library = None
+        ipc_update_attempted = False
         try:
             project = self.schematic.get_project()
             library_path, original_library = sync_symbol_library_properties(
                 project, self.library_id, draft
             )
-            for symbol in matching:
-                apply_component_draft_fields(
-                    symbol,
-                    draft,
-                    expected_library_id=self.library_id,
-                    allow_symbol_mismatch=True,
-                )
             try:
+                for symbol in matching:
+                    apply_component_draft_fields(
+                        symbol,
+                        draft,
+                        expected_library_id=self.library_id,
+                        allow_symbol_mismatch=True,
+                    )
+                ipc_update_attempted = True
                 update_schematic_symbols(self.schematic, matching)
                 self.schematic.save()
             except Exception:
-                restore_symbol_library_snapshot(library_path, original_library)
+                rollback_errors = []
+                try:
+                    for symbol, snapshot in zip(matching, original_protos):
+                        symbol.proto.CopyFrom(snapshot)
+                    if ipc_update_attempted:
+                        update_schematic_symbols(self.schematic, matching)
+                        self.schematic.save()
+                except Exception as rollback_exc:
+                    rollback_errors.append(f"schematic rollback failed: {rollback_exc}")
+                try:
+                    restore_symbol_library_snapshot(library_path, original_library)
+                except Exception as rollback_exc:
+                    rollback_errors.append(f"library rollback failed: {rollback_exc}")
+                if rollback_errors:
+                    raise RuntimeError(
+                        "Sync failed and rollback was incomplete. "
+                        + "; ".join(rollback_errors)
+                    )
                 raise
         except Exception as exc:
             self.status_var.set(f"Library sync failed: {exc}")
@@ -2056,7 +2081,7 @@ class ComponentPopulator:
             self.messagebox.showerror(
                 "Library sync failed",
                 "The library and schematic could not both be synced. "
-                "The library file is rolled back when the schematic update fails.\n\n"
+                "Rollback was attempted for both the library file and affected schematic symbols.\n\n"
                 + str(exc),
                 parent=self.root,
             )
