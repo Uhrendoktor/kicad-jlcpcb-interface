@@ -419,6 +419,8 @@ class ComponentBrowser:
             self.catalogue_status_var,
             product_command=self.open_product_page,
             datasheet_command=self.open_datasheet,
+            lcsc_command=self.search_lcsc,
+            copy_lcsc_command=self.copy_part_id,
             variable_keys={"lcsc": "part", "library": "basic"},
         )
         self.product_preview.frame.grid(
@@ -553,22 +555,6 @@ class ComponentBrowser:
             text="Select same part on sheet",
             command=self.select_same_part_on_sheet,
         ).pack(side="left")
-
-        links = ttk.Frame(content)
-        links.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-        links.columnconfigure((0, 1), weight=1)
-        link_actions = (
-            ("Copy part ID", self.copy_part_id),
-            ("Search LCSC", self.search_lcsc),
-        )
-        for index, (label, command) in enumerate(link_actions):
-            ttk.Button(links, text=label, command=command).grid(
-                row=index // 2,
-                column=index % 2,
-                sticky="ew",
-                padx=(0, 6) if index % 2 == 0 else (0, 0),
-                pady=(0, 4),
-            )
 
         footer = ttk.Frame(self.root, padding=(16, 0, 16, 12))
         footer.grid(row=2, column=0, sticky="ew")
