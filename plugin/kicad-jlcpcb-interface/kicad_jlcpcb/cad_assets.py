@@ -199,7 +199,7 @@ def _format_rotation(values: tuple[float, float, float]) -> list[Any]:
 
 
 def _hide_footprint_reference_text(footprint: list[Any]) -> int:
-    """Hide reference-designator text in the temporary 3D preview footprint only."""
+    """Hide the reference-designator text in the temporary 3D preview board."""
     hidden = 0
     for node in footprint:
         if (
@@ -211,42 +211,26 @@ def _hide_footprint_reference_text(footprint: list[Any]) -> int:
             or node[1].value.casefold() != "reference"
         ):
             continue
-        # KiCad's footprint grammar places [hide] after (layer ...) and
-        # before (effects ...); a trailing token is silently ignored by renderers.
-        for index in range(len(node) - 1, 1, -1):
-            child = node[index]
-            if isinstance(child, Atom) and child.value == "hide":
-                node.pop(index)
-        layer_index = next(
-            (
-                index for index, child in enumerate(node[2:], start=2)
-                if (
-                    isinstance(child, list)
-                    and child
-                    and isinstance(child[0], Atom)
-                    and child[0].value == "layer"
-                )
-            ),
-            None,
-        )
+        if any(
+            isinstance(child, Atom) and child.value == "hide"
+            for child in node[2:]
+        ):
+            hidden += 1
+            continue
         effects_index = next(
             (
-                index for index, child in enumerate(node[2:], start=2)
-                if (
-                    isinstance(child, list)
-                    and child
-                    and isinstance(child[0], Atom)
-                    and child[0].value == "effects"
-                )
+                index
+                for index, child in enumerate(node)
+                if isinstance(child, list)
+                and child
+                and isinstance(child[0], Atom)
+                and child[0].value == "effects"
             ),
             len(node),
         )
-        insert_at = (
-            layer_index + 1
-            if layer_index is not None
-            else effects_index
-        )
-        node.insert(insert_at, Atom("hide"))
+        # KiCad's fp_text grammar places the bare [hide] token after (layer)
+        # and before (effects). A token appended after (effects) is ignored.
+        node.insert(effects_index, Atom("hide"))
         hidden += 1
     return hidden
 
