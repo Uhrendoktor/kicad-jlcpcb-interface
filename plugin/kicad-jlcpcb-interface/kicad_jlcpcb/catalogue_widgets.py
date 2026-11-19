@@ -260,7 +260,7 @@ def build_cad_asset_preview(
         tab.rowconfigure(0, weight=1)
         notebook.add(tab, text=caption)
         preview_surface = ttk.Frame(
-            tab, style="ProductImage.TFrame", width=460, height=250
+            tab, style="ProductImage.TFrame", width=320, height=220
         )
         preview_surface.grid(row=0, column=0, sticky="nsew")
         preview_surface.grid_propagate(False)
@@ -271,19 +271,25 @@ def build_cad_asset_preview(
             justify="center",
             padding=8,
             style="ProductImage.TLabel",
-            wraplength=420,
+            wraplength=290,
         )
         label.pack(fill="both", expand=True)
         tabs.append(tab)
         labels.append(label)
 
-    ttk.Label(
+    status_label = ttk.Label(
         surface,
         textvariable=status_var,
         style="ProductMeta.TLabel",
-        wraplength=700,
+        wraplength=300,
         justify="left",
-    ).grid(row=2, column=0, sticky="w", pady=(7, 0))
+    )
+    status_label.grid(row=2, column=0, sticky="ew", pady=(7, 0))
+
+    def fit_status(event) -> None:
+        status_label.configure(wraplength=max(160, int(event.width) - 24))
+
+    surface.bind("<Configure>", fit_status)
 
     return CadAssetPreviewControls(
         frame=surface,
