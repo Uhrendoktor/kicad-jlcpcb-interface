@@ -31,6 +31,7 @@ from kicad_jlcpcb.library import (  # noqa: E402
     restore_symbol_library_snapshot,
     sync_symbol_library_properties,
     symbol_library_entry_available,
+    writable_user_symbol_library_available,
 )
 
 DEVICE_LIBRARY = r'''
@@ -308,6 +309,53 @@ class ProjectLibraryTests(unittest.TestCase):
 
         restore_symbol_library_snapshot(library_path, snapshot)
         self.assertEqual(library_path.read_text(encoding="utf-8"), before)
+
+    def test_sync_preserves_library_fields_when_catalogue_omits_them(self):
+        generated = self.generate()
+        revised = replace(
+            resistor_draft(),
+            value="",
+            footprint="",
+            datasheet_url="",
+            description="",
+        )
+
+        library_path, _snapshot = sync_symbol_library_properties(
+            self.project, generated.library_id, revised
+        )
+        root = self.read_library(library_path)
+        symbol = next(
+            node for node in root
+            if isinstance(node, list) and node and node[0].value == "symbol"
+        )
+        properties = {
+            node[1].value: node[2].value
+            for node in symbol
+            if isinstance(node, list) and node and node[0].value == "property"
+        }
+        self.assertEqual(properties["Value"], "10k")
+        self.assertEqual(
+            properties["Footprint"], "Resistor_SMD:R_0402_1005Metric"
+        )
+        self.assertEqual(properties["Datasheet"], "https://example.test/resistor.pdf")
+        self.assertEqual(properties["Description"], resistor_draft().description)
+
+    def test_writable_library_check_only_accepts_registered_project_or_user_libraries(self):
+        generated = self.generate()
+        self.assertTrue(
+            writable_user_symbol_library_available(
+                self.project, generated.library_id
+            )
+        )
+        with patch(
+            "kicad_jlcpcb.library._global_library_tables",
+            return_value=(),
+        ):
+            self.assertFalse(
+                writable_user_symbol_library_available(
+                    self.project, "Device:R"
+                )
+            )
 
     def test_copies_a_multi_pin_non_passive_symbol_and_allows_missing_footprint(self):
         amplifier_library = self.project / "Amplifier_Operational.kicad_sym"
