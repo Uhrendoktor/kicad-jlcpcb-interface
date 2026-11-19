@@ -128,10 +128,26 @@ class StepPreviewRenderingTests(unittest.TestCase):
                     and isinstance(node[0], Atom)
                     and node[0].value == "fp_text"
                 }
-                captured["reference_hidden"] = any(
-                    isinstance(child, Atom) and child.value == "hide"
-                    for child in texts["reference"]
+                reference_children = texts["reference"]
+                layer_index = next(
+                    index for index, child in enumerate(reference_children)
+                    if isinstance(child, list)
+                    and child
+                    and isinstance(child[0], Atom)
+                    and child[0].value == "layer"
                 )
+                effects_index = next(
+                    index for index, child in enumerate(reference_children)
+                    if isinstance(child, list)
+                    and child
+                    and isinstance(child[0], Atom)
+                    and child[0].value == "effects"
+                )
+                hide_index = next(
+                    index for index, child in enumerate(reference_children)
+                    if isinstance(child, Atom) and child.value == "hide"
+                )
+                captured["reference_hidden"] = layer_index < hide_index < effects_index
                 captured["value_hidden"] = any(
                     isinstance(child, Atom) and child.value == "hide"
                     for child in texts["value"]
