@@ -1641,6 +1641,23 @@ def _registered_user_symbol_library(
     )
 
 
+def writable_user_symbol_library_available(
+    project_or_path,
+    library_id: str,
+) -> bool:
+    """Return whether a symbol resolves to a writable project/user library."""
+    parts = str(library_id or "").strip().split(":", 1)
+    if len(parts) != 2 or not all(parts):
+        return False
+    try:
+        _registered_user_symbol_library(
+            _project_directory(project_or_path), parts[0]
+        )
+    except (OSError, SymbolLibraryError, ValueError):
+        return False
+    return True
+
+
 def sync_symbol_library_properties(
     project_or_path,
     library_id: str,
