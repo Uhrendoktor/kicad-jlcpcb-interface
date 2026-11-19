@@ -1627,7 +1627,8 @@ def _registered_user_symbol_library(
             if not any(resolved == root or root in resolved.parents for root in roots):
                 raise SymbolLibraryError(
                     "Sync with library is disabled for system-wide symbol libraries. "
-                    "Export the symbol to a project or user library first."
+                    "Use KiCad Symbol Editor to copy this symbol into a writable project "
+                    "or user library, then select that library in the schematic."
                 )
             if not os.access(resolved, os.W_OK):
                 raise SymbolLibraryError(f"Symbol library {resolved} is not writable.")
