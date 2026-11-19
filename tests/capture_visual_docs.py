@@ -1366,10 +1366,21 @@ def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
         raise RuntimeError("The Basic-only checkbox did not return to its off state.")
 
     active_count = populator._active_advanced_filter_count()
-    if populator._filter_icon_active != bool(active_count):
-        raise RuntimeError("The funnel badge does not reflect whether filters are active.")
-    if not populator.advanced_filters_button.cget("image"):
-        raise RuntimeError("The compact filter button has no funnel icon image.")
+    expected_button_text = (
+        "Filters" if not active_count else f"Filters ({active_count})"
+    )
+    if (
+        populator._filters_active != bool(active_count)
+        or populator.advanced_filters_button.cget("text") != expected_button_text
+        or populator.advanced_filters_button.cget("style") != "ToolbarLink.TButton"
+        or populator.advanced_filters_button.winfo_reqwidth() < 54
+    ):
+        raise RuntimeError(
+            "The labelled Filters control is not visibly reflecting the active filters: "
+            f"text={populator.advanced_filters_button.cget('text')!r}, "
+            f"expected={expected_button_text!r}, "
+            f"width={populator.advanced_filters_button.winfo_reqwidth()}."
+        )
     summary = populator.advanced_filter_summary.cget("text")
     if active_count:
         if "Pkg:" not in summary or "Tol:" not in summary:
@@ -1698,35 +1709,23 @@ def _drive_populator_form(
             root.update()
             toolbar_style = populator.ttk.Style(root)
             toolbar_foreground = toolbar_style.lookup(
-                "Toolbar.TCheckbutton", "foreground"
+                "ToolbarLink.TButton", "foreground"
             )
-            active_foreground = root._kicad_jlcpcb_palette["foreground"]
-            if toolbar_foreground.casefold() != active_foreground.casefold():
+            active_accent = root._kicad_jlcpcb_palette["accent"]
+            if toolbar_foreground.casefold() != active_accent.casefold():
                 raise RuntimeError(
-                    "The search toolbar checkbutton style did not adopt the active "
-                    f"theme: style={toolbar_foreground!r}, palette={active_foreground!r}."
+                    "The Filters button text did not adopt the active theme accent: "
+                    f"style={toolbar_foreground!r}, palette={active_accent!r}."
                 )
-            icon_foreground = populator._filter_icon_image.get(10, 4)
-            expected_icon_foreground = tuple(
-                int(toolbar_foreground[index:index + 2], 16)
-                for index in (1, 3, 5)
-            )
-            displayed_image = populator.advanced_filters_button.cget("image")
-            if isinstance(displayed_image, (tuple, list)):
-                displayed_image_name = (
-                    str(displayed_image[0]) if displayed_image else ""
-                )
-            else:
-                displayed_image_name = str(displayed_image).strip("()'\\\", ")
-            generated_image = str(populator._filter_icon_image)
             if (
-                tuple(icon_foreground) != expected_icon_foreground
-                or displayed_image_name != generated_image
+                populator.advanced_filters_button.cget("text") != "Filters"
+                or populator.advanced_filters_button.winfo_width() < 54
+                or not populator.advanced_filters_button.winfo_viewable()
             ):
                 raise RuntimeError(
-                    "The advanced-filter button is not displaying its theme-aware icon: "
-                    f"pixels={icon_foreground!r}, expected={expected_icon_foreground!r}, "
-                    f"button_image={displayed_image_name!r}, generated_image={generated_image!r}."
+                    "The labelled Filters control is clipped or not visible in dark mode: "
+                    f"text={populator.advanced_filters_button.cget('text')!r}, "
+                    f"width={populator.advanced_filters_button.winfo_width()}."
                 )
             _capture_window(root, output_dir / dark_asset)
             apply_tk_theme(root, "light")
