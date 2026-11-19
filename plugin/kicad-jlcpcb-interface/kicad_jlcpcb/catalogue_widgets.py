@@ -178,7 +178,7 @@ def build_product_preview(
             text="Open in LCSC ↗",
             command=lcsc_command,
             style="Link.TButton",
-            state="disabled",
+            state="normal",
         )
         lcsc_button.pack(side="left", padx=(0, 14))
     datasheet_button = ttk.Button(
