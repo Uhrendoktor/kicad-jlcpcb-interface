@@ -582,6 +582,7 @@ class ComponentPopulator:
         self.properties_column.grid(
             row=0, column=0, sticky="nsew", padx=(0, 12)
         )
+        self.properties_column.bind("<Configure>", self._fit_property_text)
         self.preview_column.grid(row=0, column=1, sticky="nsew")
         self.preview_column.columnconfigure(0, weight=1)
 
@@ -2222,12 +2223,34 @@ class ComponentPopulator:
                 text=message,
                 style="Note.TLabel",
                 wraplength=max(
-                    150, self.properties_column.winfo_width() - 85
+                    140, self.properties_column.winfo_width() - 125
                 ),
                 justify="left",
             ).grid(row=0, column=2, sticky="ew")
         self.notes.grid()
         self.notes_section.grid()
+        self._fit_property_text()
+
+    def _fit_property_text(self, _event=None) -> None:
+        """Keep long proposal values and review notes inside the properties column."""
+        properties_column = getattr(self, "properties_column", None)
+        if properties_column is None:
+            return
+        width = int(properties_column.winfo_width())
+        if width <= 1:
+            return
+
+        note_wrap = max(140, width - 125)
+        notes = getattr(self, "notes", None)
+        if notes is not None and notes.winfo_exists():
+            for row in notes.winfo_children():
+                for child in row.winfo_children():
+                    if str(child.cget("style") or "") == "Note.TLabel":
+                        child.configure(wraplength=note_wrap)
+
+        proposal_wrap = max(140, width - 205)
+        for label in getattr(self, "_proposal_value_labels", ()):
+            label.configure(wraplength=proposal_wrap)
 
     def _clear_proposal_rows(self) -> None:
         for child in self.proposal_rows.winfo_children():
@@ -2270,7 +2293,7 @@ class ComponentPopulator:
                 text=self._proposal_display_value(name, value),
                 style="Card.TLabel",
                 wraplength=max(
-                    150, self.properties_column.winfo_width() - 165
+                    140, self.properties_column.winfo_width() - 205
                 ),
                 justify="left",
             )
@@ -2280,7 +2303,7 @@ class ComponentPopulator:
             self.proposal_section.grid()
         else:
             self.proposal_section.grid_remove()
-
+        self._fit_property_text()
 
     def _render_draft(self, draft: ComponentDraft, cached: bool) -> None:
         if self.selected_details is not None:
