@@ -1141,6 +1141,44 @@ def _assert_overview_detail_cards(browser: Any) -> None:
             )
 
 
+def _assert_overview_row_alignment(browser: Any) -> None:
+    """Align the left edge of catalogue and schematic-property data rows."""
+    browser.root.update_idletasks()
+    row_specs = (
+        (
+            "Catalogue details",
+            browser.catalogue_details_card,
+            ("Price breaks", "Attributes"),
+        ),
+        (
+            "Schematic properties",
+            browser.schematic_properties_card,
+            ("Reference", "Value", "LCSC / JLCPCB", "MPN property", "Footprint"),
+        ),
+    )
+    positions: dict[str, int] = {}
+    for section_name, card, expected_labels in row_specs:
+        labels = {
+            str(child.cget("text")): child
+            for child in card.winfo_children()
+            if str(child.winfo_class()) == "TLabel"
+        }
+        for label_text in expected_labels:
+            label = labels.get(label_text)
+            if label is None:
+                raise RuntimeError(
+                    f"{section_name} is missing the expected row label {label_text!r}."
+                )
+            positions[f"{section_name}/{label_text}"] = int(label.winfo_rootx())
+
+    distinct_edges = set(positions.values())
+    if len(distinct_edges) != 1:
+        raise RuntimeError(
+            "Component Overview data rows do not share one left inset: "
+            f"{positions!r}."
+        )
+
+
 def _drive_overview(
     schematic: Any, output_dir: Path, cache_dir: Path
 ) -> None:
@@ -1150,6 +1188,7 @@ def _drive_overview(
     root = browser.root
     _assert_section_heading_typography(root)
     _assert_overview_detail_cards(browser)
+    _assert_overview_row_alignment(browser)
     failures: list[str] = []
     frames = (
         output_dir / "component-browser-initial.png",
