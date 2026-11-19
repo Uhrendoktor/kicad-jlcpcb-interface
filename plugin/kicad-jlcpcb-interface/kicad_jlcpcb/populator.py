@@ -1442,6 +1442,29 @@ class ComponentPopulator:
         self.cad_status_var.set(
             "External CAD is requested only when a local KiCad mapping is missing."
         )
+        self._set_cad_preview_visible(False)
+
+    @staticmethod
+    def _has_rendered_cad_preview(assets: CadAssetResult | None) -> bool:
+        """Whether CAD data contains at least one image that can be previewed."""
+        return bool(
+            assets is not None
+            and (
+                assets.symbol_preview_png
+                or assets.footprint_preview_png
+                or assets.model_preview_png
+            )
+        )
+
+    def _set_cad_preview_visible(self, visible: bool) -> None:
+        """Show the CAD column only when it contains a real rendered preview."""
+        if visible:
+            self.properties_column.grid_configure(columnspan=1)
+            self.preview_column.grid()
+            self.cad_preview.frame.grid()
+            return
+        self.properties_column.grid_configure(columnspan=2)
+        self.preview_column.grid_remove()
         self.cad_preview.frame.grid_remove()
 
     def _show_cad_assets(self, assets: CadAssetResult | None) -> None:
@@ -1474,6 +1497,7 @@ class ComponentPopulator:
             self.cad_preview.model_label.configure(
                 image="", text="3D preview unavailable", padding=8
             )
+            self._set_cad_preview_visible(False)
             return
         if assets.symbol_preview_png is None:
             self.cad_preview.symbol_label.configure(
@@ -1512,6 +1536,7 @@ class ComponentPopulator:
             f"EasyEDA public CAD · {summary}. Review against the manufacturer datasheet."
             + (f" {warning_text}" if warning_text else "")
         )
+        self._set_cad_preview_visible(self._has_rendered_cad_preview(assets))
 
     def _apply_cad_suggestions(self, assets: CadAssetResult) -> None:
         """Prefill only unresolved fields; never replace deliberate local/manual choices."""
@@ -1580,28 +1605,28 @@ class ComponentPopulator:
         if not needs_symbol and not needs_footprint:
             # No external candidate is needed; let the property editor use the
             # whole review row instead of leaving an empty 40% CAD column.
-            self.properties_column.grid_configure(columnspan=2)
-            self.preview_column.grid_remove()
+            self._set_cad_preview_visible(False)
             if self._cad_assets is None:
                 self.cad_status_var.set(
                     "A local KiCad symbol/footprint mapping is already available."
                 )
             return
 
-        # A completed lookup with no result has nothing to preview. Do not
-        # leave an empty candidate column taking 40% of the review workspace.
-        if self._cad_attempted and not self._cad_pending and self._cad_assets is None:
-            self.properties_column.grid_configure(columnspan=2)
-            self.preview_column.grid_remove()
+        if self._cad_attempted and not self._cad_pending:
+            # A completed lookup may contain CAD files without a renderable
+            # preview. Keep the properties column full-width in that case.
+            self._set_cad_preview_visible(
+                self._has_rendered_cad_preview(self._cad_assets)
+            )
             return
 
-        self.properties_column.grid_configure(columnspan=1)
-        self.preview_column.grid()
-        if self._cad_pending or self._cad_attempted:
+        # Do not reserve a second column while CAD is still being fetched.
+        # Reveal it only after at least one actual preview image is available.
+        self._set_cad_preview_visible(False)
+        if self._cad_pending:
             return
         self._cad_pending = True
         self._cad_attempted = True
-        self.cad_preview.frame.grid()
         self.cad_status_var.set(
             "Searching public EasyEDA CAD by LCSC number (no credentials required)…"
         )
