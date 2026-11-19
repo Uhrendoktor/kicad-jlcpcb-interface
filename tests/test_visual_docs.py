@@ -57,8 +57,12 @@ class VerifyVisualBundleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "inventory mismatch"):
             verify_bundle(self.root, self.source_sha)
 
-    def test_add_and_update_publish_full_height_window_screenshots(self) -> None:
+    def test_all_application_views_publish_full_height_window_screenshots(self) -> None:
         for name in (
+            "component-browser-light.png",
+            "component-browser-dark.png",
+            "component-properties-light.png",
+            "component-properties-dark.png",
             "populate-component-light.png",
             "populate-component-dark.png",
             "add-component-light.png",

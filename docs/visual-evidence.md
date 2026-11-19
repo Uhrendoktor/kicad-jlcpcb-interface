@@ -64,6 +64,10 @@ The paired captures show the same production windows in both palettes. GitHub se
   <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-selected.png" alt="Selected component properties with catalogue image, stock, pricing and MPN results" width="620">
 </p>
 
+The Overview and focused Properties captures also expand the production detail canvas
+and result tables to show the complete fixture content without scrolling. Their
+light/dark pairs are exported at the full window height.
+
 ### Add or Update Component
 
 There is one Eeschema command and one component workspace. Properties, Update and Add
@@ -72,7 +76,7 @@ presentation. Update and Add use a scrollable review page with a persistent acti
 footer, consistent toolbar and card surfaces. Basic listings rank first for passive and
 keyword searches; the Basic-only checkbox can hide Extended and unclassified results.
 
-The following captures expand the actual Tk window to the complete scrollable content
+The Update and Add captures expand the actual Tk window to the complete review-page
 height. Each image therefore includes the top search area, candidate/catalogue preview,
 all KiCad proposal fields, CAD tabs (when available), review notes and the fixed action
 footer in one image. No stitched scroll states or mockups are used.
@@ -132,7 +136,7 @@ This still image shows the linked resistor selected in Eeschema alongside its fo
 
 ## What is exercised
 
-The visual capture runs the production application windows, not separately drawn mockups. It forces the light palette, reapplies the dark palette to each live root, and captures both states from the same widgets; this checks that theme changes update ttk and classic Tk controls without rebuilding the window.
+The visual capture runs the production application windows, not separately drawn mockups. It forces the light palette, reapplies the dark palette to each live root, and captures both states from the same widgets; this checks that theme changes update ttk and classic Tk controls without rebuilding the window. Overview, Properties, Update and Add captures expand their content areas and result tables until their vertical scroll positions show the complete content.
 
 | Workflow | Live GUI / IPC evidence |
 | --- | --- |
@@ -184,7 +188,7 @@ On Ubuntu, install the same classes of system dependencies used by CI, then run:
 sudo apt-get install kicad-nightly kicad-nightly-symbols python3.12-venv python3-tk python3-pil python3-pil.imagetk xvfb xauth xdotool
 python3.12 -m venv --system-site-packages .venv-visual
 .venv-visual/bin/pip install -r plugin/kicad-jlcpcb-interface/requirements.txt
-xvfb-run -a -s "-screen 0 1920x1500x24" \
+xvfb-run -a -s "-screen 0 1920x3000x24" \
   .venv-visual/bin/python tests/capture_visual_docs.py --output-dir artifacts/visual-docs
 ```
 

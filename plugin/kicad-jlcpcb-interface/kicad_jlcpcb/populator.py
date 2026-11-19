@@ -709,8 +709,6 @@ class ComponentPopulator:
 
         row = 1
         self._field_feedback: dict[str, tuple[Any, Any, Any]] = {}
-        self._field_feedback_messages: dict[str, str] = {}
-        self._field_tooltips: list[_HoverTooltip] = []
         self.symbol_hint_label = None
         self.reference_prefix_label = None
 
@@ -739,30 +737,30 @@ class ComponentPopulator:
                 "Reference prefix": "reference_prefix",
             }.get(label)
             if field_key:
-                indicator = ttk.Label(
-                    input_shell,
+                feedback_label = ttk.Label(
+                    component_section,
                     text="",
                     style="ValidationWarning.TLabel",
-                    width=2,
-                    anchor="center",
-                    padding=(3, 1),
-                    cursor="question_arrow",
+                    wraplength=max(
+                        160, self.properties_column.winfo_width() - 60
+                    ),
+                    justify="left",
                 )
-                indicator.grid(row=0, column=1, sticky="e", padx=(6, 0))
-                indicator.grid_remove()
+                feedback_label.grid(
+                    row=row + 1,
+                    column=1,
+                    sticky="ew",
+                    pady=(0, 4),
+                )
+                feedback_label.grid_remove()
                 self._field_feedback[field_key] = (
-                    entry, indicator, label_widget
+                    entry, feedback_label, label_widget
                 )
-                def tooltip_text(key=field_key):
-                    return self._field_feedback_messages.get(key, "")
-
-                self._field_tooltips.append(_HoverTooltip(entry, tooltip_text))
-                self._field_tooltips.append(_HoverTooltip(indicator, tooltip_text))
             if label == "Symbol":
                 self.symbol_hint_label = label_widget
             elif label == "Reference prefix":
                 self.reference_prefix_label = label_widget
-            row += 1
+            row += 2 if field_key else 1
             return entry
 
         if self.create_mode:
@@ -1681,28 +1679,22 @@ class ComponentPopulator:
         controls = getattr(self, "_field_feedback", {}).get(field_name)
         if controls is None:
             return
-        entry, indicator, label = controls
-        messages = getattr(self, "_field_feedback_messages", None)
-        if messages is None:
-            self._field_feedback_messages = {}
-            messages = self._field_feedback_messages
+        entry, feedback_label, field_label = controls
         if not message:
-            messages.pop(field_name, None)
             entry.configure(style="TEntry")
-            indicator.configure(text="")
-            indicator.grid_remove()
-            label.configure(style="CardMeta.TLabel")
+            feedback_label.configure(text="")
+            feedback_label.grid_remove()
+            field_label.configure(style="CardMeta.TLabel")
             return
         level = level if level in {"error", "warning", "info"} else "warning"
-        icon = {"error": "✕", "warning": "⚠", "info": "ℹ"}[level]
         caption = {"error": "Error", "warning": "Warning", "info": "Info"}[level]
-        messages[field_name] = f"{caption}: {message}"
         entry.configure(style=f"Validation{caption}.TEntry")
-        indicator.configure(
-            text=icon, style=f"Validation{caption}.TLabel"
+        feedback_label.configure(
+            text=f"{caption}: {message}",
+            style=f"Validation{caption}.TLabel",
         )
-        indicator.grid()
-        label.configure(style=f"Validation{caption}.TLabel")
+        feedback_label.grid()
+        field_label.configure(style=f"Validation{caption}.TLabel")
 
     def _update_field_feedback(self) -> set[str]:
         """Validate editable KiCad inputs and attach guidance to their source fields."""
@@ -2226,6 +2218,11 @@ class ComponentPopulator:
         proposal_wrap = max(160, width - 235)
         for label in getattr(self, "_proposal_value_labels", ()):
             label.configure(wraplength=proposal_wrap)
+        feedback_wrap = max(160, width - 60)
+        for _entry, feedback_label, _field_label in getattr(
+            self, "_field_feedback", {}
+        ).values():
+            feedback_label.configure(wraplength=feedback_wrap)
         for name in ("passive_mapping_label", "placement_note_label"):
             label = getattr(self, name, None)
             if label is not None:

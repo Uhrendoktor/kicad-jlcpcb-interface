@@ -969,6 +969,46 @@ class CadSuggestionTests(unittest.TestCase):
 
 
 class FieldFeedbackTests(unittest.TestCase):
+    def test_field_feedback_uses_inline_message_and_severity_border(self):
+        class Widget:
+            def __init__(self):
+                self.options = {}
+                self.visible = True
+
+            def configure(self, **kwargs):
+                self.options.update(kwargs)
+
+            def grid(self):
+                self.visible = True
+
+            def grid_remove(self):
+                self.visible = False
+
+        entry, feedback_label, field_label = Widget(), Widget(), Widget()
+        populator = object.__new__(ComponentPopulator)
+        populator._field_feedback = {
+            "footprint": (entry, feedback_label, field_label)
+        }
+
+        for level, caption in (("error", "Error"), ("warning", "Warning")):
+            message = "Use a KiCad Library:Footprint identifier."
+            populator._set_field_feedback("footprint", level, message)
+            self.assertEqual(entry.options["style"], f"Validation{caption}.TEntry")
+            self.assertEqual(
+                feedback_label.options["style"], f"Validation{caption}.TLabel"
+            )
+            self.assertEqual(feedback_label.options["text"], f"{caption}: {message}")
+            self.assertTrue(feedback_label.visible)
+            self.assertEqual(
+                field_label.options["style"], f"Validation{caption}.TLabel"
+            )
+
+        populator._set_field_feedback("footprint", None)
+        self.assertEqual(entry.options["style"], "TEntry")
+        self.assertEqual(feedback_label.options["text"], "")
+        self.assertFalse(feedback_label.visible)
+        self.assertEqual(field_label.options["style"], "CardMeta.TLabel")
+
     def test_invalid_footprint_identifier_is_a_blocking_update_error(self):
         populator = object.__new__(ComponentPopulator)
         populator.draft = SimpleNamespace()

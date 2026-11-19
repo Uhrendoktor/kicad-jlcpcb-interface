@@ -133,6 +133,90 @@ def _capture_window(root: Any, destination: Path) -> None:
     image.save(destination, format="PNG", optimize=True)
 
 
+def _expand_browser_to_full_height(
+    browser: browser_module.ComponentBrowser,
+) -> tuple[int, int]:
+    """Expand Overview/Properties windows until details and result rows are unscrolled."""
+    root = browser.root
+    canvas = browser.detail_canvas
+
+    if browser.selected_component is None:
+        browser.tree.configure(height=max(1, len(browser.components)))
+    alternatives = getattr(browser, "alternatives_tree", None)
+    if alternatives is not None:
+        alternatives.configure(height=max(1, len(browser._alternatives)))
+
+    root.update_idletasks()
+    root.update()
+    top_height = None
+    if browser.selected_component is None:
+        top_height = max(180, int(browser.tree.winfo_reqheight()) + 46)
+        browser.body.sashpos(0, top_height)
+        root.update_idletasks()
+        root.update()
+
+    bounds = canvas.bbox("all")
+    if not bounds:
+        raise RuntimeError("The component detail view has no content bounds.")
+    content_height = int(bounds[3] - bounds[1])
+    width = int(root.winfo_width())
+    initial_height = int(root.winfo_height())
+    viewport_height = int(canvas.winfo_height())
+    if content_height <= 0 or viewport_height <= 0:
+        raise RuntimeError(
+            f"Invalid full-height browser geometry: content={content_height}, "
+            f"viewport={viewport_height}."
+        )
+
+    target_height = initial_height + max(0, content_height - viewport_height) + 12
+    if target_height > 2800:
+        raise RuntimeError(
+            "The component detail view exceeds the full-height visual capture limit: "
+            f"{target_height}px."
+        )
+    x, y = int(root.winfo_rootx()), int(root.winfo_rooty())
+    root.geometry(f"{width}x{target_height}+{x}+{y}")
+    root.update_idletasks()
+    root.update()
+    if top_height is not None:
+        browser.body.sashpos(0, top_height)
+        root.update_idletasks()
+        root.update()
+
+    canvas.yview_moveto(0.0)
+    first, last = canvas.yview()
+    actual_height = int(canvas.winfo_height())
+    if actual_height < content_height - 2 or first > 0.001 or last < 0.999:
+        raise RuntimeError(
+            "The expanded component detail view still clips content: "
+            f"content={content_height}, viewport={actual_height}, "
+            f"yview=({first:.4f}, {last:.4f})."
+        )
+
+    if browser.selected_component is None:
+        first, last = browser.tree.yview()
+        if first > 0.001 or last < 0.999:
+            raise RuntimeError(
+                "The expanded Component Overview still scrolls its component list: "
+                f"yview=({first:.4f}, {last:.4f})."
+            )
+    if alternatives is not None:
+        first, last = alternatives.yview()
+        if first > 0.001 or last < 0.999:
+            raise RuntimeError(
+                "The expanded Component Properties view still scrolls its MPN results: "
+                f"yview=({first:.4f}, {last:.4f})."
+            )
+
+    print(
+        "full-height-browser=passed "
+        f"size={root.winfo_width()}x{root.winfo_height()} "
+        f"content_height={content_height} viewport_height={actual_height}",
+        flush=True,
+    )
+    return int(root.winfo_width()), int(root.winfo_height())
+
+
 def _expand_populator_to_full_height(populator: ComponentPopulator) -> tuple[int, int]:
     """Expand the Tk window until its complete scrollable workspace is visible."""
     root = populator.root
@@ -1040,7 +1124,11 @@ def _drive_overview(
         {"query": "C60489", "part": "C60489"},
         {"query": "C1591", "part": "C1591"},
     )
-    state = {"index": 0, "deadline": time.monotonic() + 45.0}
+    state = {
+        "index": 0,
+        "deadline": time.monotonic() + 45.0,
+        "expanded": False,
+    }
 
     def advance() -> None:
         try:
@@ -1095,6 +1183,9 @@ def _drive_overview(
                     raise TimeoutError("Live overview price/stock summary did not finish.")
                 root.after(120, advance)
                 return
+            if not state["expanded"]:
+                _expand_browser_to_full_height(browser)
+                state["expanded"] = True
             if index == 0:
                 _capture_window(root, output_dir / "component-browser-light.png")
                 apply_tk_theme(root, "dark")
@@ -1200,6 +1291,7 @@ def _capture_live_selection_workflow(
                     raise RuntimeError(
                         "Selected properties window has no live MPN alternatives."
                     )
+                _expand_browser_to_full_height(browser)
                 _capture_window(
                     root, output_dir / "component-properties-selected.png"
                 )
@@ -1655,45 +1747,35 @@ def _drive_populator_form(
                     f"height={populator.notes_indicator.winfo_height()}px."
                 )
 
-            # Exercise the actual field-attached error marker and hover tooltip.
-            populator._set_field_feedback(
-                "footprint",
-                "error",
+            # Exercise form-style inline feedback for both blocking errors and warnings.
+            message = (
                 "Use a KiCad Library:Footprint identifier, for example "
-                "Resistor_SMD:R_0603_1608Metric.",
+                "Resistor_SMD:R_0603_1608Metric."
             )
-            root.update()
-            _entry, marker, field_label = populator._field_feedback["footprint"]
-            if (
-                _entry.cget("style") != "ValidationError.TEntry"
-                or field_label.cget("style") != "ValidationError.TLabel"
-                or not marker.winfo_ismapped()
-            ):
-                raise RuntimeError(
-                    "The invalid Footprint field is not visibly highlighted."
+            for level, caption in (("error", "Error"), ("warning", "Warning")):
+                populator._set_field_feedback("footprint", level, message)
+                root.update()
+                _entry, feedback_label, field_label = (
+                    populator._field_feedback["footprint"]
                 )
-            marker.event_generate("<Enter>")
-            time.sleep(0.5)
-            root.update()
-            tooltip = next(
-                (
-                    item._window for item in populator._field_tooltips
-                    if item.widget is marker
-                ),
-                None,
-            )
-            tooltip_text = " ".join(
-                str(child.cget("text"))
-                for child in tooltip.winfo_children()
-                if child.winfo_class() == "Label"
-            ) if tooltip is not None and tooltip.winfo_exists() else ""
-            if "KiCad Library:Footprint identifier" not in tooltip_text:
-                raise RuntimeError(
-                    "The Footprint error tooltip does not explain the required format: "
-                    f"{tooltip_text!r}."
-                )
-            marker.event_generate("<Leave>")
-            root.update()
+                expected_style = f"Validation{caption}.TEntry"
+                expected_label_style = f"Validation{caption}.TLabel"
+                if (
+                    _entry.cget("style") != expected_style
+                    or field_label.cget("style") != expected_label_style
+                    or feedback_label.cget("style") != expected_label_style
+                    or not feedback_label.winfo_ismapped()
+                    or feedback_label.cget("text") != f"{caption}: {message}"
+                ):
+                    raise RuntimeError(
+                        f"The {caption.lower()} Footprint feedback is not shown inline."
+                    )
+                if feedback_label.winfo_rooty() < (
+                    _entry.winfo_rooty() + _entry.winfo_height()
+                ):
+                    raise RuntimeError(
+                        "The Footprint feedback label is not positioned below its input."
+                    )
             populator._set_field_feedback("footprint", None)
             populator._update_field_feedback()
             root.update()
