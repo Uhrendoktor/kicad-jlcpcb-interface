@@ -1585,6 +1585,84 @@ def _drive_populator_form(
                     f"footprint={draft.footprint!r}, source={draft.source_label!r}"
                 )
             root.update_idletasks()
+
+            workspace_width = int(populator.review_workspace.winfo_width())
+            properties_width = int(populator.properties_column.winfo_width())
+            preview_width = int(populator.preview_column.winfo_width())
+            selected_part_width = int(populator.product_preview.frame.winfo_width())
+            content_width = int(populator.workspace_content.winfo_width())
+            if workspace_width <= 0 or preview_width / workspace_width > 0.42:
+                raise RuntimeError(
+                    "The KiCad CAD candidate pane exceeds its 40% width budget: "
+                    f"preview={preview_width}px workspace={workspace_width}px."
+                )
+            if properties_width / workspace_width < 0.58:
+                raise RuntimeError(
+                    "The KiCad properties pane is narrower than the 60% layout target: "
+                    f"properties={properties_width}px workspace={workspace_width}px."
+                )
+            if selected_part_width < content_width * 0.95:
+                raise RuntimeError(
+                    "The JLCPCB selected-part section does not span the entire row: "
+                    f"card={selected_part_width}px content={content_width}px."
+                )
+            if populator.footprint_entry.winfo_width() < 220:
+                raise RuntimeError(
+                    "The Footprint property editor is too narrow to review its value: "
+                    f"width={populator.footprint_entry.winfo_width()}px."
+                )
+            if (
+                populator.notes_indicator.winfo_ismapped()
+                and populator.notes_indicator.winfo_height() > 36
+            ):
+                raise RuntimeError(
+                    "The general review-notes indicator is not compact: "
+                    f"height={populator.notes_indicator.winfo_height()}px."
+                )
+
+            # Exercise the actual field-attached error marker and hover tooltip.
+            populator._set_field_feedback(
+                "footprint",
+                "error",
+                "Use a KiCad Library:Footprint identifier, for example "
+                "Resistor_SMD:R_0603_1608Metric.",
+            )
+            root.update()
+            _entry, marker, field_label = populator._field_feedback["footprint"]
+            if (
+                _entry.cget("style") != "ValidationError.TEntry"
+                or field_label.cget("style") != "ValidationError.TLabel"
+                or not marker.winfo_ismapped()
+            ):
+                raise RuntimeError(
+                    "The invalid Footprint field is not visibly highlighted."
+                )
+            marker.event_generate("<Enter>")
+            time.sleep(0.5)
+            root.update()
+            tooltip = next(
+                (
+                    item._window for item in populator._field_tooltips
+                    if item.widget is marker
+                ),
+                None,
+            )
+            tooltip_text = " ".join(
+                str(child.cget("text"))
+                for child in tooltip.winfo_children()
+                if child.winfo_class() == "Label"
+            ) if tooltip is not None and tooltip.winfo_exists() else ""
+            if "KiCad Library:Footprint identifier" not in tooltip_text:
+                raise RuntimeError(
+                    "The Footprint error tooltip does not explain the required format: "
+                    f"{tooltip_text!r}."
+                )
+            marker.event_generate("<Leave>")
+            root.update()
+            populator._set_field_feedback("footprint", None)
+            populator._update_field_feedback()
+            root.update()
+
             if not populator.proposal_rows.winfo_children():
                 raise RuntimeError("The LCSC review form contains no proposed fields.")
             if not populator.apply_button.winfo_viewable():
