@@ -1179,6 +1179,37 @@ def _assert_overview_row_alignment(browser: Any) -> None:
         )
 
 
+def _assert_selected_part_actions(browser: Any) -> None:
+    """Keep the LCSC open/copy controls inside the Selected Part card."""
+    preview = browser.product_preview
+    if preview.lcsc_button is None:
+        raise RuntimeError("Selected Part card is missing its Open in LCSC action.")
+    if str(preview.lcsc_button.cget("text")) != "Open in LCSC ↗":
+        raise RuntimeError("Selected Part card has an unexpected LCSC action label.")
+    if str(preview.lcsc_button.cget("state")) != "normal":
+        raise RuntimeError("Open in LCSC must be enabled for the selected part.")
+
+    def is_descendant(widget: Any, ancestor: Any) -> bool:
+        current = widget
+        while current is not None:
+            if current == ancestor:
+                return True
+            current = getattr(current, "master", None)
+        return False
+
+    for name, widget in (
+        ("Open in LCSC", preview.lcsc_button),
+        ("Copyable LCSC part ID", preview.lcsc_label),
+    ):
+        if not is_descendant(widget, preview.frame):
+            raise RuntimeError(f"{name} is outside the Selected Part card.")
+
+    if not preview.lcsc_label.bind("<Button-1>"):
+        raise RuntimeError("The displayed LCSC part ID is not clickable.")
+    if not preview.lcsc_label.bind("<Return>"):
+        raise RuntimeError("The displayed LCSC part ID is not keyboard accessible.")
+
+
 def _drive_overview(
     schematic: Any, output_dir: Path, cache_dir: Path
 ) -> None:
@@ -1189,6 +1220,7 @@ def _drive_overview(
     _assert_section_heading_typography(root)
     _assert_overview_detail_cards(browser)
     _assert_overview_row_alignment(browser)
+    _assert_selected_part_actions(browser)
     failures: list[str] = []
     frames = (
         output_dir / "component-browser-initial.png",
