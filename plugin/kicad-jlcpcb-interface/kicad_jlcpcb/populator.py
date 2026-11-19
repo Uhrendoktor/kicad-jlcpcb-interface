@@ -1805,7 +1805,7 @@ class ComponentPopulator:
         errors = self._update_field_feedback()
         if not self.create_mode:
             return
-        ready = not errors
+        ready = not errors and bool(self.draft.proposed_fields)
         self.apply_button.configure(state="normal" if ready else "disabled")
         if not ready:
             self.status_var.set("Fix the highlighted fields before generating the component.")
