@@ -908,7 +908,18 @@ class CadSuggestionTests(unittest.TestCase):
             def configure(self, **kwargs):
                 self.settings.update(kwargs)
 
+        class Notebook:
+            def __init__(self):
+                self.selected = []
+            def select(self, tab):
+                self.selected.append(tab)
+
+        notebook = Notebook()
         labels = SimpleNamespace(
+            notebook=notebook,
+            symbol_tab=object(),
+            footprint_tab=object(),
+            model_tab=object(),
             symbol_label=Label(),
             footprint_label=Label(),
             model_label=Label(),
@@ -929,6 +940,7 @@ class CadSuggestionTests(unittest.TestCase):
         self.assertEqual(displayed[2][0], labels.model_label)
         self.assertEqual(displayed[2][1], b"3d-preview")
         self.assertEqual(displayed[2][3], (400, 210))
+        self.assertEqual(notebook.selected, [labels.model_tab])
         self.assertIn("3D model", populator.cad_status_var.get())
 
     def test_update_mode_only_prefills_footprint_and_never_symbol(self):
