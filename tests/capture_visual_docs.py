@@ -1717,14 +1717,21 @@ def _drive_populator_form(
                     "The Filters button text did not adopt the active theme accent: "
                     f"style={toolbar_foreground!r}, palette={active_accent!r}."
                 )
+            active_filter_count = populator._active_advanced_filter_count()
+            expected_filter_label = (
+                "Filters"
+                if not active_filter_count
+                else f"Filters ({active_filter_count})"
+            )
             if (
-                populator.advanced_filters_button.cget("text") != "Filters"
+                populator.advanced_filters_button.cget("text") != expected_filter_label
                 or populator.advanced_filters_button.winfo_width() < 54
                 or not populator.advanced_filters_button.winfo_viewable()
             ):
                 raise RuntimeError(
                     "The labelled Filters control is clipped or not visible in dark mode: "
                     f"text={populator.advanced_filters_button.cget('text')!r}, "
+                    f"expected={expected_filter_label!r}, "
                     f"width={populator.advanced_filters_button.winfo_width()}."
                 )
             _capture_window(root, output_dir / dark_asset)
