@@ -581,6 +581,64 @@ class ProjectFootprintLibraryTests(unittest.TestCase):
 
 
 
+    def test_exports_footprint_and_step_model_to_user_selected_locations(self):
+        model = self.project / "source-model.step"
+        model.write_bytes(
+            b"ISO-10303-21;\\nHEADER;\\nENDSEC;\\nDATA;\\nENDSEC;\\nEND-ISO-10303-21;"
+        )
+        reference = "${KIPRJMOD}/cache/source-model.step"
+        self.source.write_text(
+            '(footprint "Example_0402" (version 20240108) '
+            '(model "' + reference + '" (at (xyz 0 0 0)) '
+            '(scale (xyz 1 1 1)) (rotate (xyz 0 0 0))))\\n',
+            encoding="utf-8",
+        )
+        footprint_library = self.project / "ReusableFootprints.pretty"
+        model_directory = self.project / "Reusable3D"
+
+        result = export_cad_assets_to_libraries(
+            self.project,
+            footprint_source=self.source,
+            footprint_library=footprint_library,
+            model_source=model,
+            model_directory=model_directory,
+        )
+
+        self.assertEqual(result.footprint_id, "ReusableFootprints:Example_0402")
+        self.assertEqual(result.model_path, model_directory / model.name)
+        self.assertEqual(result.model_path.read_bytes(), model.read_bytes())
+        self.assertTrue(
+            footprint_library_entry_available(
+                result.footprint_id, project_or_path=self.project
+            )
+        )
+        exported = (
+            footprint_library / "Example_0402.kicad_mod"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "${KIPRJMOD}/Reusable3D/source-model.step",
+            exported,
+        )
+        table = (self.project / "fp-lib-table").read_text(encoding="utf-8")
+        self.assertIn("ReusableFootprints.pretty", table)
+
+    def test_export_refuses_to_replace_a_user_footprint(self):
+        target_dir = self.project / "ReusableFootprints.pretty"
+        target_dir.mkdir()
+        target = target_dir / "Example_0402.kicad_mod"
+        target.write_text('(footprint "UserEdited")\\n', encoding="utf-8")
+        before = target.read_bytes()
+
+        with self.assertRaises(SymbolLibraryConflict):
+            export_cad_assets_to_libraries(
+                self.project,
+                footprint_source=self.source,
+                footprint_library=target_dir,
+            )
+
+        self.assertEqual(target.read_bytes(), before)
+        self.assertFalse((self.project / "fp-lib-table").exists())
+
     def test_registers_step_model_with_owned_portable_footprint_reference(self):
         model = self.project / "model-abcdef01.step"
         model.write_bytes(
