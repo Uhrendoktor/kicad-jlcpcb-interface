@@ -315,12 +315,6 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         relief="flat",
     )
     style.configure(
-        "ProductEyebrow.TLabel",
-        background=palette["surface"],
-        foreground=palette["accent"],
-        font=("TkDefaultFont", 8, "bold"),
-    )
-    style.configure(
         "ProductImage.TFrame",
         background=palette["surface_alt"],
         borderwidth=0,
@@ -386,6 +380,21 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         background=palette["background"],
         foreground=palette["foreground"],
         font=("TkDefaultFont", UI_FONT_SIZES["title"], "bold"),
+    )
+    section_title_font = (
+        "TkDefaultFont", UI_FONT_SIZES["card_title"], "bold"
+    )
+    style.configure(
+        "SectionTitle.TLabel",
+        background=palette["background"],
+        foreground=palette["foreground"],
+        font=section_title_font,
+    )
+    style.configure(
+        "SectionTitleSurface.TLabel",
+        background=palette["surface"],
+        foreground=palette["foreground"],
+        font=section_title_font,
     )
     style.configure(
         "Subtitle.TLabel",
@@ -457,12 +466,6 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         foreground=palette["foreground"],
     )
     style.configure(
-        "CardTitle.TLabel",
-        background=palette["surface"],
-        foreground=palette["foreground"],
-        font=("TkDefaultFont", 11, "bold"),
-    )
-    style.configure(
         "CardMeta.TLabel",
         background=palette["surface"],
         foreground=palette["muted"],
@@ -486,8 +489,11 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         darkcolor=palette["background"], relief="flat", borderwidth=0,
     )
     style.configure(
-        "TLabelframe.Label", background=palette["background"], foreground=palette["muted"],
-        padding=(0, 0), font=("TkDefaultFont", UI_FONT_SIZES["section"], "bold"),
+        "TLabelframe.Label",
+        background=palette["background"],
+        foreground=palette["foreground"],
+        padding=(0, 0),
+        font=section_title_font,
     )
     style.configure(
         "TButton",
