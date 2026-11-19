@@ -70,8 +70,6 @@ ASSET_NAMES = (
     "populate-component-dark.png",
     "add-component-light.png",
     "add-component-dark.png",
-    "add-component-cad-preview-light.png",
-    "add-component-cad-preview-dark.png",
 )
 
 # These are schematic inputs used by the visual demo. All catalogue fields,
@@ -134,11 +132,61 @@ def _capture_window(root: Any, destination: Path) -> None:
     image.save(destination, format="PNG", optimize=True)
 
 
+def _expand_populator_to_full_height(populator: ComponentPopulator) -> tuple[int, int]:
+    """Expand the Tk window until its complete scrollable workspace is visible."""
+    root = populator.root
+    canvas = populator.content_canvas
+    root.update_idletasks()
+    root.update()
+    bounds = canvas.bbox("all")
+    if not bounds:
+        raise RuntimeError("The component workspace has no scrollable content bounds.")
+    content_height = int(bounds[3] - bounds[1])
+    width = int(root.winfo_width())
+    initial_height = int(root.winfo_height())
+    canvas_height = int(canvas.winfo_height())
+    if content_height <= 0 or canvas_height <= 0:
+        raise RuntimeError(
+            f"Invalid full-height capture geometry: content={content_height}, "
+            f"canvas={canvas_height}."
+        )
+    target_height = initial_height + max(0, content_height - canvas_height)
+    if target_height > 2800:
+        raise RuntimeError(
+            "The component workspace exceeds the full-height visual capture limit: "
+            f"{target_height}px."
+        )
+    x, y = int(root.winfo_rootx()), int(root.winfo_rooty())
+    root.geometry(f"{width}x{target_height}+{x}+{y}")
+    root.update_idletasks()
+    root.update()
+    first, last = canvas.yview()
+    if first > 0.001:
+        canvas.yview_moveto(0.0)
+        root.update_idletasks()
+        root.update()
+        first, last = canvas.yview()
+    actual_height = int(canvas.winfo_height())
+    if actual_height < content_height - 2 or first > 0.001 or last < 0.999:
+        raise RuntimeError(
+            "The expanded window still clips scrollable content: "
+            f"content={content_height}, viewport={actual_height}, "
+            f"yview=({first:.4f}, {last:.4f})."
+        )
+    print(
+        "full-height-window=passed "
+        f"size={root.winfo_width()}x{root.winfo_height()} "
+        f"content_height={content_height} viewport_height={actual_height}",
+        flush=True,
+    )
+    return int(root.winfo_width()), int(root.winfo_height())
+
+
 def _capture_desktop(destination: Path) -> None:
-    """Capture the full Xvfb desktop, including the selected Eeschema symbol."""
+    """Capture the upper 1500px of Xvfb for the Eeschema desktop evidence."""
     from PIL import ImageGrab, ImageStat
 
-    image = ImageGrab.grab().convert("RGB")
+    image = ImageGrab.grab(bbox=(0, 0, 1920, 1500)).convert("RGB")
     if image.width < 1600 or image.height < 1000:
         raise RuntimeError(f"Desktop capture is too small: {image.size}")
     if max(ImageStat.Stat(image.resize((48, 32))).stddev) < 2.0:
@@ -1450,7 +1498,7 @@ def _drive_populator_form(
             ):
                 if time.monotonic() >= state["deadline"]:
                     raise TimeoutError(
-                        "The LCSC review form did not receive an applicable live draft: "
+                        "The LCSC review form or its asynchronous previews did not settle: "
                         f"status={populator.status_var.get()!r}"
                     )
                 root.after(150, advance)
@@ -1550,6 +1598,7 @@ def _drive_populator_form(
             _assert_advanced_filter_control(populator)
 
             _capture_window(root, output_dir / proposal_asset)
+            _expand_populator_to_full_height(populator)
             _capture_window(root, output_dir / light_asset)
             apply_tk_theme(root, "dark")
             populator._update_advanced_filter_button()
@@ -1671,6 +1720,11 @@ def _capture_passive_component_workflows(
     populate.footprint_filter_var.set("0402")
     populate.tolerance_filter_var.set("5%")
     populate._toggle_advanced_filters()
+    # Keep the Update example on its known local Device:R footprint. The
+    # dedicated Add-mode fixture below exercises the live EasyEDA CAD fallback
+    # and captures the selected 3D tab; do not let that optional lookup replace
+    # this deterministic stock-mapping review example.
+    populate._request_cad_assets = lambda _details, _draft: None
     populate.lookup()
 
     def validate_populate_result(populator: ComponentPopulator) -> None:
@@ -1704,7 +1758,7 @@ def _capture_passive_component_workflows(
         completed_asset="populate-component-applied.png",
         expected_lcsc=None,
         expected_value="10k",
-        expected_footprint="Resistor_SMD:R_0402_1005Metric",
+        expected_footprint=None,
         validate_result=validate_populate_result,
         assert_basic_shortlist=True,
         require_alternatives=True,
@@ -1931,54 +1985,33 @@ def _capture_easyeda_3d_preview(
                         f"{assets.warnings!r}"
                     )
 
-                root.update_idletasks()
-                canvas = populator.content_canvas
-                scroll_region = canvas.bbox("all")
-                if not scroll_region:
-                    raise RuntimeError("The CAD preview content has no scroll region.")
-                content_height = scroll_region[3] - scroll_region[1]
-                viewport_height = canvas.winfo_height()
-                max_scroll = max(0, content_height - viewport_height)
-                cad_top = populator.cad_preview.frame.winfo_y()
-                target_scroll = min(max_scroll, max(0, cad_top - 8))
-                canvas.yview_moveto(
-                    target_scroll / max(1, content_height)
-                )
-                root.update_idletasks()
-                root.update()
-
+                full_size = _expand_populator_to_full_height(populator)
+                notebook = populator.cad_preview.notebook
+                model_tab = str(populator.cad_preview.model_tab)
+                if notebook.select() != model_tab:
+                    notebook.select(populator.cad_preview.model_tab)
+                    root.update_idletasks()
+                    root.update()
                 model_label = populator.cad_preview.model_label
-                viewport_top = canvas.winfo_rooty()
-                viewport_bottom = viewport_top + canvas.winfo_height()
-                model_top = model_label.winfo_rooty()
-                model_bottom = model_top + model_label.winfo_height()
                 if (
                     not model_label.winfo_ismapped()
                     or not str(model_label.cget("image") or "")
-                    or model_top < viewport_top
-                    or model_bottom > viewport_bottom
                 ):
                     raise RuntimeError(
-                        "The 3D model preview is not fully visible after scrolling: "
-                        f"viewport=({viewport_top}, {viewport_bottom}), "
-                        f"model=({model_top}, {model_bottom})."
+                        "The 3D model tab is not selected or its rendered image is missing."
                     )
 
-                _capture_window(
-                    root, output_dir / "add-component-cad-preview-light.png"
-                )
+                _capture_window(root, output_dir / "add-component-light.png")
                 apply_tk_theme(root, "dark")
                 root.update()
-                _capture_window(
-                    root, output_dir / "add-component-cad-preview-dark.png"
-                )
+                _capture_window(root, output_dir / "add-component-dark.png")
                 apply_tk_theme(root, "light")
                 root.update()
                 print(
                     "live-easyeda-3d-preview=passed "
                     f"lcsc={lcsc} model_uuid={assets.model_uuid} "
                     f"preview_bytes={len(assets.model_preview_png)} "
-                    f"scroll_offset={target_scroll}",
+                    f"window={full_size[0]}x{full_size[1]} tab=3D-model",
                     flush=True,
                 )
                 state["captured"] = True

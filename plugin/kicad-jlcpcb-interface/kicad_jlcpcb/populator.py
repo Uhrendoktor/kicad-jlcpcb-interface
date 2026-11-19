@@ -1510,6 +1510,12 @@ class ComponentPopulator:
                 ),
                 padding=8,
             )
+        if assets.model_preview_png is not None:
+            self.cad_preview.notebook.select(self.cad_preview.model_tab)
+        elif assets.footprint_preview_png is not None:
+            self.cad_preview.notebook.select(self.cad_preview.footprint_tab)
+        else:
+            self.cad_preview.notebook.select(self.cad_preview.symbol_tab)
         availability = []
         if assets.has_symbol:
             availability.append(f"symbol {assets.symbol_library_id}")

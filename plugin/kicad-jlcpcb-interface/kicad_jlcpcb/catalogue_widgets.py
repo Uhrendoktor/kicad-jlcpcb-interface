@@ -209,9 +209,13 @@ def display_product_image(
 
 @dataclass(slots=True)
 class CadAssetPreviewControls:
-    """Independent preview surfaces for downloaded schematic and PCB CAD."""
+    """Tabbed symbol, footprint and 3D previews for one EasyEDA CAD result."""
 
     frame: Any
+    notebook: Any
+    symbol_tab: Any
+    footprint_tab: Any
+    model_tab: Any
     symbol_label: Any
     footprint_label: Any
     model_label: Any
@@ -222,68 +226,46 @@ def build_cad_asset_preview(
     ttk: Any,
     status_var: Any,
 ) -> CadAssetPreviewControls:
-    """Build optional 2D CAD previews and a native KiCad 3D model render."""
+    """Build space-efficient tabs for the available KiCad CAD candidates."""
     surface = ttk.Frame(parent, style="ProductPreview.TFrame", padding=(12, 10))
-    surface.columnconfigure(0, weight=1, uniform="cad-preview")
-    surface.columnconfigure(1, weight=1, uniform="cad-preview")
+    surface.columnconfigure(0, weight=1)
 
     ttk.Label(
         surface,
         text="KICAD CAD CANDIDATES",
         style="ProductEyebrow.TLabel",
-    ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 7))
+    ).grid(row=0, column=0, sticky="w", pady=(0, 7))
 
+    notebook = ttk.Notebook(surface)
+    notebook.grid(row=1, column=0, sticky="nsew")
+    tabs = []
     labels = []
-    for column, (caption, placeholder) in enumerate(
-        (
-            ("SCHEMATIC SYMBOL", "No symbol preview"),
-            ("PCB FOOTPRINT", "No footprint preview"),
-        )
+    for caption, placeholder in (
+        ("Symbol", "No symbol preview"),
+        ("Footprint", "No footprint preview"),
+        ("3D model", "No 3D model preview"),
     ):
-        cell = ttk.Frame(surface, style="ProductPreview.TFrame")
-        cell.grid(row=1, column=column, sticky="nsew", padx=(0, 10) if column == 0 else (10, 0))
-        cell.columnconfigure(0, weight=1)
-        ttk.Label(
-            cell, text=caption, style="ProductKey.TLabel"
-        ).grid(row=0, column=0, sticky="w", pady=(0, 5))
-        preview = ttk.Frame(
-            cell, style="ProductImage.TFrame", width=280, height=176
+        tab = ttk.Frame(notebook, style="ProductPreview.TFrame", padding=8)
+        tab.columnconfigure(0, weight=1)
+        tab.rowconfigure(0, weight=1)
+        notebook.add(tab, text=caption)
+        preview_surface = ttk.Frame(
+            tab, style="ProductImage.TFrame", width=460, height=250
         )
-        preview.grid(row=1, column=0, sticky="nsew")
-        preview.grid_propagate(False)
+        preview_surface.grid(row=0, column=0, sticky="nsew")
+        preview_surface.grid_propagate(False)
         label = ttk.Label(
-            preview,
+            preview_surface,
             text=placeholder,
             anchor="center",
             justify="center",
             padding=8,
             style="ProductImage.TLabel",
-            wraplength=250,
+            wraplength=420,
         )
         label.pack(fill="both", expand=True)
+        tabs.append(tab)
         labels.append(label)
-
-    model_cell = ttk.Frame(surface, style="ProductPreview.TFrame")
-    model_cell.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
-    model_cell.columnconfigure(0, weight=1)
-    ttk.Label(
-        model_cell, text="3D MODEL", style="ProductKey.TLabel"
-    ).grid(row=0, column=0, sticky="w", pady=(0, 5))
-    model_surface = ttk.Frame(
-        model_cell, style="ProductImage.TFrame", width=420, height=230
-    )
-    model_surface.grid(row=1, column=0, sticky="ew")
-    model_surface.grid_propagate(False)
-    model_label = ttk.Label(
-        model_surface,
-        text="No 3D model preview",
-        anchor="center",
-        justify="center",
-        padding=8,
-        style="ProductImage.TLabel",
-        wraplength=380,
-    )
-    model_label.pack(fill="both", expand=True)
 
     ttk.Label(
         surface,
@@ -291,11 +273,15 @@ def build_cad_asset_preview(
         style="ProductMeta.TLabel",
         wraplength=700,
         justify="left",
-    ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(7, 0))
+    ).grid(row=2, column=0, sticky="w", pady=(7, 0))
 
     return CadAssetPreviewControls(
         frame=surface,
+        notebook=notebook,
+        symbol_tab=tabs[0],
+        footprint_tab=tabs[1],
+        model_tab=tabs[2],
         symbol_label=labels[0],
         footprint_label=labels[1],
-        model_label=model_label,
+        model_label=labels[2],
     )

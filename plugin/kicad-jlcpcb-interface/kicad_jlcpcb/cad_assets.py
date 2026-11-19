@@ -198,6 +198,30 @@ def _format_rotation(values: tuple[float, float, float]) -> list[Any]:
     ]
 
 
+def _remove_footprint_reference_text(footprint: list[Any]) -> int:
+    """Remove the reference property/text from the temporary 3D preview board."""
+    removed = 0
+    for index in range(len(footprint) - 1, -1, -1):
+        node = footprint[index]
+        if (
+            not isinstance(node, list)
+            or len(node) < 2
+            or not isinstance(node[0], Atom)
+            or not isinstance(node[1], (Atom, Quoted))
+        ):
+            continue
+        node_type = node[0].value
+        field_name = node[1].value.casefold()
+        is_reference = (
+            (node_type == "property" and field_name == "reference")
+            or (node_type == "fp_text" and field_name == "reference")
+        )
+        if is_reference:
+            del footprint[index]
+            removed += 1
+    return removed
+
+
 def render_step_preview(footprint_file: Path, model_file: Path) -> bytes:
     """Render one candidate footprint using KiCad's native 3D ray-tracing CLI."""
     cli = shutil.which("kicad-cli") or shutil.which("kicad-cli-nightly")
@@ -216,6 +240,10 @@ def render_step_preview(footprint_file: Path, model_file: Path) -> bytes:
         or footprint[0].value != "footprint"
     ):
         raise CadAssetError("The converted footprint is not a valid KiCad footprint.")
+    # The converter writes Reference as a footprint property. Remove that object
+    # from this temporary board so KiCad cannot include it in the 3D render.
+    # The source footprint stays intact for the project import.
+    _remove_footprint_reference_text(footprint)
     model_nodes = [
         item for item in footprint
         if (

@@ -86,6 +86,78 @@ class FakeOpener:
         return FakeResponse(json.dumps(payload).encode("utf-8"), url)
 
 
+class StepPreviewRenderingTests(unittest.TestCase):
+    def test_temporary_3d_render_removes_reference_property_only(self):
+        from kicad_jlcpcb.library import Atom, Quoted, parse_sexpr
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            footprint_path = root / "Example.kicad_mod"
+            model_path = root / "model.step"
+            original = (
+                '(footprint "Example" (version 20240108) (generator "test") '
+                '(layer "F.Cu") '
+                '(property "Reference" "REF**" (at 0 -2 0) '
+                '(layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15)))) '
+                '(property "Value" "Example" (at 0 2 0) '
+                '(layer "F.Fab") (effects (font (size 1 1) (thickness 0.15)))) '
+                '(model "${KIPRJMOD}/JLCPCB_C12345.3dshapes/model.step" '
+                '(at (xyz 0 0 0)) (scale (xyz 1 1 1)) '
+                '(rotate (xyz 0 0 0))))'
+            )
+            footprint_path.write_text(original, encoding="utf-8")
+            model_path.write_bytes(b"ISO-10303-21;\nEND-ISO-10303-21;")
+
+            captured = {}
+
+            def fake_render(command, **_kwargs):
+                board_path = Path(command[-1])
+                board = parse_sexpr(board_path.read_text(encoding="utf-8"))
+                footprint = next(
+                    node for node in board
+                    if isinstance(node, list)
+                    and node
+                    and isinstance(node[0], Atom)
+                    and node[0].value == "footprint"
+                )
+                properties = [
+                    node for node in footprint
+                    if isinstance(node, list)
+                    and len(node) >= 3
+                    and isinstance(node[0], Atom)
+                    and node[0].value == "property"
+                ]
+                captured["property_names"] = {
+                    node[1].value.casefold()
+                    for node in properties
+                    if isinstance(node[1], Quoted)
+                }
+                captured["legacy_reference_nodes"] = sum(
+                    1 for node in footprint
+                    if isinstance(node, list)
+                    and len(node) >= 3
+                    and isinstance(node[0], Atom)
+                    and node[0].value == "fp_text"
+                    and isinstance(node[1], (Atom, Quoted))
+                    and node[1].value.casefold() == "reference"
+                )
+                output_path = Path(command[command.index("--output") + 1])
+                output_path.write_bytes(b"\x89PNG\r\n\x1a\npreview")
+                return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+            with (
+                patch("kicad_jlcpcb.cad_assets.shutil.which", return_value="kicad-cli"),
+                patch("kicad_jlcpcb.cad_assets.subprocess.run", side_effect=fake_render),
+            ):
+                preview = render_step_preview(footprint_path, model_path)
+
+            self.assertTrue(preview.startswith(b"\x89PNG\r\n\x1a\n"))
+            self.assertNotIn("reference", captured["property_names"])
+            self.assertIn("value", captured["property_names"])
+            self.assertEqual(captured["legacy_reference_nodes"], 0)
+            self.assertEqual(footprint_path.read_text(encoding="utf-8"), original)
+
+
 class CadAssetProviderTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
