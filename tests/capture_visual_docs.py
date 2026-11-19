@@ -1711,16 +1711,22 @@ def _drive_populator_form(
                 int(toolbar_foreground[index:index + 2], 16)
                 for index in (1, 3, 5)
             )
-            displayed_image = str(populator.advanced_filters_button.cget("image"))
+            displayed_image = populator.advanced_filters_button.cget("image")
+            if isinstance(displayed_image, (tuple, list)):
+                displayed_image_name = (
+                    str(displayed_image[0]) if displayed_image else ""
+                )
+            else:
+                displayed_image_name = str(displayed_image).strip("()'\\\", ")
             generated_image = str(populator._filter_icon_image)
             if (
                 tuple(icon_foreground) != expected_icon_foreground
-                or displayed_image != generated_image
+                or displayed_image_name != generated_image
             ):
                 raise RuntimeError(
                     "The advanced-filter button is not displaying its theme-aware icon: "
                     f"pixels={icon_foreground!r}, expected={expected_icon_foreground!r}, "
-                    f"button_image={displayed_image!r}, generated_image={generated_image!r}."
+                    f"button_image={displayed_image_name!r}, generated_image={generated_image!r}."
                 )
             _capture_window(root, output_dir / dark_asset)
             apply_tk_theme(root, "light")
