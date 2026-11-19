@@ -198,41 +198,28 @@ def _format_rotation(values: tuple[float, float, float]) -> list[Any]:
     ]
 
 
-def _hide_footprint_reference_text(footprint: list[Any]) -> int:
-    """Hide the reference-designator text in the temporary 3D preview board."""
-    hidden = 0
-    for node in footprint:
+def _remove_footprint_reference_text(footprint: list[Any]) -> int:
+    """Remove the reference property/text from the temporary 3D preview board."""
+    removed = 0
+    for index in range(len(footprint) - 1, -1, -1):
+        node = footprint[index]
         if (
             not isinstance(node, list)
-            or len(node) < 3
+            or len(node) < 2
             or not isinstance(node[0], Atom)
-            or node[0].value != "fp_text"
             or not isinstance(node[1], (Atom, Quoted))
-            or node[1].value.casefold() != "reference"
         ):
             continue
-        if any(
-            isinstance(child, Atom) and child.value == "hide"
-            for child in node[2:]
-        ):
-            hidden += 1
-            continue
-        effects_index = next(
-            (
-                index
-                for index, child in enumerate(node)
-                if isinstance(child, list)
-                and child
-                and isinstance(child[0], Atom)
-                and child[0].value == "effects"
-            ),
-            len(node),
+        node_type = node[0].value
+        field_name = node[1].value.casefold()
+        is_reference = (
+            (node_type == "property" and field_name == "reference")
+            or (node_type == "fp_text" and field_name == "reference")
         )
-        # KiCad's fp_text grammar places the bare [hide] token after (layer)
-        # and before (effects). A token appended after (effects) is ignored.
-        node.insert(effects_index, Atom("hide"))
-        hidden += 1
-    return hidden
+        if is_reference:
+            del footprint[index]
+            removed += 1
+    return removed
 
 
 def render_step_preview(footprint_file: Path, model_file: Path) -> bytes:
@@ -253,9 +240,10 @@ def render_step_preview(footprint_file: Path, model_file: Path) -> bytes:
         or footprint[0].value != "footprint"
     ):
         raise CadAssetError("The converted footprint is not a valid KiCad footprint.")
-    # Hide the reference text in this temporary board only. The cached and
-    # imported footprint file retains its normal PCB reference/silkscreen.
-    _hide_footprint_reference_text(footprint)
+    # The converter writes Reference as a footprint property. Remove that object
+    # from this temporary board so KiCad cannot include it in the 3D render.
+    # The source footprint stays intact for the project import.
+    _remove_footprint_reference_text(footprint)
     model_nodes = [
         item for item in footprint
         if (
