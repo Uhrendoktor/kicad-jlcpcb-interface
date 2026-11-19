@@ -1751,11 +1751,12 @@ def _registered_user_symbol_library(
     nickname: str,
 ) -> tuple[Path, int]:
     """Resolve a writable registered user library and its KiCad table scope."""
-    tables = [
+    # KiCad resolves duplicate nicknames from the project table first.
+    tables = [(project_dir / "sym-lib-table", project_dir, 2)]
+    tables.extend(
         (path, path.parent, 1)
         for path in _global_library_tables("sym-lib-table")
-    ]
-    tables.append((project_dir / "sym-lib-table", project_dir, 2))
+    )
     for table_path, base_dir, table_scope in tables:
         if not table_path.is_file() or table_path.is_symlink():
             continue

@@ -377,12 +377,44 @@ class ProjectLibraryTests(unittest.TestCase):
         self.assertEqual(properties["Datasheet"], "https://example.test/resistor.pdf")
         self.assertEqual(properties["Description"], resistor_draft().description)
 
-    def test_sync_prefers_user_global_library_and_reports_global_scope(self):
+    def test_sync_uses_project_scope_when_global_table_has_same_nickname(self):
         project_library = self.project / "UserLibrary.kicad_sym"
         project_library.write_text(DEVICE_LIBRARY, encoding="utf-8")
         self.table.write_text(TABLE_WITH_USER_ENTRY, encoding="utf-8")
-        project_before = project_library.read_text(encoding="utf-8")
 
+        with tempfile.TemporaryDirectory() as home_directory:
+            home = Path(home_directory)
+            global_directory = home / ".config" / "kicad" / "11.0"
+            global_directory.mkdir(parents=True)
+            global_table = global_directory / "sym-lib-table"
+            global_library = global_directory / "UserLibrary.kicad_sym"
+            global_library.write_text(DEVICE_LIBRARY, encoding="utf-8")
+            global_before = global_library.read_text(encoding="utf-8")
+            global_table.write_text(
+                TABLE_WITH_USER_ENTRY.replace(
+                    "${KIPRJMOD}/UserLibrary.kicad_sym",
+                    str(global_library),
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                patch("kicad_jlcpcb.library.Path.home", return_value=home),
+                patch(
+                    "kicad_jlcpcb.library._global_library_tables",
+                    return_value=(global_table,),
+                ),
+            ):
+                library_path, _snapshot, scope = sync_symbol_library_properties(
+                    self.project, "UserLibrary:R", resistor_draft(value="22k")
+                )
+
+            self.assertEqual(library_path, project_library.resolve())
+            self.assertEqual(scope, 2)
+            self.assertIn('"22k"', project_library.read_text(encoding="utf-8"))
+            self.assertEqual(global_library.read_text(encoding="utf-8"), global_before)
+
+    def test_sync_uses_global_scope_when_project_has_no_nickname_override(self):
         with tempfile.TemporaryDirectory() as home_directory:
             home = Path(home_directory)
             global_directory = home / ".config" / "kicad" / "11.0"
@@ -408,11 +440,10 @@ class ProjectLibraryTests(unittest.TestCase):
                 library_path, _snapshot, scope = sync_symbol_library_properties(
                     self.project, "UserLibrary:R", resistor_draft(value="22k")
                 )
+
             self.assertEqual(library_path, global_library.resolve())
             self.assertEqual(scope, 1)
             self.assertIn('"22k"', global_library.read_text(encoding="utf-8"))
-
-        self.assertEqual(project_library.read_text(encoding="utf-8"), project_before)
 
     def test_writable_library_check_only_accepts_registered_project_or_user_libraries(self):
         generated = self.generate()
