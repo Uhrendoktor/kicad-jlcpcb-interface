@@ -1279,14 +1279,19 @@ def _capture_live_selection_workflow(
         nonlocal captured
         try:
             root.update()
+            loaded_details = browser._catalogue_details
+            loaded_part = (
+                loaded_details.lcsc.upper() if loaded_details is not None else None
+            )
             ready = (
                 browser.detail_vars["part"].get().upper() == "C60489"
-                and browser.catalogue_status_var.get() == "Catalogue details loaded."
+                and loaded_part == "C60489"
             )
             if ready:
                 if (
-                    browser._catalogue_details is None
-                    or browser._catalogue_details.is_cached
+                    loaded_details is None
+                    or loaded_details.is_cached
+                    or loaded_details.stale
                 ):
                     raise RuntimeError(
                         "Selected properties screenshot is not backed by live JLCPCB data."
@@ -1369,7 +1374,13 @@ def _capture_live_selection_workflow(
                 browser.close()
                 return
             if time.monotonic() >= deadline:
-                raise TimeoutError("Live JLCPCB properties for the selected R1 did not load.")
+                raise TimeoutError(
+                    "Live JLCPCB properties for the selected R1 did not load; "
+                    f"selected={browser.detail_vars['part'].get()!r}; "
+                    f"loaded={loaded_part!r}; "
+                    f"catalogue_status={browser.catalogue_status_var.get()!r}; "
+                    f"browser_status={browser.status_var.get()!r}."
+                )
             root.after(120, advance)
         except BaseException as exc:
             failures.append(f"{type(exc).__name__}: {exc}")
