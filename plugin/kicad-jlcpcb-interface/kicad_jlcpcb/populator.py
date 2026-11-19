@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import queue
+import re
 import threading
 import webbrowser
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -27,14 +28,18 @@ from .draft import (
     symbol_definition_matches_library,
     symbol_library_id,
     update_schematic_symbol,
+    update_schematic_symbols,
 )
 from .library import (
+    export_cad_assets_to_libraries,
     footprint_library_entry_available,
     generate_project_library_symbol,
     register_project_cad_credits,
     register_project_footprint_library,
     reload_project_symbol_library,
+    restore_symbol_library_snapshot,
     symbol_library_entry_available,
+    sync_symbol_library_properties,
 )
 from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
@@ -264,8 +269,8 @@ class ComponentPopulator:
         self.palette = apply_tk_theme(self.root, theme)
         self.theme = self.root._kicad_jlcpcb_theme
         self.root.title("Component Workspace")
-        self.root.geometry("1120x860")
-        self.root.minsize(900, 660)
+        self.root.geometry("1180x860")
+        self.root.minsize(1020, 660)
         self._image_ref = None
         self._image_lcsc = ""
         self._image_pending = False
@@ -544,7 +549,11 @@ class ComponentPopulator:
                 label.configure(wraplength=wrap)
             notes = getattr(self, "notes", None)
             if notes is not None:
-                notes.configure(wraplength=max(320, int(event.width) - 32))
+                wrap = max(300, int(event.width) - 40)
+                for row in notes.winfo_children():
+                    for child in row.winfo_children():
+                        if str(child.cget("style") or "") == "Note.TLabel":
+                            child.configure(wraplength=wrap)
 
         self.content_canvas.bind("<Configure>", fit_workspace)
 
@@ -567,8 +576,26 @@ class ComponentPopulator:
         self.content_canvas.bind("<Button-4>", scroll_content)
         self.content_canvas.bind("<Button-5>", scroll_content)
 
+        # Keep editable fields on the left and square CAD previews on the right.
+        # Search candidates span both columns so result selection remains easy to scan.
+        content.columnconfigure(0, weight=3)
+        content.columnconfigure(1, weight=2)
+        self.review_workspace = ttk.Frame(content)
+        self.review_workspace.grid(
+            row=1, column=0, columnspan=2, sticky="nsew"
+        )
+        self.review_workspace.columnconfigure(0, weight=3, uniform="review")
+        self.review_workspace.columnconfigure(1, weight=2, uniform="review")
+        self.properties_column = ttk.Frame(self.review_workspace)
+        self.preview_column = ttk.Frame(self.review_workspace)
+        self.properties_column.grid(
+            row=0, column=0, sticky="nsew", padx=(0, 12)
+        )
+        self.preview_column.grid(row=0, column=1, sticky="nsew")
+        self.preview_column.columnconfigure(0, weight=1)
+
         self.product_preview = build_product_preview(
-            content,
+            self.preview_column,
             tk,
             ttk,
             self.palette,
@@ -578,7 +605,7 @@ class ComponentPopulator:
             datasheet_command=self.open_datasheet,
         )
         self.product_preview.frame.grid(
-            row=1, column=0, sticky="ew", pady=(0, 12)
+            row=0, column=0, sticky="ew", pady=(0, 12)
         )
         self.image_label = self.product_preview.image_label
         self.product_button = self.product_preview.product_button
@@ -588,10 +615,10 @@ class ComponentPopulator:
             value="External CAD is requested only when a local KiCad mapping is missing."
         )
         self.cad_preview = build_cad_asset_preview(
-            content, ttk, self.cad_status_var
+            self.preview_column, ttk, self.cad_status_var
         )
         self.cad_preview.frame.grid(
-            row=2, column=0, sticky="ew", pady=(0, 12)
+            row=1, column=0, sticky="ew", pady=(0, 12)
         )
         self.cad_preview.frame.grid_remove()
 
@@ -668,14 +695,14 @@ class ComponentPopulator:
             "<<TreeviewSelect>>", self._on_candidate_selected
         )
         self.candidate_section.grid(
-            row=0, column=0, sticky="ew", pady=(0, 12)
+            row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12)
         )
         self.candidate_section.grid_remove()
 
         component_section = ttk.Frame(
-            content, style="Card.TFrame", padding=12
+            self.properties_column, style="Card.TFrame", padding=12
         )
-        component_section.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        component_section.grid(row=0, column=0, sticky="ew", pady=(0, 12))
         component_section.columnconfigure(1, weight=1)
         ttk.Label(
             component_section,
@@ -684,6 +711,7 @@ class ComponentPopulator:
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
         row = 1
+        self._field_feedback: dict[str, tuple[Any, Any]] = {}
         self.symbol_hint_label = None
         self.reference_prefix_label = None
 
@@ -702,11 +730,30 @@ class ComponentPopulator:
                 entry.configure(width=width)
             entry.grid(row=row, column=1, sticky="ew", pady=4)
             entry.bind("<KeyRelease>", self._refresh_readiness)
+            field_key = {
+                "Symbol": "symbol",
+                "Value": "value",
+                "Footprint": "footprint",
+                "Reference prefix": "reference_prefix",
+            }.get(label)
+            if field_key:
+                feedback = ttk.Label(
+                    component_section,
+                    text="",
+                    style="ValidationWarning.TLabel",
+                    wraplength=500,
+                    justify="left",
+                )
+                feedback.grid(
+                    row=row + 1, column=1, sticky="w", pady=(0, 4)
+                )
+                feedback.grid_remove()
+                self._field_feedback[field_key] = (entry, feedback)
             if label == "Symbol":
                 self.symbol_hint_label = label_widget
             elif label == "Reference prefix":
                 self.reference_prefix_label = label_widget
-            row += 1
+            row += 2
             return entry
 
         if self.create_mode:
@@ -745,9 +792,9 @@ class ComponentPopulator:
             row += 1
 
         proposal_section = ttk.Frame(
-            content, style="Card.TFrame", padding=12
+            self.properties_column, style="Card.TFrame", padding=12
         )
-        proposal_section.grid(row=4, column=0, sticky="ew", pady=(0, 12))
+        proposal_section.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         proposal_section.columnconfigure(0, weight=1)
         ttk.Label(
             proposal_section,
@@ -764,18 +811,13 @@ class ComponentPopulator:
         proposal_section.grid_remove()
 
         self.notes_section = ttk.Frame(
-            content, style="Note.TFrame", padding=(10, 8)
+            self.properties_column, style="Note.TFrame", padding=(10, 8)
         )
-        self.notes_section.grid(row=5, column=0, sticky="ew", pady=(0, 12))
+        self.notes_section.grid(row=2, column=0, sticky="ew", pady=(0, 12))
         self.notes_section.columnconfigure(0, weight=1)
-        self.notes = ttk.Label(
-            self.notes_section,
-            text="",
-            style="Note.TLabel",
-            wraplength=900,
-            justify="left",
-        )
-        self.notes.pack(anchor="w", fill="x")
+        self.notes = ttk.Frame(self.notes_section, style="Note.TFrame")
+        self.notes.grid(row=0, column=0, sticky="ew")
+        self.notes.grid_remove()
         self.notes_section.grid_remove()
 
         footer = ttk.Frame(outer)
@@ -787,9 +829,25 @@ class ComponentPopulator:
             footer_row,
             textvariable=self.status_var,
             style="Muted.TLabel",
-            wraplength=680,
+            wraplength=420,
             justify="left",
         ).pack(side="left", fill="x", expand=True)
+        self.export_button = ttk.Button(
+            footer_row,
+            text="Export to library",
+            command=self.export_to_library,
+            state="disabled",
+        )
+        self.export_button.pack(side="right", padx=(8, 0))
+        self.sync_button = None
+        if not self.create_mode:
+            self.sync_button = ttk.Button(
+                footer_row,
+                text="Sync with library",
+                command=self.sync_with_library,
+                state="disabled",
+            )
+            self.sync_button.pack(side="right", padx=(8, 0))
         self.apply_button = ttk.Button(
             footer_row,
             text=(
