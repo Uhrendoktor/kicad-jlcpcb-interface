@@ -211,11 +211,42 @@ def _hide_footprint_reference_text(footprint: list[Any]) -> int:
             or node[1].value.casefold() != "reference"
         ):
             continue
-        if not any(
-            isinstance(child, Atom) and child.value == "hide"
-            for child in node[2:]
-        ):
-            node.append(Atom("hide"))
+        # KiCad's footprint grammar places [hide] after (layer ...) and
+        # before (effects ...); a trailing token is silently ignored by renderers.
+        for index in range(len(node) - 1, 1, -1):
+            child = node[index]
+            if isinstance(child, Atom) and child.value == "hide":
+                node.pop(index)
+        layer_index = next(
+            (
+                index for index, child in enumerate(node[2:], start=2)
+                if (
+                    isinstance(child, list)
+                    and child
+                    and isinstance(child[0], Atom)
+                    and child[0].value == "layer"
+                )
+            ),
+            None,
+        )
+        effects_index = next(
+            (
+                index for index, child in enumerate(node[2:], start=2)
+                if (
+                    isinstance(child, list)
+                    and child
+                    and isinstance(child[0], Atom)
+                    and child[0].value == "effects"
+                )
+            ),
+            len(node),
+        )
+        insert_at = (
+            layer_index + 1
+            if layer_index is not None
+            else effects_index
+        )
+        node.insert(insert_at, Atom("hide"))
         hidden += 1
     return hidden
 
