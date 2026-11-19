@@ -113,10 +113,10 @@ the fields and review notes.
 
 The EasyEDA previews share one compact tab strip: **Symbol**, **Footprint** and
 **3D model**. When a STEP model is available and KiCad can render it, the 3D tab is
-selected automatically; otherwise the best available 2D tab is selected. The preview
-hides the footprint reference designator so it does not appear as silkscreen over the
-model. This is a preview-only change: the imported footprint retains its original
-reference field and silkscreen settings.
+selected automatically; otherwise the best available 2D tab is selected. The 3D
+preview removes the footprint's Reference property from a temporary render-only copy,
+so the silkscreen identifier cannot be drawn over the model. The footprint imported
+into the project retains its original Reference property and silkscreen settings.
 
 For exact resistor/capacitor values such as `10k`, `4k7` or `100nF`, Add mode shows at most five exact matches. Basic listings rank first across passive-value and general keyword searches. The **Basic parts only** checkbox hides Extended and unclassified results; leaving it unchecked keeps those alternatives available behind Basic parts. A direct LCSC-number lookup always returns the exact requested record. Selecting a passive automatically chooses `Device:R` or `Device:C`, its reference prefix, a reviewed package-to-footprint mapping when available, and the catalogue fields. You can still edit Value and Footprint. For other part searches, the suggested generic stock symbol remains editable; enter a KiCad identifier manually (for example, `Amplifier_Operational:LM358`) whenever the mapping is uncertain. The project-local library copies the chosen standalone symbol's original pins, units and graphics; it does not infer a manufacturer-specific pinout.
 
