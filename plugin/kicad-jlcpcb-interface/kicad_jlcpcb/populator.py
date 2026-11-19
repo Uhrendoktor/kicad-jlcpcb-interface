@@ -2223,7 +2223,7 @@ class ComponentPopulator:
                 text=message,
                 style="Note.TLabel",
                 wraplength=max(
-                    140, self.properties_column.winfo_width() - 125
+                    140, self.properties_column.winfo_width() - 145
                 ),
                 justify="left",
             ).grid(row=0, column=2, sticky="ew")
@@ -2240,7 +2240,7 @@ class ComponentPopulator:
         if width <= 1:
             return
 
-        note_wrap = max(140, width - 125)
+        note_wrap = max(140, width - 145)
         notes = getattr(self, "notes", None)
         if notes is not None and notes.winfo_exists():
             for row in notes.winfo_children():
@@ -2248,7 +2248,7 @@ class ComponentPopulator:
                     if str(child.cget("style") or "") == "Note.TLabel":
                         child.configure(wraplength=note_wrap)
 
-        proposal_wrap = max(140, width - 205)
+        proposal_wrap = max(140, width - 235)
         for label in getattr(self, "_proposal_value_labels", ()):
             label.configure(wraplength=proposal_wrap)
 
@@ -2293,7 +2293,7 @@ class ComponentPopulator:
                 text=self._proposal_display_value(name, value),
                 style="Card.TLabel",
                 wraplength=max(
-                    140, self.properties_column.winfo_width() - 205
+                    140, self.properties_column.winfo_width() - 235
                 ),
                 justify="left",
             )
