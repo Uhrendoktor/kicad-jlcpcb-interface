@@ -243,7 +243,7 @@ class ComponentBrowser:
             ttk.Label(
                 overview,
                 text="DESIGN OVERVIEW",
-                style="ProductEyebrow.TLabel",
+                style="SectionTitleSurface.TLabel",
             ).grid(
                 row=0,
                 column=0,
@@ -330,7 +330,7 @@ class ComponentBrowser:
             list_frame.columnconfigure(0, weight=1)
             list_frame.rowconfigure(1, weight=1)
             body.add(list_frame, weight=1)
-            ttk.Label(list_frame, text="LINKED SCHEMATIC COMPONENTS", style="Section.TLabel").grid(
+            ttk.Label(list_frame, text="LINKED SCHEMATIC COMPONENTS", style="SectionTitle.TLabel").grid(
                 row=0, column=0, sticky="w", pady=(0, 8)
             )
             columns = ("reference", "value", "part", "footprint", "sheet")
