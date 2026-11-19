@@ -1109,6 +1109,7 @@ class ComponentPopulator:
                             self._cad_pending = False
                             self._cad_attempted = True
                             self._show_cad_assets(None)
+                            self.export_button.configure(state="disabled")
                             self.cad_status_var.set(
                                 f"No downloadable CAD candidate: {exc}"
                             )
@@ -1147,6 +1148,13 @@ class ComponentPopulator:
                     self._cad_pending = False
                     self._cad_assets = result
                     self._show_cad_assets(result)
+                    self.export_button.configure(
+                        state=(
+                            "normal"
+                            if result.has_symbol or result.has_footprint
+                            else "disabled"
+                        )
+                    )
                     self._apply_cad_suggestions(result)
                     if self.draft is not None:
                         self._render_draft(
@@ -1608,17 +1616,12 @@ class ComponentPopulator:
                 )
                 if self.symbol_hint_var.get().strip() == assets.symbol_library_id:
                     updated = replace(updated, symbol_hint=assets.symbol_library_id)
-        current_footprint = self.footprint_var.get().strip()
-        project = self.schematic.get_project()
-        local_footprint_exists = bool(
-            current_footprint
-            and footprint_library_entry_available(
-                current_footprint, self.kicad, project
-            )
-        )
+        # A visible external footprint preview describes the selected CAD asset.
+        # Keep the editable Footprint field on that exact asset unless the user
+        # explicitly chose a different value; local mappings must not leave the
+        # preview and the schematic/export property out of sync.
         if (
             assets.has_footprint
-            and (not current_footprint or not local_footprint_exists)
             and "footprint" not in self._manual_proposal_fields
         ):
             self._set_proposal_field(
@@ -1808,7 +1811,9 @@ class ComponentPopulator:
         assets = getattr(self, "_cad_assets", None)
         has_symbol = bool(assets is not None and assets.has_symbol)
         has_footprint = bool(assets is not None and assets.has_footprint)
-        has_model = bool(assets is not None and assets.has_3d_model)
+        has_model = bool(
+            has_footprint and assets is not None and assets.has_3d_model
+        )
         if not any((has_symbol, has_footprint, has_model)):
             self.status_var.set("No downloadable CAD assets are available to export.")
             return
@@ -2063,9 +2068,6 @@ class ComponentPopulator:
         self._set_notes((
             "Info: The reviewed properties were written to the registered library and all matching schematic instances.",
         ))
-        if self.sync_button is not None:
-            self.sync_button.configure(state="disabled")
-
     def _set_notes(self, lines: tuple[str, ...]) -> None:
         """Render review notes with explicit severity icons, labels and text."""
         visible = tuple(str(line).strip() for line in lines if str(line).strip())
@@ -2268,25 +2270,9 @@ class ComponentPopulator:
         self.apply_button.configure(state="normal" if can_apply else "disabled")
         if self.selected_details is not None:
             self._request_cad_assets(self.selected_details, draft)
-
-    def _refresh_readiness(self, _event=None) -> None:
-        if self.closed or not self.create_mode or self.draft is None:
-            return
-        hint = self.symbol_hint_var.get().strip() or self.draft.symbol_hint
-        ready = (
-            bool(
-                self.value_var.get().strip()
-                or self.draft.value
-                or self.selected_details
-            )
-            and bool(self.draft.proposed_fields)
-            and ":" in hint
-        )
-        self.apply_button.configure(state="normal" if ready else "disabled")
-        if not ready:
-            self.status_var.set(
-                "Enter a KiCad Library:Symbol and component value before generation."
-            )
+        if self.sync_button is not None and not self.create_mode:
+            self.sync_button.configure(state="normal")
+        self._refresh_readiness()
 
     def apply(self) -> None:
         draft = self.draft
@@ -2313,6 +2299,11 @@ class ComponentPopulator:
                 value=selected_value,
             )
             if ":" not in draft.symbol_hint or not draft.value:
+                self._refresh_readiness()
+                if ":" not in draft.symbol_hint:
+                    self.symbol_hint_entry.focus_set()
+                elif not draft.value:
+                    self.value_entry.focus_set()
                 self.messagebox.showerror(
                     "Component details incomplete",
                     "Choose a KiCad Library:Symbol and provide a component value or MPN. "
@@ -2401,6 +2392,7 @@ class ComponentPopulator:
                     self.root.lift()
                     self.root.update_idletasks()
                 self.status_var.set(f"Project library generation failed: {exc}")
+                self._set_notes((f"Error: Project library generation failed: {exc}",))
                 self.messagebox.showerror(
                     "Component library generation failed", str(exc), parent=self.root
                 )
@@ -2454,6 +2446,7 @@ class ComponentPopulator:
             self.schematic.save()
         except Exception as exc:
             self.status_var.set(f"KiCad update failed: {exc}")
+            self._set_notes((f"Error: KiCad update failed: {exc}",))
             self.messagebox.showerror(
                 "Component update failed",
                 f"KiCad did not confirm the complete symbol update.\n\n{exc}",
