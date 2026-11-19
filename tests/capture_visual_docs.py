@@ -1591,15 +1591,29 @@ def _drive_populator_form(
             preview_width = int(populator.preview_column.winfo_width())
             selected_part_width = int(populator.product_preview.frame.winfo_width())
             content_width = int(populator.workspace_content.winfo_width())
-            if workspace_width <= 0 or preview_width / workspace_width > 0.42:
+            cad_visible = populator.cad_preview.frame.winfo_ismapped()
+            if workspace_width <= 0:
+                raise RuntimeError("The component review workspace has no measurable width.")
+            if cad_visible:
+                if preview_width / workspace_width > 0.42:
+                    raise RuntimeError(
+                        "The KiCad CAD candidate pane exceeds its 40% width budget: "
+                        f"preview={preview_width}px workspace={workspace_width}px."
+                    )
+                if properties_width / workspace_width < 0.58:
+                    raise RuntimeError(
+                        "The KiCad properties pane is narrower than the 60% layout target: "
+                        f"properties={properties_width}px workspace={workspace_width}px."
+                    )
+            elif (
+                populator.preview_column.winfo_ismapped()
+                or properties_width / workspace_width < 0.94
+            ):
                 raise RuntimeError(
-                    "The KiCad CAD candidate pane exceeds its 40% width budget: "
-                    f"preview={preview_width}px workspace={workspace_width}px."
-                )
-            if properties_width / workspace_width < 0.58:
-                raise RuntimeError(
-                    "The KiCad properties pane is narrower than the 60% layout target: "
-                    f"properties={properties_width}px workspace={workspace_width}px."
+                    "The unused CAD column did not collapse to give the properties "
+                    "editor the full review row: "
+                    f"properties={properties_width}px workspace={workspace_width}px "
+                    f"preview_mapped={populator.preview_column.winfo_ismapped()}."
                 )
             if selected_part_width < content_width * 0.95:
                 raise RuntimeError(
