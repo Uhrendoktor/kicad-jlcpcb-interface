@@ -1693,6 +1693,13 @@ class ComponentPopulator:
                 )
             return
 
+        # A completed lookup with no result has nothing to preview. Do not
+        # leave an empty candidate column taking 40% of the review workspace.
+        if self._cad_attempted and not self._cad_pending and self._cad_assets is None:
+            self.properties_column.grid_configure(columnspan=2)
+            self.preview_column.grid_remove()
+            return
+
         self.properties_column.grid_configure(columnspan=1)
         self.preview_column.grid()
         if self._cad_pending or self._cad_attempted:
