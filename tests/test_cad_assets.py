@@ -106,7 +106,7 @@ class StepPreviewRenderingTests(unittest.TestCase):
                 '(rotate (xyz 0 0 0))))'
             )
             footprint_path.write_text(original, encoding="utf-8")
-            model_path.write_bytes(b"ISO-10303-21;\\nEND-ISO-10303-21;")
+            model_path.write_bytes(b"ISO-10303-21;\nEND-ISO-10303-21;")
 
             captured = {}
 
@@ -137,7 +137,7 @@ class StepPreviewRenderingTests(unittest.TestCase):
                     for child in texts["value"]
                 )
                 output_path = Path(command[command.index("--output") + 1])
-                output_path.write_bytes(b"\\x89PNG\\r\\n\\x1a\\npreview")
+                output_path.write_bytes(b"\x89PNG\r\n\x1a\npreview")
                 return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
 
             with (
@@ -146,7 +146,7 @@ class StepPreviewRenderingTests(unittest.TestCase):
             ):
                 preview = render_step_preview(footprint_path, model_path)
 
-            self.assertTrue(preview.startswith(b"\\x89PNG\\r\\n\\x1a\\n"))
+            self.assertTrue(preview.startswith(b"\x89PNG\r\n\x1a\n"))
             self.assertTrue(captured["reference_hidden"])
             self.assertFalse(captured["value_hidden"])
             self.assertEqual(footprint_path.read_text(encoding="utf-8"), original)
