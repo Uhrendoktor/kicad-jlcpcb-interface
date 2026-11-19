@@ -1677,16 +1677,433 @@ class ComponentPopulator:
                 result_queue.put((completed, "cad", code))
         )
 
+    def _set_field_feedback(
+        self, field_name: str, level: str | None, message: str = ""
+    ) -> None:
+        controls = getattr(self, "_field_feedback", {}).get(field_name)
+        if controls is None:
+            return
+        _entry, label = controls
+        if not message:
+            label.configure(text="")
+            label.grid_remove()
+            return
+        level = level if level in {"error", "warning", "info"} else "warning"
+        icon = {"error": "✕", "warning": "⚠", "info": "ℹ"}[level]
+        caption = {"error": "Error", "warning": "Warning", "info": "Info"}[level]
+        label.configure(
+            text=f"{icon} {caption}: {message}",
+            style=f"Validation{caption}.TLabel",
+        )
+        label.grid()
+
+    def _update_field_feedback(self) -> set[str]:
+        """Validate editable KiCad inputs and attach guidance to their source fields."""
+        errors: set[str] = set()
+        if self.draft is None:
+            return errors
+
+        project = self.schematic.get_project()
+        assets = getattr(self, "_cad_assets", None)
+        if self.create_mode:
+            symbol_id = self.symbol_hint_var.get().strip()
+            symbol_is_candidate = bool(
+                assets is not None
+                and assets.has_symbol
+                and symbol_id == assets.symbol_library_id
+            )
+            if not symbol_id or ":" not in symbol_id:
+                self._set_field_feedback(
+                    "symbol", "error",
+                    "Enter a KiCad Library:Symbol identifier, for example Device:R.",
+                )
+                errors.add("symbol")
+            elif not symbol_is_candidate and not symbol_library_entry_available(
+                symbol_id, self.kicad, project
+            ):
+                self._set_field_feedback(
+                    "symbol", "error",
+                    "This symbol is not available in the active project or KiCad libraries. "
+                    "Choose an existing symbol or export the CAD candidate first.",
+                )
+                errors.add("symbol")
+            else:
+                self._set_field_feedback("symbol", None)
+
+            value = self.value_var.get().strip()
+            fallback = str(
+                getattr(self.selected_details, "manufacturer_part_number", "")
+                or getattr(self.selected_details, "lcsc", "")
+                or ""
+            ).strip()
+            if not value and not self.draft.value and not fallback:
+                self._set_field_feedback(
+                    "value", "error",
+                    "Enter a component value or select a catalogue part with an MPN.",
+                )
+                errors.add("value")
+            else:
+                self._set_field_feedback("value", None)
+        else:
+            self._set_field_feedback("value", None)
+
+        footprint = self.footprint_var.get().strip()
+        if footprint:
+            if footprint.count(":") != 1:
+                self._set_field_feedback(
+                    "footprint", "error",
+                    "Use a KiCad Library:Footprint identifier, for example "
+                    "Resistor_SMD:R_0603_1608Metric.",
+                )
+                errors.add("footprint")
+            else:
+                candidate_match = bool(
+                    assets is not None
+                    and assets.has_footprint
+                    and footprint == assets.footprint_library_id
+                )
+                if not candidate_match and not footprint_library_entry_available(
+                    footprint, self.kicad, project
+                ):
+                    self._set_field_feedback(
+                        "footprint", "warning",
+                        "This footprint is not registered in the active project or KiCad. "
+                        "Choose an available footprint or export the CAD candidate.",
+                    )
+                else:
+                    self._set_field_feedback("footprint", None)
+        elif self.create_mode:
+            self._set_field_feedback(
+                "footprint", "warning",
+                "A footprint is optional for schematic placement, but is needed before PCB layout.",
+            )
+        else:
+            self._set_field_feedback("footprint", None)
+
+        if self.create_mode:
+            prefix = self.reference_prefix_var.get().strip()
+            if prefix and re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,7}", prefix) is None:
+                self._set_field_feedback(
+                    "reference_prefix", "error",
+                    "Use a short reference prefix such as R, C, D or U.",
+                )
+                errors.add("reference_prefix")
+            else:
+                self._set_field_feedback("reference_prefix", None)
+        return errors
+
+    def _refresh_readiness(self, _event=None) -> None:
+        if self.closed or self.draft is None:
+            return
+        errors = self._update_field_feedback()
+        if not self.create_mode:
+            return
+        ready = not errors
+        self.apply_button.configure(state="normal" if ready else "disabled")
+        if not ready:
+            self.status_var.set("Fix the highlighted fields before generating the component.")
+
+    def export_to_library(self) -> None:
+        """Let the user choose reusable destinations for the available CAD assets."""
+        assets = getattr(self, "_cad_assets", None)
+        has_symbol = bool(assets is not None and assets.has_symbol)
+        has_footprint = bool(assets is not None and assets.has_footprint)
+        has_model = bool(assets is not None and assets.has_3d_model)
+        if not any((has_symbol, has_footprint, has_model)):
+            self.status_var.set("No downloadable CAD assets are available to export.")
+            return
+
+        from tkinter import filedialog
+
+        project = self.schematic.get_project()
+        raw_project = getattr(project, "path", project)
+        project_path = Path(str(raw_project)).expanduser()
+        if project_path.is_file() or project_path.suffix.casefold() in {".kicad_pro", ".kicad_sch"}:
+            project_dir = project_path.parent
+        else:
+            project_dir = project_path
+        if not project_dir.is_dir():
+            self.messagebox.showerror(
+                "Save the KiCad project first",
+                "Exported libraries are registered in the active project. Save the project before exporting.",
+                parent=self.root,
+            )
+            return
+
+        dialog = self.tk.Toplevel(self.root)
+        dialog.title("Export CAD assets to libraries")
+        dialog.transient(self.root)
+        dialog.columnconfigure(1, weight=1)
+        ttk = self.ttk
+        ttk.Label(
+            dialog,
+            text="Choose a destination for each available asset. New libraries are registered in this project.",
+            wraplength=660,
+            justify="left",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=16, pady=(14, 10))
+        variables: dict[str, Any] = {}
+        row = 1
+
+        def add_destination(
+            key: str,
+            label: str,
+            default: Path,
+            *,
+            file_target: bool,
+            extension: str = "",
+        ) -> None:
+            nonlocal row
+            variable = self.tk.StringVar(value=str(default))
+            variables[key] = variable
+            ttk.Label(dialog, text=label).grid(
+                row=row, column=0, sticky="w", padx=(16, 10), pady=5
+            )
+            ttk.Entry(dialog, textvariable=variable).grid(
+                row=row, column=1, sticky="ew", pady=5
+            )
+
+            def browse() -> None:
+                if file_target:
+                    chosen = filedialog.asksaveasfilename(
+                        parent=dialog,
+                        title=f"Choose {label.lower()}",
+                        initialdir=str(default.parent),
+                        initialfile=default.name,
+                        defaultextension=extension,
+                        filetypes=(("KiCad symbol libraries", "*.kicad_sym"), ("All files", "*.*")),
+                    )
+                else:
+                    chosen = filedialog.askdirectory(
+                        parent=dialog,
+                        title=f"Choose {label.lower()}",
+                        initialdir=str(default),
+                        mustexist=False,
+                    )
+                if chosen:
+                    variable.set(chosen)
+
+            ttk.Button(dialog, text="Browse…", command=browse).grid(
+                row=row, column=2, sticky="e", padx=(8, 16), pady=5
+            )
+            row += 1
+
+        lcsc = str(assets.lcsc or "Part").strip()
+        symbol_default = project_dir / "JLCPCB_Assets.kicad_sym"
+        footprint_default = project_dir / f"JLCPCB_{lcsc}.pretty"
+        model_default = project_dir / f"JLCPCB_{lcsc}.3dshapes"
+        if has_symbol:
+            add_destination(
+                "symbol_library", "Schematic symbol library",
+                symbol_default, file_target=True, extension=".kicad_sym",
+            )
+        if has_footprint:
+            add_destination(
+                "footprint_library", "Footprint library (.pretty)",
+                footprint_default, file_target=False,
+            )
+        if has_model:
+            add_destination(
+                "model_directory", "3D model directory",
+                model_default, file_target=False,
+            )
+
+        ttk.Label(
+            dialog,
+            text="Existing items with different content are never replaced. The model path in the exported footprint is updated to the selected 3D folder.",
+            wraplength=660,
+            justify="left",
+            style="Muted.TLabel",
+        ).grid(row=row, column=0, columnspan=3, sticky="w", padx=16, pady=(8, 12))
+        row += 1
+
+        def do_export() -> None:
+            try:
+                result = export_cad_assets_to_libraries(
+                    project,
+                    symbol_source=assets.symbol_library_path if has_symbol else None,
+                    symbol_name=assets.symbol_name if has_symbol else "",
+                    symbol_library=variables.get("symbol_library").get() if has_symbol else None,
+                    footprint_source=assets.footprint_path if has_footprint else None,
+                    footprint_library=variables.get("footprint_library").get() if has_footprint else None,
+                    model_source=assets.model_path if has_model else None,
+                    model_directory=variables.get("model_directory").get() if has_model else None,
+                )
+                credits_path = getattr(assets, "credits_path", None)
+                if credits_path is not None and Path(credits_path).is_file():
+                    register_project_cad_credits(project, credits_path, lcsc=assets.lcsc)
+
+                updates = {}
+                if result.symbol_id and self.create_mode:
+                    updates["symbol_hint"] = result.symbol_id
+                if result.footprint_id:
+                    updates["footprint"] = result.footprint_id
+                if self.draft is not None and updates:
+                    if "symbol_hint" in updates:
+                        self._manual_proposal_fields.discard("symbol")
+                    if "footprint" in updates:
+                        self._manual_proposal_fields.discard("footprint")
+                    self._setting_proposal_field = True
+                    try:
+                        if "symbol_hint" in updates:
+                            self.symbol_hint_var.set(result.symbol_id)
+                        if "footprint" in updates:
+                            self.footprint_var.set(result.footprint_id)
+                    finally:
+                        self._setting_proposal_field = False
+                    self.draft = replace(self.draft, **updates)
+                    self._render_draft(
+                        self.draft,
+                        bool(self.selected_details and (
+                            self.selected_details.is_cached or self.selected_details.stale
+                        )),
+                    )
+                exported = []
+                if result.symbol_id:
+                    exported.append(f"symbol {result.symbol_id}")
+                if result.footprint_id:
+                    exported.append(f"footprint {result.footprint_id}")
+                if result.model_path:
+                    exported.append(f"3D model {result.model_path}")
+                self.status_var.set("Exported " + "; ".join(exported) + ".")
+                self._set_notes(("Info: Exported assets are registered in this project's KiCad library tables.",))
+                dialog.destroy()
+                self.messagebox.showinfo(
+                    "CAD assets exported",
+                    "The selected assets are now available through this project's KiCad libraries.\n\n"
+                    + "\n".join(exported),
+                    parent=self.root,
+                )
+            except Exception as exc:
+                self._set_notes((f"Error: CAD library export failed: {exc}",))
+                self.status_var.set(f"CAD library export failed: {exc}")
+                self.messagebox.showerror(
+                    "CAD library export failed", str(exc), parent=dialog
+                )
+
+        actions = ttk.Frame(dialog)
+        actions.grid(row=row, column=0, columnspan=3, sticky="e", padx=16, pady=(0, 14))
+        ttk.Button(actions, text="Cancel", command=dialog.destroy).pack(side="right")
+        ttk.Button(
+            actions, text="Export assets", command=do_export, style="Primary.TButton"
+        ).pack(side="right", padx=(0, 8))
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.grab_set()
+        dialog.wait_window()
+
+    def sync_with_library(self) -> None:
+        """Update the source library and every schematic instance that uses it."""
+        if self.create_mode or self.draft is None:
+            return
+        draft = replace(
+            self.draft,
+            value=self.value_var.get().strip() or self.draft.value,
+            footprint=self.footprint_var.get().strip(),
+        )
+        matching = [
+            symbol for symbol in iter_schematic_symbols(self.schematic)
+            if symbol_library_id(symbol) == self.library_id
+        ]
+        if not matching:
+            self._set_notes((
+                f"Error: No schematic instances using {self.library_id!r} were found to sync.",
+            ))
+            return
+        references = [
+            str(getattr(symbol, "reference", "") or "unannotated")
+            for symbol in matching
+        ]
+        prompt = (
+            f"Sync {self.library_id} with the reviewed catalogue properties?\n\n"
+            f"This updates the writable library definition and all {len(matching)} schematic "
+            f"instance(s): {', '.join(references[:8])}"
+            + ("…" if len(references) > 8 else "")
+            + "\n\nSymbol graphics, pins, units and library identity are preserved. "
+            "System-wide KiCad libraries are not modified."
+        )
+        if not self.messagebox.askyesno(
+            "Sync with library", prompt, parent=self.root
+        ):
+            return
+
+        library_path = None
+        original_library = None
+        try:
+            project = self.schematic.get_project()
+            library_path, original_library = sync_symbol_library_properties(
+                project, self.library_id, draft
+            )
+            for symbol in matching:
+                apply_component_draft_fields(
+                    symbol,
+                    draft,
+                    expected_library_id=self.library_id,
+                    allow_symbol_mismatch=True,
+                )
+            try:
+                update_schematic_symbols(self.schematic, matching)
+                self.schematic.save()
+            except Exception:
+                restore_symbol_library_snapshot(library_path, original_library)
+                raise
+        except Exception as exc:
+            self.status_var.set(f"Library sync failed: {exc}")
+            self._set_notes((f"Error: Library sync failed: {exc}",))
+            self.messagebox.showerror(
+                "Library sync failed",
+                "The library and schematic could not both be synced. "
+                "The library file is rolled back when the schematic update fails.\n\n"
+                + str(exc),
+                parent=self.root,
+            )
+            return
+
+        self.status_var.set(
+            f"Synced {len(matching)} schematic instance(s) and {library_path.name}."
+        )
+        self._set_notes((
+            "Info: The reviewed properties were written to the registered library and all matching schematic instances.",
+        ))
+        if self.sync_button is not None:
+            self.sync_button.configure(state="disabled")
+
     def _set_notes(self, lines: tuple[str, ...]) -> None:
-        visible = tuple(line.strip() for line in lines if line.strip())
+        """Render review notes with explicit severity icons, labels and text."""
+        visible = tuple(str(line).strip() for line in lines if str(line).strip())
+        for child in self.notes.winfo_children():
+            child.destroy()
         if not visible:
-            self.notes.configure(text="")
+            self.notes.grid_remove()
             self.notes_section.grid_remove()
             return
-        self.notes.configure(
-            text="\n".join(f"• {line}" for line in visible),
-            wraplength=max(320, self.content_canvas.winfo_width() - 40),
-        )
+
+        for index, raw in enumerate(visible):
+            if raw.casefold().startswith("error:"):
+                level, message = "error", raw.split(":", 1)[1].strip()
+            elif raw.casefold().startswith("info:"):
+                level, message = "info", raw.split(":", 1)[1].strip()
+            elif raw.casefold().startswith("warning:"):
+                level, message = "warning", raw.split(":", 1)[1].strip()
+            else:
+                level, message = "warning", raw
+            caption = {"error": "Error", "warning": "Warning", "info": "Info"}[level]
+            icon = {"error": "✕", "warning": "⚠", "info": "ℹ"}[level]
+            row = self.ttk.Frame(self.notes, style="Note.TFrame")
+            row.grid(row=index, column=0, sticky="ew", pady=(0, 4))
+            row.columnconfigure(2, weight=1)
+            self.ttk.Label(
+                row, text=icon, style=f"Notice{caption}.TLabel"
+            ).grid(row=0, column=0, sticky="nw", padx=(0, 6))
+            self.ttk.Label(
+                row, text=caption, style=f"Notice{caption}.TLabel"
+            ).grid(row=0, column=1, sticky="nw", padx=(0, 8))
+            self.ttk.Label(
+                row,
+                text=message,
+                style="Note.TLabel",
+                wraplength=max(300, self.content_canvas.winfo_width() - 50),
+                justify="left",
+            ).grid(row=0, column=2, sticky="ew")
+        self.notes.grid()
         self.notes_section.grid()
 
     def _clear_proposal_rows(self) -> None:
