@@ -897,8 +897,10 @@ class ComponentPopulator:
         # palette snapshot captured during window construction. This keeps the
         # PhotoImage legible when the desktop theme is changed at runtime.
         style = self.ttk.Style(self.root)
+        # The filter control sits beside the Basic-parts checkbutton, so use
+        # that control's live foreground to guarantee matching contrast.
         foreground = (
-            style.lookup("ToolbarLabel.TLabel", "foreground")
+            style.lookup("Toolbar.TCheckbutton", "foreground")
             or palette.get("foreground", "#30343b")
         )
         surface = (
