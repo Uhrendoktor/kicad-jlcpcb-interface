@@ -1173,9 +1173,17 @@ def _drive_overview(
                     )
                 root.after(120, advance)
                 return
-            if browser.catalogue_status_var.get() != "Catalogue details loaded.":
+            loaded_details = browser._catalogue_details
+            loaded_part = (
+                loaded_details.lcsc.upper() if loaded_details is not None else None
+            )
+            if loaded_part != stage["part"]:
                 if time.monotonic() >= state["deadline"]:
-                    raise TimeoutError(f"Catalogue render did not settle for {stage['part']}.")
+                    raise TimeoutError(
+                        f"Catalogue data did not settle for {stage['part']}; "
+                        f"loaded={loaded_part!r}; "
+                        f"catalogue_status={browser.catalogue_status_var.get()!r}."
+                    )
                 root.after(120, advance)
                 return
             if browser.summary_status_var.get().startswith("Loading catalogue"):
