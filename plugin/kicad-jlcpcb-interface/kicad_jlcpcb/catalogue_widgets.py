@@ -239,7 +239,11 @@ def build_cad_asset_preview(
     status_var: Any,
 ) -> CadAssetPreviewControls:
     """Build space-efficient tabs for the available KiCad CAD candidates."""
-    surface = ttk.Frame(parent, style="ProductPreview.TFrame", padding=(UI_SPACING["lg"], UI_SPACING["md"]))
+    surface = ttk.Frame(
+        parent,
+        style="ProductPreview.TFrame",
+        padding=(UI_SPACING["lg"], UI_SPACING["md"]),
+    )
     surface.columnconfigure(0, weight=1)
 
     ttk.Label(
