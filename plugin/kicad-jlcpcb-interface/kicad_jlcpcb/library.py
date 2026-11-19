@@ -1338,7 +1338,9 @@ def _register_selected_library(
             table_path, dump_sexpr(table), backup=table_path.exists()
         )
         return nickname
-    raise SymbolLibraryConflict("Could not allocate a free KiCad library nickname for the selected path.")
+    raise SymbolLibraryConflict(
+        "Could not allocate a free KiCad library nickname for the selected path."
+    )
 
 
 def _path_has_symlink_component(path: str | Path) -> bool:
@@ -1378,7 +1380,9 @@ def _export_symbol_to_library(
     source_path = source_path.resolve(strict=True)
     target_path = Path(target_file).expanduser()
     if target_path.suffix.casefold() != ".kicad_sym":
-        raise SymbolLibraryError("Select a KiCad schematic symbol library file ending in .kicad_sym.")
+        raise SymbolLibraryError(
+            "Select a KiCad schematic symbol library file ending in .kicad_sym."
+        )
     if _path_has_symlink_component(target_path):
         raise SymbolLibraryConflict(
             "Refusing to export into a symbol library path containing a symlink."
@@ -1407,7 +1411,9 @@ def _export_symbol_to_library(
     if not any(
         _head(node) == "pin" for node in _walk(source_symbol)
     ):
-        raise SymbolLibraryError("The selected CAD symbol has no pins and cannot be used as a component.")
+        raise SymbolLibraryError(
+            "The selected CAD symbol has no pins and cannot be used as a component."
+        )
 
     existed = target_path.exists()
     original_text = None
@@ -1430,7 +1436,8 @@ def _export_symbol_to_library(
     if existing is not None:
         if dump_sexpr(existing) != dump_sexpr(source_symbol):
             raise SymbolLibraryConflict(
-                f"Symbol {safe_name!r} already exists in {target_path.name} with different content. "
+                f"Symbol {safe_name!r} already exists in {target_path.name} "
+                "with different content. "
                 "It was not overwritten."
             )
     else:
