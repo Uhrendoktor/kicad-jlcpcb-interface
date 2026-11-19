@@ -414,15 +414,14 @@ class ComponentPopulator:
             ),
         )
 
-        self._filter_icon_active = False
-        self._filter_icon_image = self._create_advanced_filter_icon(active=False)
+        self._filters_active = False
         self.advanced_filters_button = ttk.Button(
             search,
-            image=self._filter_icon_image,
+            text="Filters",
             command=self._toggle_advanced_filters,
-            padding=(3, 3),
+            style="ToolbarLink.TButton",
+            padding=(7, 3),
         )
-        self.advanced_filters_button.image = self._filter_icon_image
         self.advanced_filters_button.grid(
             row=0, column=3, sticky="e", padx=(0, 6)
         )
@@ -889,61 +888,6 @@ class ComponentPopulator:
             for variable in (self.footprint_filter_var, self.tolerance_filter_var)
         )
 
-    def _create_advanced_filter_icon(self, *, active: bool):
-        """Create a compact funnel icon with a theme-coloured active badge."""
-        image = self.tk.PhotoImage(width=22, height=20)
-        palette = getattr(self.root, "_kicad_jlcpcb_palette", self.palette)
-        # Ask ttk for the live widget colors instead of relying only on the
-        # palette snapshot captured during window construction. This keeps the
-        # PhotoImage legible when the desktop theme is changed at runtime.
-        style = self.ttk.Style(self.root)
-        # The filter control sits beside the Basic-parts checkbutton, so use
-        # that control's live foreground to guarantee matching contrast.
-        foreground = (
-            style.lookup("Toolbar.TCheckbutton", "foreground")
-            or palette.get("foreground", "#30343b")
-        )
-        surface = (
-            style.lookup("Toolbar.TFrame", "background")
-            or palette.get("surface", palette.get("background", "#f4f5f6"))
-        )
-        accent = (
-            style.lookup("ToolbarLink.TButton", "foreground")
-            or palette.get("accent", "#4c789f")
-        )
-
-        funnel_rows = (
-            (2, 15),
-            (2, 15),
-            (3, 14),
-            (4, 13),
-            (5, 12),
-            (6, 11),
-            (7, 10),
-            (8, 9),
-        )
-        for y, (left, right) in enumerate(funnel_rows, start=2):
-            image.put(foreground, to=(left, y, right + 1, y + 1))
-        image.put(foreground, to=(8, 10, 10, 18))
-
-        if active:
-            center_x, center_y = 18, 3
-            for dy in range(-2, 3):
-                for dx in range(-2, 3):
-                    if dx * dx + dy * dy <= 5:
-                        image.put(
-                            surface,
-                            to=(center_x + dx, center_y + dy),
-                        )
-            for dy in range(-1, 2):
-                for dx in range(-1, 2):
-                    if dx * dx + dy * dy <= 2:
-                        image.put(
-                            accent,
-                            to=(center_x + dx, center_y + dy),
-                        )
-        return image
-
     @staticmethod
     def _short_filter_summary_value(value: str, limit: int = 14) -> str:
         """Keep the toolbar summary compact while the tooltip retains full values."""
@@ -988,12 +932,12 @@ class ComponentPopulator:
         )
 
     def _update_advanced_filter_button(self, *_args) -> None:
-        """Refresh the funnel badge and compact active-filter summary."""
+        """Refresh the labelled filter control and compact active-filter summary."""
         active = bool(self._active_advanced_filter_count())
-        self._filter_icon_active = active
-        self._filter_icon_image = self._create_advanced_filter_icon(active=active)
-        self.advanced_filters_button.configure(image=self._filter_icon_image)
-        self.advanced_filters_button.image = self._filter_icon_image
+        self._filters_active = active
+        self.advanced_filters_button.configure(
+            text="Filters" if not active else f"Filters ({self._active_advanced_filter_count()})"
+        )
         summary = self._advanced_filter_summary_text()
         self.advanced_filter_summary.configure(text=summary)
         if summary:
