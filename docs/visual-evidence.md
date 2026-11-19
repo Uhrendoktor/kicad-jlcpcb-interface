@@ -97,8 +97,8 @@ footer in one image. No stitched scroll states or mockups are used.
 
 The CAD preview uses three tabs—**Symbol**, **Footprint** and **3D model**—instead of
 stacking the three pictures vertically. The 3D tab is selected automatically when a
-STEP model has been rendered. The temporary KiCad board used for this render hides
-only the reference-designator fp_text; the actual imported footprint is not altered.
+STEP model has been rendered. The temporary KiCad board used for this render omits
+only the Reference property; the actual imported footprint is not altered.
 
 <details>
   <summary>Show Update and Add completion states</summary>
