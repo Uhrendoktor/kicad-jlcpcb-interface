@@ -22,6 +22,7 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
+from kicad_jlcpcb import populator as populator_module  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -1815,8 +1816,22 @@ def _capture_passive_component_workflows(
     # Keep the Update example on its known local Device:R footprint. The
     # dedicated Add-mode fixture below exercises the live EasyEDA CAD fallback
     # and captures the selected 3D tab; do not let that optional lookup replace
-    # this deterministic stock-mapping review example.
-    populate._request_cad_assets = lambda _details, _draft: None
+    # this deterministic stock-mapping review example. Run the real layout
+    # decision as a local mapping, but keep the ordinary field validator intact
+    # so its warning and tooltip remain visible in the captured review form.
+    request_cad_assets = populate._request_cad_assets
+
+    def request_local_stock_mapping(details: Any, draft: ComponentDraft) -> None:
+        availability_check = populator_module.footprint_library_entry_available
+        try:
+            populator_module.footprint_library_entry_available = (
+                lambda *_args, **_kwargs: True
+            )
+            request_cad_assets(details, draft)
+        finally:
+            populator_module.footprint_library_entry_available = availability_check
+
+    populate._request_cad_assets = request_local_stock_mapping
     populate.lookup()
 
     def validate_populate_result(populator: ComponentPopulator) -> None:
