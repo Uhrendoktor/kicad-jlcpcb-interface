@@ -103,6 +103,8 @@ class _HoverTooltip:
         self._window = None
         widget.bind("<Enter>", self._schedule, add="+")
         widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<FocusIn>", self._schedule, add="+")
+        widget.bind("<FocusOut>", self._hide, add="+")
         widget.bind("<ButtonPress>", self._hide, add="+")
         widget.bind("<Destroy>", self._on_destroy, add="+")
 
@@ -567,27 +569,14 @@ class ComponentPopulator:
         self.content_canvas.bind("<Button-4>", scroll_content)
         self.content_canvas.bind("<Button-5>", scroll_content)
 
-        # Keep editable fields on the left and square CAD previews on the right.
-        # Search candidates span both columns so result selection remains easy to scan.
-        content.columnconfigure(0, weight=3)
-        content.columnconfigure(1, weight=2)
-        self.review_workspace = ttk.Frame(content)
-        self.review_workspace.grid(
-            row=1, column=0, columnspan=2, sticky="nsew"
-        )
-        self.review_workspace.columnconfigure(0, weight=2, uniform="review")
-        self.review_workspace.columnconfigure(1, weight=3, uniform="review")
-        self.properties_column = ttk.Frame(self.review_workspace)
-        self.preview_column = ttk.Frame(self.review_workspace)
-        self.properties_column.grid(
-            row=0, column=0, sticky="nsew", padx=(0, 12)
-        )
-        self.properties_column.bind("<Configure>", self._fit_property_text)
-        self.preview_column.grid(row=0, column=1, sticky="nsew")
-        self.preview_column.columnconfigure(0, weight=1)
+        # The selected JLCPCB part stays in a full-width row. Below it, keep
+        # editable properties dominant and cap the CAD candidate pane at 40%.
+        content.columnconfigure(0, weight=1)
+        content.columnconfigure(1, weight=1)
+        self.workspace_content = content
 
         self.product_preview = build_product_preview(
-            self.preview_column,
+            content,
             tk,
             ttk,
             self.palette,
@@ -597,12 +586,29 @@ class ComponentPopulator:
             datasheet_command=self.open_datasheet,
         )
         self.product_preview.frame.grid(
-            row=0, column=0, sticky="ew", pady=(0, 12)
+            row=1, column=0, columnspan=2, sticky="ew", pady=(0, 12)
         )
         self.image_label = self.product_preview.image_label
         self.product_button = self.product_preview.product_button
         self.datasheet_button = self.product_preview.datasheet_button
         self._image_ref = None
+
+        self.review_workspace = ttk.Frame(content)
+        self.review_workspace.grid(
+            row=2, column=0, columnspan=2, sticky="nsew"
+        )
+        self.review_workspace.columnconfigure(0, weight=3, uniform="review")
+        self.review_workspace.columnconfigure(1, weight=2, uniform="review")
+        self.properties_column = ttk.Frame(self.review_workspace)
+        self.preview_column = ttk.Frame(self.review_workspace)
+        self.properties_column.columnconfigure(0, weight=1)
+        self.properties_column.grid(
+            row=0, column=0, sticky="nsew", padx=(0, 12)
+        )
+        self.properties_column.bind("<Configure>", self._fit_property_text)
+        self.preview_column.grid(row=0, column=1, sticky="nsew")
+        self.preview_column.columnconfigure(0, weight=1)
+
         self.cad_status_var = tk.StringVar(
             value="External CAD is requested only when a local KiCad mapping is missing."
         )
@@ -610,7 +616,7 @@ class ComponentPopulator:
             self.preview_column, ttk, self.cad_status_var
         )
         self.cad_preview.frame.grid(
-            row=1, column=0, sticky="ew", pady=(0, 12)
+            row=0, column=0, sticky="ew", pady=(0, 12)
         )
         self.cad_preview.frame.grid_remove()
 
@@ -703,7 +709,9 @@ class ComponentPopulator:
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
         row = 1
-        self._field_feedback: dict[str, tuple[Any, Any]] = {}
+        self._field_feedback: dict[str, tuple[Any, Any, Any]] = {}
+        self._field_feedback_messages: dict[str, str] = {}
+        self._field_tooltips: list[_HoverTooltip] = []
         self.symbol_hint_label = None
         self.reference_prefix_label = None
 
@@ -717,10 +725,13 @@ class ComponentPopulator:
             label_widget.grid(
                 row=row, column=0, sticky="w", padx=(0, 14), pady=4
             )
-            entry = ttk.Entry(component_section, textvariable=variable)
+            input_shell = ttk.Frame(component_section, style="Card.TFrame")
+            input_shell.grid(row=row, column=1, sticky="ew", pady=4)
+            input_shell.columnconfigure(0, weight=1)
+            entry = ttk.Entry(input_shell, textvariable=variable)
             if width is not None:
                 entry.configure(width=width)
-            entry.grid(row=row, column=1, sticky="ew", pady=4)
+            entry.grid(row=0, column=0, sticky="ew")
             entry.bind("<KeyRelease>", self._refresh_readiness)
             field_key = {
                 "Symbol": "symbol",
@@ -729,23 +740,28 @@ class ComponentPopulator:
                 "Reference prefix": "reference_prefix",
             }.get(label)
             if field_key:
-                feedback = ttk.Label(
-                    component_section,
+                indicator = ttk.Label(
+                    input_shell,
                     text="",
                     style="ValidationWarning.TLabel",
-                    wraplength=500,
-                    justify="left",
+                    width=2,
+                    anchor="center",
+                    padding=(3, 1),
+                    cursor="question_arrow",
                 )
-                feedback.grid(
-                    row=row + 1, column=1, sticky="w", pady=(0, 4)
+                indicator.grid(row=0, column=1, sticky="e", padx=(6, 0))
+                indicator.grid_remove()
+                self._field_feedback[field_key] = (
+                    entry, indicator, label_widget
                 )
-                feedback.grid_remove()
-                self._field_feedback[field_key] = (entry, feedback)
+                tooltip_text = lambda key=field_key: self._field_feedback_messages.get(key, "")
+                self._field_tooltips.append(_HoverTooltip(entry, tooltip_text))
+                self._field_tooltips.append(_HoverTooltip(indicator, tooltip_text))
             if label == "Symbol":
                 self.symbol_hint_label = label_widget
             elif label == "Reference prefix":
                 self.reference_prefix_label = label_widget
-            row += 2
+            row += 1
             return entry
 
         if self.create_mode:
@@ -805,37 +821,21 @@ class ComponentPopulator:
         self.proposal_section = proposal_section
         proposal_section.grid_remove()
 
-        self.notes_section = ttk.Frame(
-            self.properties_column, style="Note.TFrame", padding=(10, 8)
+        self._notes_messages: tuple[str, ...] = ()
+        self.notes_indicator = ttk.Label(
+            self.properties_column,
+            text="",
+            style="NoticeInfo.TLabel",
+            padding=(6, 3),
+            cursor="question_arrow",
         )
-        self.notes_section.grid(row=2, column=0, sticky="ew", pady=(0, 12))
-        self.notes_section.columnconfigure(0, weight=1)
-        self.notes = ttk.Frame(self.notes_section, style="Note.TFrame")
-        self.notes.grid(row=0, column=0, sticky="ew")
-        self.notes.grid_remove()
-        self.notes_section.grid_remove()
-
-        def fit_properties_column(_event=None) -> None:
-            width = int(self.properties_column.winfo_width())
-            if width <= 1:
-                return
-            field_wrap = max(150, width - 165)
-            proposal_wrap = max(150, width - 165)
-            note_wrap = max(150, width - 85)
-            for _entry, label in self._field_feedback.values():
-                label.configure(wraplength=field_wrap)
-            for label in self._proposal_value_labels:
-                label.configure(wraplength=proposal_wrap)
-            for name in ("passive_mapping_label", "placement_note_label"):
-                label = getattr(self, name, None)
-                if label is not None:
-                    label.configure(wraplength=max(150, width - 30))
-            for row in self.notes.winfo_children():
-                for child in row.winfo_children():
-                    if str(child.cget("style") or "") == "Note.TLabel":
-                        child.configure(wraplength=note_wrap)
-
-        self.properties_column.bind("<Configure>", fit_properties_column)
+        self.notes_indicator.grid(
+            row=2, column=0, sticky="w", pady=(0, 12)
+        )
+        self.notes_indicator.grid_remove()
+        self.notes_tooltip = _HoverTooltip(
+            self.notes_indicator, self._notes_tooltip_text
+        )
 
         footer = ttk.Frame(outer)
         footer.grid(row=3, column=0, sticky="ew", pady=(8, 0))
@@ -1706,19 +1706,28 @@ class ComponentPopulator:
         controls = getattr(self, "_field_feedback", {}).get(field_name)
         if controls is None:
             return
-        _entry, label = controls
+        entry, indicator, label = controls
+        messages = getattr(self, "_field_feedback_messages", None)
+        if messages is None:
+            self._field_feedback_messages = {}
+            messages = self._field_feedback_messages
         if not message:
-            label.configure(text="")
-            label.grid_remove()
+            messages.pop(field_name, None)
+            entry.configure(style="TEntry")
+            indicator.configure(text="")
+            indicator.grid_remove()
+            label.configure(style="CardMeta.TLabel")
             return
         level = level if level in {"error", "warning", "info"} else "warning"
         icon = {"error": "✕", "warning": "⚠", "info": "ℹ"}[level]
         caption = {"error": "Error", "warning": "Warning", "info": "Info"}[level]
-        label.configure(
-            text=f"{icon} {caption}: {message}",
-            style=f"Validation{caption}.TLabel",
+        messages[field_name] = f"{caption}: {message}"
+        entry.configure(style=f"Validation{caption}.TEntry")
+        indicator.configure(
+            text=icon, style=f"Validation{caption}.TLabel"
         )
-        label.grid()
+        indicator.grid()
+        label.configure(style=f"Validation{caption}.TLabel")
 
     def _update_field_feedback(self) -> set[str]:
         """Validate editable KiCad inputs and attach guidance to their source fields."""
@@ -2189,50 +2198,49 @@ class ComponentPopulator:
             ),
         ))
     def _set_notes(self, lines: tuple[str, ...]) -> None:
-        """Render review notes with explicit severity icons, labels and text."""
-        visible = tuple(str(line).strip() for line in lines if str(line).strip())
-        for child in self.notes.winfo_children():
-            child.destroy()
-        if not visible:
-            self.notes.grid_remove()
-            self.notes_section.grid_remove()
+        """Summarize general review notes; their full text stays in a hover tooltip."""
+        self._notes_messages = tuple(
+            str(line).strip() for line in lines if str(line).strip()
+        )
+        if not self._notes_messages:
+            self.notes_indicator.configure(text="")
+            self.notes_indicator.grid_remove()
             return
 
-        for index, raw in enumerate(visible):
-            if raw.casefold().startswith("error:"):
-                level, message = "error", raw.split(":", 1)[1].strip()
-            elif raw.casefold().startswith("info:"):
-                level, message = "info", raw.split(":", 1)[1].strip()
-            elif raw.casefold().startswith("warning:"):
-                level, message = "warning", raw.split(":", 1)[1].strip()
-            else:
-                level, message = "warning", raw
-            caption = {"error": "Error", "warning": "Warning", "info": "Info"}[level]
-            icon = {"error": "✕", "warning": "⚠", "info": "ℹ"}[level]
-            row = self.ttk.Frame(self.notes, style="Note.TFrame")
-            row.grid(row=index, column=0, sticky="ew", pady=(0, 4))
-            row.columnconfigure(2, weight=1)
-            self.ttk.Label(
-                row, text=icon, style=f"Notice{caption}.TLabel"
-            ).grid(row=0, column=0, sticky="nw", padx=(0, 6))
-            self.ttk.Label(
-                row, text=caption, style=f"Notice{caption}.TLabel"
-            ).grid(row=0, column=1, sticky="nw", padx=(0, 8))
-            self.ttk.Label(
-                row,
-                text=message,
-                style="Note.TLabel",
-                wraplength=max(
-                    140, self.properties_column.winfo_width() - 145
-                ),
-                justify="left",
-            ).grid(row=0, column=2, sticky="ew")
-        self.notes.grid()
-        self.notes_section.grid()
+        levels = []
+        for raw in self._notes_messages:
+            prefix = raw.split(":", 1)[0].casefold()
+            levels.append(
+                prefix if prefix in {"error", "warning", "info"} else "warning"
+            )
+        level = (
+            "error" if "error" in levels
+            else "warning" if "warning" in levels
+            else "info"
+        )
+        icon = {"error": "✕", "warning": "⚠", "info": "ℹ"}[level]
+        self.notes_indicator.configure(
+            text=f"{icon} Review notes ({len(self._notes_messages)})",
+            style=f"Notice{level.title()}.TLabel",
+        )
+        self.notes_indicator.grid()
         self._fit_property_text()
 
+    def _notes_tooltip_text(self) -> str:
+        """Return complete review guidance for the compact notes indicator."""
+        details = []
+        for raw in getattr(self, "_notes_messages", ()):
+            prefix, separator, message = raw.partition(":")
+            level = (
+                prefix.title()
+                if separator and prefix.casefold() in {"error", "warning", "info"}
+                else "Warning"
+            )
+            details.append(f"{level}: {message.strip() if separator else raw}")
+        return "\n".join(details)
+
     def _fit_property_text(self, _event=None) -> None:
-        """Keep long proposal values and review notes inside the properties column."""
+        """Keep proposed field values and guidance within the properties column."""
         properties_column = getattr(self, "properties_column", None)
         if properties_column is None:
             return
@@ -2240,17 +2248,13 @@ class ComponentPopulator:
         if width <= 1:
             return
 
-        note_wrap = max(140, width - 145)
-        notes = getattr(self, "notes", None)
-        if notes is not None and notes.winfo_exists():
-            for row in notes.winfo_children():
-                for child in row.winfo_children():
-                    if str(child.cget("style") or "") == "Note.TLabel":
-                        child.configure(wraplength=note_wrap)
-
-        proposal_wrap = max(140, width - 235)
+        proposal_wrap = max(160, width - 235)
         for label in getattr(self, "_proposal_value_labels", ()):
             label.configure(wraplength=proposal_wrap)
+        for name in ("passive_mapping_label", "placement_note_label"):
+            label = getattr(self, name, None)
+            if label is not None:
+                label.configure(wraplength=max(160, width - 30))
 
     def _clear_proposal_rows(self) -> None:
         for child in self.proposal_rows.winfo_children():
@@ -2293,7 +2297,7 @@ class ComponentPopulator:
                 text=self._proposal_display_value(name, value),
                 style="Card.TLabel",
                 wraplength=max(
-                    140, self.properties_column.winfo_width() - 235
+                    160, self.properties_column.winfo_width() - 235
                 ),
                 justify="left",
             )
