@@ -1696,6 +1696,19 @@ def _drive_populator_form(
             apply_tk_theme(root, "dark")
             populator._update_advanced_filter_button()
             root.update()
+            toolbar_foreground = populator.ttk.Style(root).lookup(
+                "ToolbarLabel.TLabel", "foreground"
+            )
+            icon_foreground = populator._filter_icon_image.get(10, 4)
+            expected_icon_foreground = tuple(
+                int(toolbar_foreground[index:index + 2], 16)
+                for index in (1, 3, 5)
+            )
+            if tuple(icon_foreground) != expected_icon_foreground:
+                raise RuntimeError(
+                    "The advanced-filter icon does not follow the active theme: "
+                    f"icon={icon_foreground!r}, expected={expected_icon_foreground!r}."
+                )
             _capture_window(root, output_dir / dark_asset)
             apply_tk_theme(root, "light")
             populator._update_advanced_filter_button()
