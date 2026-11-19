@@ -1756,7 +1756,13 @@ class ComponentPopulator:
 
         footprint = self.footprint_var.get().strip()
         if footprint:
-            if footprint.count(":") != 1:
+            parts = footprint.split(":")
+            valid_format = (
+                len(parts) == 2
+                and bool(re.fullmatch(r"[A-Za-z0-9_+-]{1,80}", parts[0]))
+                and bool(re.fullmatch(r"[A-Za-z0-9_+.-]{1,120}", parts[1]))
+            )
+            if not valid_format:
                 self._set_field_feedback(
                     "footprint", "error",
                     "Use a KiCad Library:Footprint identifier, for example "
@@ -1803,12 +1809,19 @@ class ComponentPopulator:
         if self.closed or self.draft is None:
             return
         errors = self._update_field_feedback()
-        if not self.create_mode:
-            return
-        ready = not errors and bool(self.draft.proposed_fields)
+        compatible = self.create_mode or self.symbol is not None
+        ready = (
+            not errors
+            and bool(self.draft.proposed_fields)
+            and compatible
+        )
         self.apply_button.configure(state="normal" if ready else "disabled")
-        if not ready:
-            self.status_var.set("Fix the highlighted fields before generating the component.")
+        if errors:
+            self.status_var.set("Fix the highlighted fields before applying the proposal.")
+        elif self.create_mode and not ready:
+            self.status_var.set(
+                "A reviewed catalogue proposal, symbol and component value are required."
+            )
 
     def export_to_library(self) -> None:
         """Let the user choose reusable destinations for the available CAD assets."""
@@ -2025,6 +2038,10 @@ class ComponentPopulator:
     def sync_with_library(self) -> None:
         """Update the source library and every schematic instance that uses it."""
         if self.create_mode or self.draft is None:
+            return
+        errors = self._update_field_feedback()
+        if errors:
+            self.status_var.set("Fix the highlighted fields before syncing the library.")
             return
         draft = replace(
             self.draft,
