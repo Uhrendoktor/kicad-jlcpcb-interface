@@ -77,7 +77,7 @@ def build_product_preview(
     ttk.Label(
         details,
         text="SELECTED PART",
-        style="ProductEyebrow.TLabel",
+        style="SectionTitleSurface.TLabel",
     ).grid(row=0, column=0, sticky="w", pady=(0, UI_SPACING["xs"]))
     description_label = ttk.Label(
         details,
@@ -249,7 +249,7 @@ def build_cad_asset_preview(
     ttk.Label(
         surface,
         text="KICAD CAD CANDIDATES",
-        style="ProductEyebrow.TLabel",
+        style="SectionTitleSurface.TLabel",
     ).grid(row=0, column=0, sticky="w", pady=(0, 7))
 
     notebook = ttk.Notebook(surface)
