@@ -244,6 +244,7 @@ class ComponentBrowser:
             self.root,
             orient="vertical" if self.selected_component is None else "horizontal",
         )
+        self.body = body
         body.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 12))
         if self.selected_component is None:
             list_frame = ttk.Frame(body, padding=8)
@@ -302,8 +303,10 @@ class ComponentBrowser:
         )
         detail_scrollbar.grid(row=1, column=1, sticky="ns", pady=(10, 0))
         detail_canvas.configure(yscrollcommand=detail_scrollbar.set)
+        self.detail_canvas = detail_canvas
 
         content = ttk.Frame(detail_canvas)
+        self.detail_content = content
         content_window = detail_canvas.create_window(
             (0, 0), window=content, anchor="nw"
         )

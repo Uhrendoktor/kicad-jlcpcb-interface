@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show field validation warnings and errors as conditional, severity-colored descriptions directly below their inputs; retain matching input-border and field-label colors.
+- Export full-height, no-scroll screenshots for Component Overview, Component Properties, Add and Update views in both light and dark themes.
 - Place editable KiCad properties and proposal metadata in a left column beside supplier details and tabbed CAD previews on the right; synchronize the Footprint field to the visible CAD candidate unless the user explicitly overrides it.
 - Show field-specific validation below its source input, block generation on missing required fields, and classify review notes with explicit Error, Warning or Info labels, readable icons and theme-aware severity colors.
 - Export downloaded schematic symbols, footprints and optional STEP models to user-selected KiCad libraries; register the libraries in the active project and refuse conflicting user-owned content.
