@@ -16,7 +16,7 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 
 - [x] **Align Component Overview rows.** Make the left inset/padding consistent across all rows so that different rows do not start at different horizontal positions.
 
-- [ ] **Broaden alternative matches for simple passive components.** For resistors, capacitors, and similar simple parts, do not rely exclusively on MPN search for the alternatives list. When MPN lookup returns fewer than five results, also search for other listings matching the component type, value, and footprint, and use those to fill the remaining results where available.
+- [x] **Broaden alternative matches for simple passive components.** For resistors, capacitors, and similar simple parts, do not rely exclusively on MPN search for the alternatives list. When MPN lookup returns fewer than five results, also search for other listings matching the component type, value, and footprint, and use those to fill the remaining results where available.
 
 - [ ] **Keep part actions inside the Selected Part box.** Place the “Open in LCSC” action and part-ID copy affordance in the Selected Part box. The displayed part ID itself should be clickable and copy its ID to the clipboard, replacing the need for a separate “Copy Part Id” button. Keep the existing JLCPCB link/action in that box as well.
 
@@ -37,6 +37,8 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 - **Component Overview cards — complete.** Put catalogue details (including price breaks) and schematic properties inside shared card containers with consistent padding, heading styles, and card-surface content. The live visual workflow asserts both containers use `Card.TFrame`; the rendered overview capture was inspected.
 
 - **Component Overview row alignment — complete.** The catalogue price/attribute rows and schematic-property labels use the same card padding and are measured in the live capture; the workflow asserts their rendered left edges are identical. The latest dark-theme overview screenshot was inspected.
+
+- **Passive-component alternatives — complete.** When fewer than five MPN candidates are available, resistor and capacitor listings are supplemented by exact value/type/footprint matches from keyword search. MPN-ranked rows remain first, duplicates are removed, and the list is capped at five. Regression tests cover sparse resistor results, capacitor searches without an MPN, mismatched package/type exclusion, deduplication, and the five-result cutoff. Python 3.12–3.14, 210 unit tests, Ruff, and live KiCad visual CI passed on commit `8fa2817e6a4f4edcc66af718897de23f84ace69f`.
 
 ## Completion rule
 
