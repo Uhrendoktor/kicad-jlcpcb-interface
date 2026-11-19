@@ -754,7 +754,9 @@ class ComponentPopulator:
                 self._field_feedback[field_key] = (
                     entry, indicator, label_widget
                 )
-                tooltip_text = lambda key=field_key: self._field_feedback_messages.get(key, "")
+                def tooltip_text(key=field_key):
+                    return self._field_feedback_messages.get(key, "")
+
                 self._field_tooltips.append(_HoverTooltip(entry, tooltip_text))
                 self._field_tooltips.append(_HoverTooltip(indicator, tooltip_text))
             if label == "Symbol":
