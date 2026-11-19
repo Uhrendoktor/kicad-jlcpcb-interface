@@ -2428,8 +2428,6 @@ class ComponentPopulator:
         self.apply_button.configure(state="normal" if can_apply else "disabled")
         if self.selected_details is not None:
             self._request_cad_assets(self.selected_details, draft)
-        if self.sync_button is not None and not self.create_mode:
-            self.sync_button.configure(state="normal")
         self._refresh_readiness()
 
     def apply(self) -> None:

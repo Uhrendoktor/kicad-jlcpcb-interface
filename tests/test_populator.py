@@ -991,6 +991,41 @@ class FieldFeedbackTests(unittest.TestCase):
             ("footprint", "error"),
         )
 
+    def test_sync_button_remains_disabled_for_non_writable_libraries(self):
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = False
+        populator.closed = False
+        populator.selected_details = None
+        populator.symbol = SimpleNamespace()
+        populator.library_id = "Device:R"
+        populator.schematic = SimpleNamespace(get_project=lambda: None)
+        populator.draft = SimpleNamespace(
+            value="10k",
+            footprint="Resistor_SMD:R_0402_1005Metric",
+            symbol_hint="",
+            proposed_fields=(("Value", "10k"),),
+            warnings=(),
+        )
+        populator.value_var = SimpleNamespace()
+        populator.footprint_var = SimpleNamespace()
+        populator._set_proposal_field = Mock()
+        populator._render_proposal_rows = Mock()
+        populator._set_notes = Mock()
+        populator._refresh_readiness = Mock()
+        populator._request_cad_assets = Mock()
+        populator.status_var = Mock()
+        populator.apply_button = Mock()
+        populator.sync_button = Mock()
+
+        with patch(
+            "kicad_jlcpcb.populator.writable_user_symbol_library_available",
+            return_value=False,
+        ) as available:
+            populator._render_draft(populator.draft, cached=False)
+
+        available.assert_called_once_with(populator.schematic.get_project(), "Device:R")
+        populator.sync_button.configure.assert_called_once_with(state="disabled")
+
     def test_update_apply_is_disabled_while_inline_error_remains(self):
         populator = object.__new__(ComponentPopulator)
         populator.closed = False
