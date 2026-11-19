@@ -87,26 +87,26 @@ class FakeOpener:
 
 
 class StepPreviewRenderingTests(unittest.TestCase):
-    def test_temporary_3d_render_hides_only_reference_text(self):
-        from kicad_jlcpcb.library import Atom, parse_sexpr
+    def test_temporary_3d_render_removes_reference_property_only(self):
+        from kicad_jlcpcb.library import Atom, Quoted, parse_sexpr
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             footprint_path = root / "Example.kicad_mod"
-            model_path = root / "Example.step"
+            model_path = root / "model.step"
             original = (
                 '(footprint "Example" (version 20240108) (generator "test") '
                 '(layer "F.Cu") '
-                '(fp_text reference "REF**" (at 0 0) (layer "F.SilkS") '
-                '(effects (font (size 1 1) (thickness 0.15)))) '
-                '(fp_text value "Example" (at 0 1) (layer "F.Fab") '
-                '(effects (font (size 1 1) (thickness 0.15)))) '
+                '(property "Reference" "REF**" (at 0 -2 0) '
+                '(layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15)))) '
+                '(property "Value" "Example" (at 0 2 0) '
+                '(layer "F.Fab") (effects (font (size 1 1) (thickness 0.15)))) '
                 '(model "${KIPRJMOD}/JLCPCB_C12345.3dshapes/model.step" '
                 '(at (xyz 0 0 0)) (scale (xyz 1 1 1)) '
                 '(rotate (xyz 0 0 0))))'
             )
             footprint_path.write_text(original, encoding="utf-8")
-            model_path.write_bytes(b"ISO-10303-21;\nEND-ISO-10303-21;")
+            model_path.write_bytes(b"ISO-10303-21;\\nEND-ISO-10303-21;")
 
             captured = {}
 
@@ -120,40 +120,29 @@ class StepPreviewRenderingTests(unittest.TestCase):
                     and isinstance(node[0], Atom)
                     and node[0].value == "footprint"
                 )
-                texts = {
-                    node[1].value: node
-                    for node in footprint
+                properties = [
+                    node for node in footprint
+                    if isinstance(node, list)
+                    and len(node) >= 3
+                    and isinstance(node[0], Atom)
+                    and node[0].value == "property"
+                ]
+                captured["property_names"] = {
+                    node[1].value.casefold()
+                    for node in properties
+                    if isinstance(node[1], Quoted)
+                }
+                captured["legacy_reference_nodes"] = sum(
+                    1 for node in footprint
                     if isinstance(node, list)
                     and len(node) >= 3
                     and isinstance(node[0], Atom)
                     and node[0].value == "fp_text"
-                }
-                reference_children = texts["reference"]
-                layer_index = next(
-                    index for index, child in enumerate(reference_children)
-                    if isinstance(child, list)
-                    and child
-                    and isinstance(child[0], Atom)
-                    and child[0].value == "layer"
-                )
-                effects_index = next(
-                    index for index, child in enumerate(reference_children)
-                    if isinstance(child, list)
-                    and child
-                    and isinstance(child[0], Atom)
-                    and child[0].value == "effects"
-                )
-                hide_index = next(
-                    index for index, child in enumerate(reference_children)
-                    if isinstance(child, Atom) and child.value == "hide"
-                )
-                captured["reference_hidden"] = layer_index < hide_index < effects_index
-                captured["value_hidden"] = any(
-                    isinstance(child, Atom) and child.value == "hide"
-                    for child in texts["value"]
+                    and isinstance(node[1], (Atom, Quoted))
+                    and node[1].value.casefold() == "reference"
                 )
                 output_path = Path(command[command.index("--output") + 1])
-                output_path.write_bytes(b"\x89PNG\r\n\x1a\npreview")
+                output_path.write_bytes(b"\\x89PNG\\r\\n\\x1a\\npreview")
                 return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
 
             with (
@@ -162,11 +151,11 @@ class StepPreviewRenderingTests(unittest.TestCase):
             ):
                 preview = render_step_preview(footprint_path, model_path)
 
-            self.assertTrue(preview.startswith(b"\x89PNG\r\n\x1a\n"))
-            self.assertTrue(captured["reference_hidden"])
-            self.assertFalse(captured["value_hidden"])
+            self.assertTrue(preview.startswith(b"\\x89PNG\\r\\n\\x1a\\n"))
+            self.assertNotIn("reference", captured["property_names"])
+            self.assertIn("value", captured["property_names"])
+            self.assertEqual(captured["legacy_reference_nodes"], 0)
             self.assertEqual(footprint_path.read_text(encoding="utf-8"), original)
-            self.assertNotIn(" hide", footprint_path.read_text(encoding="utf-8"))
 
 
 class CadAssetProviderTests(unittest.TestCase):
