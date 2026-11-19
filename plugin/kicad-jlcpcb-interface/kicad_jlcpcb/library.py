@@ -1425,6 +1425,7 @@ def _export_footprint_to_library(
     model_file: str | Path | None = None,
     model_directory: str | Path | None = None,
 ) -> tuple[str, Path, Path | None]:
+    """Export one footprint and optional STEP file without replacing user content."""
     source_path = Path(source_file).expanduser()
     if source_path.is_symlink():
         raise SymbolLibraryConflict("Refusing to export a symlinked source footprint.")
@@ -1446,8 +1447,8 @@ def _export_footprint_to_library(
     if not re.fullmatch(r"[A-Za-z0-9_+.-]{1,120}", footprint_name):
         raise SymbolLibraryError("The selected CAD footprint has an unsafe library name.")
     model_nodes = _direct(footprint_root, "model")
+    model_bytes = None
     copied_model: Path | None = None
-
     if model_file is not None:
         if model_directory is None:
             raise SymbolLibraryError("Choose a destination directory for the 3D model.")
@@ -1468,17 +1469,15 @@ def _export_footprint_to_library(
         model_dir = Path(model_directory).expanduser()
         if model_dir.is_symlink():
             raise SymbolLibraryConflict("Refusing to export into a symlinked 3D model directory.")
-        model_dir.mkdir(parents=True, exist_ok=True)
         copied_model = model_dir / model_source.name
         if copied_model.is_symlink():
             raise SymbolLibraryConflict("The destination STEP model is a symlink.")
-        if copied_model.exists():
-            if not copied_model.is_file() or copied_model.read_bytes() != model_bytes:
-                raise SymbolLibraryConflict(
-                    f"{copied_model.name} already exists with different content. It was not overwritten."
-                )
-        else:
-            _atomic_write_bytes(copied_model, model_bytes)
+        if copied_model.exists() and (
+            not copied_model.is_file() or copied_model.read_bytes() != model_bytes
+        ):
+            raise SymbolLibraryConflict(
+                f"{copied_model.name} already exists with different content. It was not overwritten."
+            )
         try:
             relative = copied_model.resolve(strict=False).relative_to(project_dir.resolve(strict=False))
             model_uri = "$" + "{KIPRJMOD}/" + relative.as_posix()
@@ -1491,13 +1490,13 @@ def _export_footprint_to_library(
             "or remove the unavailable model reference."
         )
 
+    target_dir_existed = target_dir.exists()
     target_dir.mkdir(parents=True, exist_ok=True)
     target_file = target_dir / f"{footprint_name}.kicad_mod"
     if target_file.is_symlink():
         raise SymbolLibraryConflict("The destination footprint is a symlink.")
     new_text = dump_sexpr(footprint_root)
     existed = target_file.exists()
-    original_text = None
     if existed:
         try:
             original_text = target_file.read_text(encoding="utf-8")
@@ -1508,10 +1507,20 @@ def _export_footprint_to_library(
                 f"Footprint {footprint_name!r} already exists in {target_dir.name} with different content. "
                 "It was not overwritten."
             )
-    else:
-        _atomic_write(target_file, new_text, backup=False)
 
+    model_created = False
+    target_created = False
+    model_dir_existed = bool(copied_model and copied_model.parent.exists())
     try:
+        if copied_model is not None and model_bytes is not None:
+            copied_model.parent.mkdir(parents=True, exist_ok=True)
+            if not copied_model.exists():
+                _atomic_write_bytes(copied_model, model_bytes)
+                model_created = True
+        if not existed:
+            _atomic_write(target_file, new_text, backup=False)
+            target_created = True
+
         nickname = _register_selected_library(
             project_dir,
             table_filename="fp-lib-table",
@@ -1520,11 +1529,22 @@ def _export_footprint_to_library(
             description="User-selected library containing reviewed JLCPCB/EasyEDA footprints.",
         )
     except Exception:
-        if not existed:
+        if target_created:
             target_file.unlink(missing_ok=True)
+        if model_created and copied_model is not None:
+            copied_model.unlink(missing_ok=True)
+        if copied_model is not None and not model_dir_existed:
+            try:
+                copied_model.parent.rmdir()
+            except OSError:
+                pass
+        if not target_dir_existed:
+            try:
+                target_dir.rmdir()
+            except OSError:
+                pass
         raise
     return f"{nickname}:{footprint_name}", target_dir, copied_model
-
 
 def export_cad_assets_to_libraries(
     project_or_path,
@@ -1659,9 +1679,13 @@ def sync_symbol_library_properties(
         ("Datasheet", draft.datasheet_url),
         ("Description", draft.description),
     ):
+        # Match schematic write-back semantics: blank catalogue values do not
+        # erase an existing library property merely because the provider omitted it.
+        if not str(value or "").strip():
+            continue
         prop = _property(symbol, name)
         if prop is not None and len(prop) >= 3:
-            prop[2] = Quoted(str(value or ""))
+            prop[2] = Quoted(str(value))
         elif name in {"Value", "Footprint"}:
             raise SymbolLibraryError(
                 f"Library symbol {library_id!r} has no {name} property; sync was stopped."
