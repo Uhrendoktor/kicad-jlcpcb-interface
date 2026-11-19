@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 import sys
 import tempfile
 import unittest
@@ -20,12 +21,15 @@ from kicad_jlcpcb.library import (  # noqa: E402
     SymbolLibraryError,
     _atomic_write,
     dump_sexpr,
+    export_cad_assets_to_libraries,
     footprint_library_entry_available,
     generate_project_library_symbol,
     parse_sexpr,
     register_project_cad_credits,
     register_project_footprint_library,
     reload_project_symbol_library,
+    restore_symbol_library_snapshot,
+    sync_symbol_library_properties,
     symbol_library_entry_available,
 )
 
@@ -239,6 +243,71 @@ class ProjectLibraryTests(unittest.TestCase):
         table_text = self.table.read_text(encoding="utf-8")
         self.assertIn("JLCPCB_Generated.kicad_sym", table_text)
 
+
+    def test_exports_selected_symbol_to_user_library_and_registers_project_table(self):
+        destination = self.project / "ReusableParts.kicad_sym"
+
+        result = export_cad_assets_to_libraries(
+            self.project,
+            symbol_source=self.device,
+            symbol_name="R",
+            symbol_library=destination,
+        )
+
+        self.assertEqual(result.symbol_id, "ReusableParts:R")
+        self.assertTrue(destination.is_file())
+        self.assertTrue(
+            symbol_library_entry_available(
+                result.symbol_id, project_or_path=self.project
+            )
+        )
+        table = self.table.read_text(encoding="utf-8")
+        self.assertIn("ReusableParts.kicad_sym", table)
+        self.assertIn("${KIPRJMOD}/ReusableParts.kicad_sym", table)
+
+        again = export_cad_assets_to_libraries(
+            self.project,
+            symbol_source=self.device,
+            symbol_name="R",
+            symbol_library=destination,
+        )
+        self.assertEqual(again.symbol_id, result.symbol_id)
+
+    def test_symbol_library_sync_updates_properties_and_can_restore_snapshot(self):
+        generated = self.generate()
+        before = generated.library_path.read_text(encoding="utf-8")
+        revised = replace(
+            resistor_draft(),
+            value="22k",
+            footprint="Resistor_SMD:R_0603_1608Metric",
+            manufacturer="Vishay",
+            mpn="CRCW060322K0FKEA",
+        )
+
+        library_path, snapshot = sync_symbol_library_properties(
+            self.project, generated.library_id, revised
+        )
+        self.assertEqual(library_path, generated.library_path)
+        root = self.read_library(library_path)
+        symbol = next(
+            node for node in root
+            if isinstance(node, list) and node and node[0].value == "symbol"
+        )
+        properties = {
+            node[1].value: node[2].value
+            for node in symbol
+            if isinstance(node, list) and node and node[0].value == "property"
+        }
+        self.assertEqual(properties["Value"], "22k")
+        self.assertEqual(
+            properties["Footprint"], "Resistor_SMD:R_0603_1608Metric"
+        )
+        self.assertEqual(properties["Manufacturer"], "Vishay")
+        self.assertEqual(properties["MPN"], "CRCW060322K0FKEA")
+        self.assertTrue(list(self.project.glob("JLCPCB_Generated.kicad_sym.bak*")))
+
+        restore_symbol_library_snapshot(library_path, snapshot)
+        self.assertEqual(library_path.read_text(encoding="utf-8"), before)
 
     def test_copies_a_multi_pin_non_passive_symbol_and_allows_missing_footprint(self):
         amplifier_library = self.project / "Amplifier_Operational.kicad_sym"
