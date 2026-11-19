@@ -1944,7 +1944,11 @@ class ComponentPopulator:
                         variables.get("symbol_library").get() if has_symbol else None
                     ),
                     footprint_source=assets.footprint_path if has_footprint else None,
-                    footprint_library=variables.get("footprint_library").get() if has_footprint else None,
+                    footprint_library=(
+                        variables.get("footprint_library").get()
+                        if has_footprint
+                        else None
+                    ),
                     model_source=assets.model_path if has_model else None,
                     model_directory=variables.get("model_directory").get() if has_model else None,
                 )
@@ -1987,7 +1991,10 @@ class ComponentPopulator:
                         f"3D model {result.model_path}"
                     )
                 self.status_var.set("Exported " + "; ".join(exported) + ".")
-                self._set_notes(("Info: Exported assets are registered in this project's KiCad library tables.",))
+                self._set_notes((
+                    "Info: Exported assets are registered in this project's KiCad "
+                    "library tables.",
+                ))
                 dialog.destroy()
                 self.messagebox.showinfo(
                     "CAD assets exported",
