@@ -40,6 +40,7 @@ from .library import (
     restore_symbol_library_snapshot,
     symbol_library_entry_available,
     sync_symbol_library_properties,
+    writable_user_symbol_library_available,
 )
 from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
@@ -2044,10 +2045,30 @@ class ComponentPopulator:
         ipc_update_attempted = False
         try:
             project = self.schematic.get_project()
+            if self.kicad is None:
+                raise RuntimeError("The KiCad library connection is unavailable.")
             library_path, original_library = sync_symbol_library_properties(
                 project, self.library_id, draft
             )
             try:
+                nickname = self.library_id.split(":", 1)[0]
+                self.kicad.reload_library(
+                    type=1, scope=2, nicknames=[nickname]
+                )
+                statuses = self.kicad.wait_for_libraries(
+                    types=[1], scope=2, timeout_s=60.0
+                )
+                failures = [
+                    str(item.error_message)
+                    for item in statuses
+                    if getattr(item, "nickname", None) == nickname
+                    and getattr(item, "error_message", None)
+                ]
+                if failures:
+                    raise RuntimeError(
+                        "KiCad could not reload the updated library: "
+                        + "; ".join(failures)
+                    )
                 for symbol in matching:
                     apply_component_draft_fields(
                         symbol,
@@ -2070,6 +2091,14 @@ class ComponentPopulator:
                     rollback_errors.append(f"schematic rollback failed: {rollback_exc}")
                 try:
                     restore_symbol_library_snapshot(library_path, original_library)
+                    if self.kicad is not None:
+                        nickname = self.library_id.split(":", 1)[0]
+                        self.kicad.reload_library(
+                            type=1, scope=2, nicknames=[nickname]
+                        )
+                        self.kicad.wait_for_libraries(
+                            types=[1], scope=2, timeout_s=60.0
+                        )
                 except Exception as rollback_exc:
                     rollback_errors.append(f"library rollback failed: {rollback_exc}")
                 if rollback_errors:
@@ -2277,6 +2306,18 @@ class ComponentPopulator:
                 "electrical/mechanical equivalents. Check pin numbers, pad geometry and "
                 "ratings against the datasheet before using the board."
             )
+        if self.sync_button is not None:
+            sync_available = writable_user_symbol_library_available(
+                self.schematic.get_project(), self.library_id
+            )
+            self.sync_button.configure(
+                state="normal" if sync_available else "disabled"
+            )
+            if not sync_available:
+                notes.append(
+                    "Info: Sync with library is available only for writable project/user "
+                    "libraries. System-wide KiCad stock libraries are left unchanged."
+                )
         self._set_notes(tuple(notes))
         can_apply = (
             compatible
