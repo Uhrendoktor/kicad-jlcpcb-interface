@@ -98,7 +98,7 @@ the fields and review notes.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png">
-    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Full-height Update Component window showing the complete review workspace and fixed action footer." width="880">
+    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Full-height Update Component window showing the complete review workspace and fixed action footer." width="100%">
   </picture>
 </p>
 
@@ -107,7 +107,7 @@ the fields and review notes.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
-    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Full-height Add Component window showing catalogue details, CAD preview tabs with the 3D model selected, KiCad fields and the fixed action footer." width="880">
+    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Full-height Add Component window showing catalogue details, CAD preview tabs with the 3D model selected, KiCad fields and the fixed action footer." width="100%">
   </picture>
 </p>
 
