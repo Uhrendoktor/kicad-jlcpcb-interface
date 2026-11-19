@@ -651,11 +651,11 @@ class ComponentPopulator:
         )
         candidate_headings = {
             "part": ("LCSC", 88),
-            "mpn": ("MPN / value", 180),
-            "footprint": ("Footprint", 230),
+            "mpn": ("MPN / value", 160),
+            "footprint": ("Footprint", 270),
             "tolerance": ("Tolerance", 96),
             "library": ("Class", 88),
-            "stock": ("Stock", 110),
+            "stock": ("Stock", 100),
             "price": ("Unit price", 110),
         }
         for key, (label, width) in candidate_headings.items():
