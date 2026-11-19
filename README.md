@@ -90,6 +90,13 @@ Both contexts use the same review-first dialog, which shows inference confidence
 
 The review workspace places editable KiCad properties beside the catalogue and CAD previews, rather than stacking them into a single tall column. A selected EasyEDA footprint preview and its Footprint field stay synchronized; an explicit manual edit remains authoritative. Validation feedback appears under the field it concerns, with text labels plus red error, amber warning or blue information icons. The review notes at the bottom use the same severity labels and colors.
 
+The review workspace places editable KiCad properties and proposal metadata in the
+left column, with the supplier record and tabbed Symbol / Footprint / 3D model
+previews in the right column. Missing or invalid entries show feedback directly below
+the affected field. Review notes use explicit **Error**, **Warning** and **Info**
+labels alongside icons and theme-aware colors, so severity is not conveyed by color
+alone.
+
 The screenshots below are full-height captures of the production Add/Update window.
 They include the complete scrollable workspace in one image, rather than separate
 screenshots for the top and lower scroll positions. Open an image at full size to read
