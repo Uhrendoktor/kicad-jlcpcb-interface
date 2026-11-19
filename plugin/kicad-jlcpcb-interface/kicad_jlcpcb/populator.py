@@ -1966,6 +1966,7 @@ class ComponentPopulator:
             try:
                 result = export_cad_assets_to_libraries(
                     project,
+                    kicad=self.kicad,
                     symbol_source=assets.symbol_library_path if has_symbol else None,
                     symbol_name=assets.symbol_name if has_symbol else "",
                     symbol_library=(
@@ -2102,16 +2103,16 @@ class ComponentPopulator:
             project = self.schematic.get_project()
             if self.kicad is None:
                 raise RuntimeError("The KiCad library connection is unavailable.")
-            library_path, original_library = sync_symbol_library_properties(
-                project, self.library_id, draft
+            library_path, original_library, library_scope = (
+                sync_symbol_library_properties(project, self.library_id, draft)
             )
             try:
                 nickname = self.library_id.split(":", 1)[0]
                 self.kicad.reload_library(
-                    type=1, scope=2, nicknames=[nickname]
+                    type=1, scope=library_scope, nicknames=[nickname]
                 )
                 statuses = self.kicad.wait_for_libraries(
-                    types=[1], scope=2, timeout_s=60.0
+                    types=[1], scope=library_scope, timeout_s=60.0
                 )
                 failures = [
                     str(item.error_message)
@@ -2149,10 +2150,10 @@ class ComponentPopulator:
                     if self.kicad is not None:
                         nickname = self.library_id.split(":", 1)[0]
                         self.kicad.reload_library(
-                            type=1, scope=2, nicknames=[nickname]
+                            type=1, scope=library_scope, nicknames=[nickname]
                         )
                         self.kicad.wait_for_libraries(
-                            types=[1], scope=2, timeout_s=60.0
+                            types=[1], scope=library_scope, timeout_s=60.0
                         )
                 except Exception as rollback_exc:
                     rollback_errors.append(f"library rollback failed: {rollback_exc}")
