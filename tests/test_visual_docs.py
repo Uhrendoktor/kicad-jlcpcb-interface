@@ -57,9 +57,15 @@ class VerifyVisualBundleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "inventory mismatch"):
             verify_bundle(self.root, self.source_sha)
 
-    def test_easyeda_cad_and_3d_preview_screenshots_are_published(self) -> None:
-        self.assertIn("add-component-cad-preview-light.png", ASSET_NAMES)
-        self.assertIn("add-component-cad-preview-dark.png", ASSET_NAMES)
+    def test_add_and_update_publish_full_height_window_screenshots(self) -> None:
+        for name in (
+            "populate-component-light.png",
+            "populate-component-dark.png",
+            "add-component-light.png",
+            "add-component-dark.png",
+        ):
+            self.assertIn(name, ASSET_NAMES)
+        self.assertFalse(any("cad-preview" in name for name in ASSET_NAMES))
 
     def test_workflow_evidence_uses_a_static_screenshot(self) -> None:
         self.assertIn("schematic-properties-opened.png", ASSET_NAMES)
