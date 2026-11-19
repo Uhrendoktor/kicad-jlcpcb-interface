@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from .theme import UI_SPACING
+
 
 @dataclass(slots=True)
 class ProductPreviewControls:
@@ -43,18 +45,18 @@ def build_product_preview(
     }
     keys.update(variable_keys or {})
     surface = ttk.Frame(
-        parent, style="ProductPreview.TFrame", padding=(12, 10)
+        parent, style="ProductPreview.TFrame", padding=(UI_SPACING["lg"], UI_SPACING["md"])
     )
     surface.columnconfigure(1, weight=1)
 
     image_frame = ttk.Frame(
         surface,
         style="ProductImage.TFrame",
-        width=132,
-        height=108,
+        width=128,
+        height=104,
     )
     image_frame.grid(
-        row=0, column=0, rowspan=7, sticky="nw", padx=(0, 16)
+        row=0, column=0, rowspan=7, sticky="nw", padx=(0, UI_SPACING["lg"])
     )
     image_frame.grid_propagate(False)
     image_label = ttk.Label(
@@ -76,7 +78,7 @@ def build_product_preview(
         details,
         text="SELECTED PART",
         style="ProductEyebrow.TLabel",
-    ).grid(row=0, column=0, sticky="w", pady=(0, 3))
+    ).grid(row=0, column=0, sticky="w", pady=(0, UI_SPACING["xs"]))
     description_label = ttk.Label(
         details,
         textvariable=variables[keys["description"]],
@@ -87,7 +89,7 @@ def build_product_preview(
     description_label.grid(row=1, column=0, sticky="ew")
 
     identity = ttk.Frame(details, style="ProductPreview.TFrame")
-    identity.grid(row=2, column=0, sticky="ew", pady=(3, 6))
+    identity.grid(row=2, column=0, sticky="ew", pady=(UI_SPACING["xs"], UI_SPACING["sm"]))
     identity.columnconfigure(1, weight=1)
     ttk.Label(
         identity,
@@ -111,16 +113,16 @@ def build_product_preview(
     for column in range(5):
         metrics.columnconfigure(column, weight=1, uniform="product-metric")
     metric_specs = (
-        ("PART", "lcsc"),
+        ("LCSC", "lcsc"),
         ("PACKAGE", "package"),
         ("STOCK", "stock"),
-        ("UNIT PRICE", "price"),
-        ("LIBRARY", "library"),
+        ("PRICE", "price"),
+        ("CLASS", "library"),
     )
     metric_labels = []
     for column, (caption, key) in enumerate(metric_specs):
         cell = ttk.Frame(metrics, style="ProductPreview.TFrame")
-        cell.grid(row=0, column=column, sticky="ew", padx=(0, 10))
+        cell.grid(row=0, column=column, sticky="ew", padx=(0, UI_SPACING["sm"]))
         caption_label = ttk.Label(
             cell, text=caption, style="ProductKey.TLabel", wraplength=148
         )
@@ -135,7 +137,7 @@ def build_product_preview(
         metric_labels.extend((caption_label, value_label))
 
     links = ttk.Frame(details, style="ProductPreview.TFrame")
-    links.grid(row=4, column=0, sticky="ew", pady=(6, 1))
+    links.grid(row=4, column=0, sticky="ew", pady=(UI_SPACING["sm"], 0))
     product_button = ttk.Button(
         links,
         text="JLCPCB product ↗",
@@ -237,7 +239,11 @@ def build_cad_asset_preview(
     status_var: Any,
 ) -> CadAssetPreviewControls:
     """Build space-efficient tabs for the available KiCad CAD candidates."""
-    surface = ttk.Frame(parent, style="ProductPreview.TFrame", padding=(12, 10))
+    surface = ttk.Frame(
+        parent,
+        style="ProductPreview.TFrame",
+        padding=(UI_SPACING["lg"], UI_SPACING["md"]),
+    )
     surface.columnconfigure(0, weight=1)
 
     ttk.Label(

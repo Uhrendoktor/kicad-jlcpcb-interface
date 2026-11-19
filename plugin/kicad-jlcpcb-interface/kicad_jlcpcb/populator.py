@@ -46,7 +46,7 @@ from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
 from .placement import place_and_select_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
-from .theme import apply_tk_theme
+from .theme import UI_SPACING, apply_tk_theme
 from .value_search import (
     exact_passive_candidates,
     is_lcsc_lookup_query,
@@ -310,21 +310,10 @@ class ComponentPopulator:
             if symbol is not None else ""
         )
         self.reference_prefix_var = tk.StringVar(value="")
-        self.status_var = tk.StringVar(
-            value=(
-                "Search by value, LCSC code, manufacturer part number or keyword."
-                if self.create_mode
-                else (
-                    "Search by value or LCSC code; passive alternatives are available "
-                    "for the selected symbol."
-                )
-            )
-        )
-        self.catalogue_status_var = tk.StringVar(
-            value="Select a part to preview its catalogue data."
-        )
+        self.status_var = tk.StringVar(value="")
+        self.catalogue_status_var = tk.StringVar(value="")
         self.catalogue_vars = {
-            "description": tk.StringVar(value="Select a part to view its catalogue details."),
+            "description": tk.StringVar(value="—"),
             "manufacturer": tk.StringVar(value="—"),
             "mpn": tk.StringVar(value="—"),
             "lcsc": tk.StringVar(value="—"),
@@ -349,13 +338,13 @@ class ComponentPopulator:
 
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        outer = ttk.Frame(self.root, padding=(18, 14))
+        outer = ttk.Frame(self.root, padding=(UI_SPACING["lg"], UI_SPACING["md"]))
         outer.grid(row=0, column=0, sticky="nsew")
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(2, weight=1)
 
         header = ttk.Frame(outer)
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        header.grid(row=0, column=0, sticky="ew", pady=(0, UI_SPACING["md"]))
         header_title = ttk.Frame(header)
         header_title.pack(anchor="w")
         ttk.Label(
@@ -371,18 +360,9 @@ class ComponentPopulator:
             text="ADD" if self.create_mode else "UPDATE",
             style="ModeBadge.TLabel",
         ).pack(side="left", padx=(10, 0), pady=(3, 0))
-        ttk.Label(
-            header,
-            text=(
-                "New project-local symbol"
-                if self.create_mode
-                else f"{self.library_id or 'Selected symbol'}"
-            ),
-            style="Subtitle.TLabel",
-        ).pack(anchor="w", pady=(3, 0))
 
         search = ttk.Frame(
-            outer, style="Toolbar.TFrame", padding=(12, 9)
+            outer, style="Toolbar.TFrame", padding=(UI_SPACING["md"], UI_SPACING["sm"])
         )
         search.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         search.columnconfigure(1, weight=1)
@@ -608,9 +588,7 @@ class ComponentPopulator:
         self.preview_column.grid(row=0, column=1, sticky="nsew")
         self.preview_column.columnconfigure(0, weight=1)
 
-        self.cad_status_var = tk.StringVar(
-            value="External CAD is requested only when a local KiCad mapping is missing."
-        )
+        self.cad_status_var = tk.StringVar(value="")
         self.cad_preview = build_cad_asset_preview(
             self.preview_column, ttk, self.cad_status_var
         )
@@ -636,12 +614,6 @@ class ComponentPopulator:
             style="CardTitle.TLabel",
         )
         self.candidate_title.grid(row=0, column=0, sticky="w")
-        self.candidate_hint = ttk.Label(
-            candidate_header,
-            text="Basic parts are ranked first",
-            style="CardMeta.TLabel",
-        )
-        self.candidate_hint.grid(row=0, column=1, sticky="e", padx=(12, 0))
         self.candidate_tree = ttk.Treeview(
             self.candidate_section,
             columns=("part", "mpn", "footprint", "tolerance", "library", "stock", "price"),
@@ -785,22 +757,6 @@ class ComponentPopulator:
             )
             self.passive_mapping_label.grid_remove()
             row += 1
-            placement_note = (
-                "The generated symbol is inserted at the current sheet center, "
-                "brought into view and selected. Use KiCad's Move tool to position it."
-            )
-            self.placement_note_label = ttk.Label(
-                component_section,
-                text=placement_note,
-                style="CardMeta.TLabel",
-                wraplength=max(160, self.properties_column.winfo_width() - 30),
-                justify="left",
-            )
-            self.placement_note_label.grid(
-                row=row, column=0, columnspan=2, sticky="w", pady=(7, 2)
-            )
-            row += 1
-
         proposal_section = ttk.Frame(
             self.properties_column, style="Card.TFrame", padding=12
         )
@@ -1097,7 +1053,7 @@ class ComponentPopulator:
                         ):
                             self._image_pending = False
                             self._show_product_image(None)
-                            self.catalogue_status_var.set("Product image could not be loaded.")
+                            self.catalogue_status_var.set("Image unavailable.")
                         continue
                     self.lookup_button.configure(state="normal")
                     self.status_var.set(f"Catalogue search failed: {exc}")
@@ -1107,11 +1063,7 @@ class ComponentPopulator:
                     if self.selected_details is not None and self.selected_details.lcsc == query:
                         self._image_pending = False
                         self._show_product_image(result)
-                        self.catalogue_status_var.set(
-                            "Product image loaded."
-                            if result
-                            else "Catalogue record loaded; no product image is available."
-                        )
+                        self.catalogue_status_var.set("")
                     continue
 
                 if mode == "cad":
@@ -1179,14 +1131,6 @@ class ComponentPopulator:
                             candidate_draft = build_component_draft(details)
                             matches_by_id[details.lcsc] = (details, candidate_draft)
                         matches = list(matches_by_id.values())
-
-                    self.candidate_hint.configure(
-                        text=(
-                            "Basic parts only"
-                            if basic_only
-                            else "Basic parts ranked first"
-                        )
-                    )
 
                     for index, (details, draft) in enumerate(matches):
                         self._insert_candidate(index, details, draft)
@@ -1279,11 +1223,7 @@ class ComponentPopulator:
                 widget.grid()
         if automatic and draft is not None:
             self.passive_mapping_label.configure(
-                text=(
-                    f"Automatic mapping: {draft.symbol_hint} · reference prefix "
-                    f"{draft.reference_prefix}. Value, footprint and catalogue fields "
-                    "are generated from the selected part."
-                )
+                text=f"Auto: {draft.symbol_hint} · prefix {draft.reference_prefix}"
             )
             self.passive_mapping_label.grid()
         else:
@@ -1353,7 +1293,7 @@ class ComponentPopulator:
         self._image_ref = None
         self.image_label.configure(image="", text="No catalogue image", padding=8)
         for key, value in {
-            "description": "Search for a part to preview its catalogue record.",
+            "description": "—",
             "manufacturer": "—",
             "mpn": "—",
             "lcsc": "—",
@@ -1364,7 +1304,7 @@ class ComponentPopulator:
             "source": "—",
         }.items():
             self.catalogue_vars[key].set(value)
-        self.catalogue_status_var.set("Catalogue preview appears after lookup.")
+        self.catalogue_status_var.set("")
         self._product_url = ""
         self._datasheet_url = ""
         self.product_button.configure(state="disabled")
@@ -1396,7 +1336,7 @@ class ComponentPopulator:
         if details.is_preferred is True:
             library_class += " · Preferred"
         self.catalogue_vars["library"].set(library_class)
-        self.catalogue_vars["source"].set(f"Source: {details.source_label}")
+        self.catalogue_vars["source"].set(details.source_label or "JLCPCB")
         self._product_url = details.product_url
         self._datasheet_url = details.datasheet_url
         self.product_button.configure(
@@ -1406,9 +1346,7 @@ class ComponentPopulator:
             state="normal" if self._is_https_url(self._datasheet_url) else "disabled"
         )
         image_urls = details.image_urls or ((details.image_url,) if details.image_url else ())
-        self.catalogue_status_var.set(
-            "Loading product image…" if image_urls else "No supplier image on this record."
-        )
+        self.catalogue_status_var.set("Loading image…" if image_urls else "")
         self._request_product_image(details)
 
     @staticmethod
@@ -1436,7 +1374,7 @@ class ComponentPopulator:
         image_urls = details.image_urls or ((details.image_url,) if details.image_url else ())
         self._image_pending = bool(image_urls)
         if not image_urls:
-            self.catalogue_status_var.set("No supplier image on this record.")
+            self.catalogue_status_var.set("")
             return
         results_queue = self.results
         future = self.image_executor.submit(
@@ -2223,10 +2161,9 @@ class ComponentPopulator:
             self, "_field_feedback", {}
         ).values():
             feedback_label.configure(wraplength=feedback_wrap)
-        for name in ("passive_mapping_label", "placement_note_label"):
-            label = getattr(self, name, None)
-            if label is not None:
-                label.configure(wraplength=max(160, width - 30))
+        label = getattr(self, "passive_mapping_label", None)
+        if label is not None:
+            label.configure(wraplength=max(160, width - 30))
 
     def _clear_proposal_rows(self) -> None:
         for child in self.proposal_rows.winfo_children():
@@ -2389,17 +2326,11 @@ class ComponentPopulator:
             and bool(draft.proposed_fields)
             and (not self.create_mode or complete_for_placement)
         )
-        if can_apply:
-            status = (
-                "Review the proposed properties, then generate the symbol and "
-                "place it at the sheet center."
-                if self.create_mode
-                else "Review the proposed properties, then update the selected symbol."
-            )
-        else:
-            status = (
-                "This proposal is incomplete or incompatible; automatic write-back is disabled."
-            )
+        status = (
+            ""
+            if can_apply
+            else "This proposal is incomplete or incompatible; automatic write-back is disabled."
+        )
         self.status_var.set(status)
         self.apply_button.configure(state="normal" if can_apply else "disabled")
         if self.selected_details is not None:
