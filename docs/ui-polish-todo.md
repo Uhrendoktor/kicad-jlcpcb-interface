@@ -2,7 +2,7 @@
 
 This is the persistent checklist for the UI, layout, component matching, and review-safety improvements requested for the KiCad JLCPCB Interface.
 
-**Status:** All items are intentionally unchecked. This tracking change records the work; it does not claim that any of the fixes below have been implemented.
+**Status:** Checked items are implemented and validated. Unchecked items remain open and will be completed incrementally.
 
 ## TODOs
 
@@ -10,9 +10,9 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 
 - [x] **Redesign the preview tab strip.** Remove the unattractive heavy tab borders, prevent the selected tab from shrinking, and give the active tab a clearer, more polished highlight.
 
-- [ ] **Unify section-header styling.** Use one consistent visual treatment for headers across the different sections. Eliminate the current mix of small/bold blue headers and larger white headers.
+- [x] **Unify section-header styling.** Use one consistent visual treatment for headers across the different sections. Eliminate the current mix of small/bold blue headers and larger white headers.
 
-- [ ] **Restore card/container grouping in Component Overview.** Put the Properties and Prices content back inside clearly defined boxes/cards; they currently appear outside any box.
+- [x] **Restore card/container grouping in Component Overview.** Put the Properties and Prices content back inside clearly defined boxes/cards; they currently appear outside any box.
 
 - [ ] **Align Component Overview rows.** Make the left inset/padding consistent across all rows so that different rows do not start at different horizontal positions.
 
@@ -31,6 +31,10 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 - **Add-mode empty CAD preview layout — complete.** The CAD pane remains collapsed while EasyEDA is loading and when returned assets have no renderable Symbol, Footprint or 3D preview image. When a rendered preview is available, the two-column layout is restored. Verified with regression tests and the successful live KiCad CI capture on commit `d8754913886bb14e4c98c09b95b8c4c1e85d39d2`.
 
 - **Preview tab strip — complete.** Removed the heavy tab border treatment, retained identical selected/unselected tab padding, and added a stronger selected-state accent. Verified in the rendered dark-theme Add view and by the successful full CI/live KiCad visual workflow on commit `243acdfc9408daf1db54a7130fcd13fb8e59bc77`.
+
+- **Section-header styling — complete.** Replaced the mixed eyebrow/card/label-frame treatments with shared heading typography across the overview, properties, and Add/Update views. Page and card surfaces retain their own backgrounds; metadata labels remain compact. The live visual workflow asserts equal heading fonts and foregrounds across the styles, and the latest rendered captures were inspected.
+
+- **Component Overview cards — complete.** Put catalogue details (including price breaks) and schematic properties inside shared card containers with consistent padding, heading styles, and card-surface content. The live visual workflow asserts both containers use `Card.TFrame`; the rendered overview capture was inspected.
 
 ## Completion rule
 
