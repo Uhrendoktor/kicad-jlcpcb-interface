@@ -992,7 +992,10 @@ class ComponentBrowser:
             self.alternatives_status_var.set(
                 f"Alternative search failed: {search_error}"
                 if search_error
-                else "No purchasable MPN or matching passive value/footprint listings were returned by JLCPCB."
+                else (
+                    "No purchasable MPN or matching passive value/footprint "
+                    "listings were returned by JLCPCB."
+                )
             )
             return
 
