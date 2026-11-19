@@ -88,43 +88,35 @@ When a catalogue row needs closer inspection, **Select in schematic** takes you 
 
 Both contexts use the same review-first dialog, which shows inference confidence, catalogue source/freshness and warnings. Its heading and available controls adapt to the selection: update mode edits catalogue fields on the selected symbol; add mode exposes symbol overrides only when automatic mapping is uncertain. Routine resistor/capacitor value searches select the stock symbol and reference prefix automatically. Value and Footprint remain editable; Footprint is optional during symbol creation.
 
-The screenshots show the two contexts of that one action—not separate commands:
+The screenshots below are full-height captures of the production Add/Update window.
+They include the complete scrollable workspace in one image, rather than separate
+screenshots for the top and lower scroll positions. Open an image at full size to read
+the fields and review notes.
 
-<table>
-  <tr>
-    <td valign="top" width="50%">
-      <strong>One symbol selected · update its catalogue fields</strong>
-      <p>Review Value, Footprint and catalogue metadata without replacing the selected symbol or changing its pin mapping.</p>
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png">
-        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Update context of the unified action, with one schematic symbol selected and its catalogue fields proposed." width="320">
-      </picture>
-    </td>
-    <td valign="top" width="50%">
-      <strong>No symbol selected · add a project-local copy</strong>
-      <p>Search by a value such as <code>10k</code>, an LCSC code or a free-text query. Basic listings are ranked first; use <strong>Basic parts only</strong> to hide Extended and unclassified results. Select a candidate to review its details and proposed KiCad fields, then generate the project-local symbol.</p>
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
-        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Add context of the unified action, with no symbol selected and project-local symbol options visible." width="320">
-      </picture>
-    </td>
-  </tr>
-</table>
-
-### External EasyEDA CAD and 3D preview
-
-When a part has no suitable local footprint mapping, the review workspace can retrieve
-public EasyEDA symbol, footprint and optional STEP assets. The CAD preview sits below
-the supplier preview in the scrollable content area; scroll down within the workspace
-to inspect the footprint and 3D render. The render is shown only when EasyEDA supplies
-a model and the local KiCad renderer can create a preview.
+### One symbol selected · update its catalogue fields
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-cad-preview-dark.png">
-    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-cad-preview-light.png" alt="Add-mode workspace scrolled down to the EasyEDA symbol, footprint and KiCad-rendered 3D model previews." width="640">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png">
+    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Full-height Update Component window showing the complete review workspace and fixed action footer." width="880">
   </picture>
 </p>
+
+### No symbol selected · add a project-local copy
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
+    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Full-height Add Component window showing catalogue details, CAD preview tabs with the 3D model selected, KiCad fields and the fixed action footer." width="880">
+  </picture>
+</p>
+
+The EasyEDA previews share one compact tab strip: **Symbol**, **Footprint** and
+**3D model**. When a STEP model is available and KiCad can render it, the 3D tab is
+selected automatically; otherwise the best available 2D tab is selected. The preview
+hides the footprint reference designator so it does not appear as silkscreen over the
+model. This is a preview-only change: the imported footprint retains its original
+reference field and silkscreen settings.
 
 For exact resistor/capacitor values such as `10k`, `4k7` or `100nF`, Add mode shows at most five exact matches. Basic listings rank first across passive-value and general keyword searches. The **Basic parts only** checkbox hides Extended and unclassified results; leaving it unchecked keeps those alternatives available behind Basic parts. A direct LCSC-number lookup always returns the exact requested record. Selecting a passive automatically chooses `Device:R` or `Device:C`, its reference prefix, a reviewed package-to-footprint mapping when available, and the catalogue fields. You can still edit Value and Footprint. For other part searches, the suggested generic stock symbol remains editable; enter a KiCad identifier manually (for example, `Amplifier_Operational:LM358`) whenever the mapping is uncertain. The project-local library copies the chosen standalone symbol's original pins, units and graphics; it does not infer a manufacturer-specific pinout.
 
