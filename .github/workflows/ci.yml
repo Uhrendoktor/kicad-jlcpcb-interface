@@ -81,7 +81,7 @@ jobs:
           set -euo pipefail
           rm -rf "$OUTPUT_DIR"
           mkdir -p "$OUTPUT_DIR"
-          xvfb-run -a -s "-screen 0 1920x1500x24" bash -euo pipefail -c '
+          xvfb-run -a -s "-screen 0 1920x3000x24" bash -euo pipefail -c '
             openbox --sm-disable >/tmp/kicad-openbox.log 2>&1 &
             openbox_pid=$!
             trap "kill $openbox_pid 2>/dev/null || true" EXIT
