@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import replace
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -29,8 +29,8 @@ from kicad_jlcpcb.library import (  # noqa: E402
     register_project_footprint_library,
     reload_project_symbol_library,
     restore_symbol_library_snapshot,
-    sync_symbol_library_properties,
     symbol_library_entry_available,
+    sync_symbol_library_properties,
     writable_user_symbol_library_available,
 )
 
