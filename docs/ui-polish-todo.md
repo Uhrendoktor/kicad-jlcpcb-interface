@@ -8,7 +8,7 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 
 - [x] **Fix Add-mode layout when CAD previews are unavailable.** When Add does not show a footprint or other CAD preview, reclaim the unused preview space instead of leaving an empty panel/margin. At minimum, the Properties section should expand cleanly to the right edge without a conspicuous blank gap.
 
-- [ ] **Redesign the preview tab strip.** Remove the unattractive heavy tab borders, prevent the selected tab from shrinking, and give the active tab a clearer, more polished highlight.
+- [x] **Redesign the preview tab strip.** Remove the unattractive heavy tab borders, prevent the selected tab from shrinking, and give the active tab a clearer, more polished highlight.
 
 - [ ] **Unify section-header styling.** Use one consistent visual treatment for headers across the different sections. Eliminate the current mix of small/bold blue headers and larger white headers.
 
@@ -29,6 +29,8 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 ## Progress
 
 - **Add-mode empty CAD preview layout — complete.** The CAD pane remains collapsed while EasyEDA is loading and when returned assets have no renderable Symbol, Footprint or 3D preview image. When a rendered preview is available, the two-column layout is restored. Verified with regression tests and the successful live KiCad CI capture on commit `d8754913886bb14e4c98c09b95b8c4c1e85d39d2`.
+
+- **Preview tab strip — complete.** Removed the heavy tab border treatment, retained identical selected/unselected tab padding, and added a stronger selected-state accent. Verified in the rendered dark-theme Add view and by the successful full CI/live KiCad visual workflow on commit `243acdfc9408daf1db54a7130fcd13fb8e59bc77`.
 
 ## Completion rule
 
