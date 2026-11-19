@@ -22,6 +22,7 @@ from .model import (
 from .provider import JlcPartDetails, JlcSearchProvider
 from .selection import focus_schematic_items
 from .theme import UI_SPACING, apply_tk_theme
+from .value_search import exact_passive_candidates, parse_passive_search_query
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 
@@ -717,13 +718,50 @@ class ComponentBrowser:
             details.manufacturer_part_number if details is not None else ""
         )
         alternatives: list[JlcPartDetails] = []
-        alternative_error = ""
+        search_errors: list[str] = []
         if mpn and details is not None:
             try:
-                alternatives = provider.search_by_mpn(mpn)
+                alternatives = list(provider.search_by_mpn(mpn))[:5]
             except Exception as exc:
-                alternative_error = str(exc)
-        return details, image_data, alternatives, alternative_error
+                search_errors.append(f"MPN search: {exc}")
+
+        # A sparse MPN search should not hide interchangeable simple passives.
+        # Use the schematic value and exact KiCad footprint to discover more
+        # candidates, but keep the MPN-ranked results at the top.
+        if details is not None and len(alternatives) < 5:
+            reference = str(component.reference or "").strip().upper()
+            expected_kind = (
+                "resistor" if reference.startswith("R")
+                else "capacitor" if reference.startswith("C")
+                else ""
+            )
+            value = str(component.value or "").strip()
+            footprint = str(component.footprint or "").strip()
+            if expected_kind and value and footprint:
+                try:
+                    criteria = parse_passive_search_query(value)
+                    if criteria.kind == expected_kind:
+                        keyword_results = provider.search_by_keyword(
+                            criteria.supplier_query
+                        )
+                        passive_matches = exact_passive_candidates(
+                            criteria.supplier_query,
+                            keyword_results,
+                            footprint=footprint,
+                            max_results=5,
+                        )
+                        known_codes = {item.lcsc for item in alternatives}
+                        for candidate, _draft in passive_matches:
+                            if candidate.lcsc in known_codes:
+                                continue
+                            alternatives.append(candidate)
+                            known_codes.add(candidate.lcsc)
+                            if len(alternatives) == 5:
+                                break
+                except Exception as exc:
+                    search_errors.append(f"passive value/footprint search: {exc}")
+
+        return details, image_data, alternatives, "; ".join(search_errors)
 
     def _drain_catalogue_queue(self) -> None:
         if self._closed:
@@ -952,9 +990,9 @@ class ComponentBrowser:
         self.alternatives_tree.delete(*self.alternatives_tree.get_children())
         if not alternatives:
             self.alternatives_status_var.set(
-                f"MPN search failed: {search_error}"
+                f"Alternative search failed: {search_error}"
                 if search_error
-                else "No purchasable exact-MPN listings were returned by JLCPCB."
+                else "No purchasable MPN or matching passive value/footprint listings were returned by JLCPCB."
             )
             return
 
@@ -977,7 +1015,11 @@ class ComponentBrowser:
                     details.lcsc + ("  ✓" if details.lcsc == selected_lcsc else ""),
                     details.manufacturer_part_number or "—",
                     details.package or "—",
-                    "Exact" if details.mpn_match else "Related",
+                    (
+                        "Exact" if details.mpn_match is True
+                        else "Related" if details.mpn_match is False
+                        else "Value/pkg"
+                    ),
                     library,
                     self._alternative_stock(details),
                     self._alternative_minimum(details),
