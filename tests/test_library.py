@@ -408,11 +408,11 @@ class ProjectLibraryTests(unittest.TestCase):
                 library_path, _snapshot, scope = sync_symbol_library_properties(
                     self.project, "UserLibrary:R", resistor_draft(value="22k")
                 )
+            self.assertEqual(library_path, global_library.resolve())
+            self.assertEqual(scope, 1)
+            self.assertIn('"22k"', global_library.read_text(encoding="utf-8"))
 
-        self.assertEqual(library_path, global_library.resolve())
-        self.assertEqual(scope, 1)
         self.assertEqual(project_library.read_text(encoding="utf-8"), project_before)
-        self.assertIn('"22k"', global_library.read_text(encoding="utf-8"))
 
     def test_writable_library_check_only_accepts_registered_project_or_user_libraries(self):
         generated = self.generate()
