@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Place editable KiCad properties beside the supplier and tabbed CAD previews in Add/Update; synchronize the Footprint field to the visible CAD candidate unless the user explicitly overrides it.
-- Show field-specific validation below its source input and classify review notes with explicit Error, Warning or Info labels, readable icons and theme-aware severity colors.
+- Place editable KiCad properties and proposal metadata in a left column beside supplier details and tabbed CAD previews on the right; synchronize the Footprint field to the visible CAD candidate unless the user explicitly overrides it.
+- Show field-specific validation below its source input, block generation on missing required fields, and classify review notes with explicit Error, Warning or Info labels, readable icons and theme-aware severity colors.
 - Export downloaded schematic symbols, footprints and optional STEP models to user-selected KiCad libraries; register the libraries in the active project and refuse conflicting user-owned content.
 - Add a confirmed Sync with library action that updates writable project/user symbol definitions and every schematic instance using the same library symbol, with rollback attempts on failed schematic write-back.
 
