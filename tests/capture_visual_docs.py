@@ -1537,6 +1537,15 @@ def _drive_populator_form(
                 raise RuntimeError(
                     "Update-mode passive search did not display multiple alternatives."
                 )
+            footprint_column_width = int(
+                populator.candidate_tree.column("footprint", "width")
+            )
+            if footprint_column_width < 270:
+                raise RuntimeError(
+                    "The passive-match Footprint column is too narrow to show a "
+                    "standard full KiCad identifier: "
+                    f"width={footprint_column_width}px."
+                )
             if assert_basic_shortlist:
                 if len(candidate_iids) > 5:
                     raise RuntimeError(
