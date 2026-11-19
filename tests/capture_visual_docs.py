@@ -1106,6 +1106,29 @@ def _position_eeschema_window(width: int = 940, height: int = 1400) -> None:
     )
 
 
+def _assert_section_heading_typography(root: Any) -> None:
+    """Keep section headings consistent across page, card and labelled-frame surfaces."""
+    from tkinter import ttk
+
+    style = ttk.Style(root)
+    heading_styles = (
+        "SectionTitle.TLabel",
+        "SectionTitleSurface.TLabel",
+        "TLabelframe.Label",
+    )
+    expected_font = style.lookup(heading_styles[0], "font")
+    expected_foreground = style.lookup(heading_styles[0], "foreground")
+    for heading_style in heading_styles[1:]:
+        actual_font = style.lookup(heading_style, "font")
+        actual_foreground = style.lookup(heading_style, "foreground")
+        if actual_font != expected_font or actual_foreground != expected_foreground:
+            raise RuntimeError(
+                "Section heading typography is inconsistent: "
+                f"{heading_styles[0]}={(expected_font, expected_foreground)!r}; "
+                f"{heading_style}={(actual_font, actual_foreground)!r}."
+            )
+
+
 def _drive_overview(
     schematic: Any, output_dir: Path, cache_dir: Path
 ) -> None:
@@ -1113,6 +1136,7 @@ def _drive_overview(
     browser = browser_module.ComponentBrowser(schematic, cache_dir, theme="light")
     browser.root.geometry("1480x1250+20+20")
     root = browser.root
+    _assert_section_heading_typography(root)
     failures: list[str] = []
     frames = (
         output_dir / "component-browser-initial.png",
@@ -1575,6 +1599,7 @@ def _drive_populator_form(
 ) -> None:
     """Capture the production review form and verify the resulting KiCad IPC action."""
     root = populator.root
+    _assert_section_heading_typography(root)
     failures: list[str] = []
     state = {"done": False, "deadline": time.monotonic() + 60.0}
 
