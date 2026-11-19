@@ -13,6 +13,7 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.model import component_from_symbol  # noqa: E402
 from kicad_jlcpcb.plugin import ComponentBrowser, focus_schematic_items  # noqa: E402
+from kicad_jlcpcb.provider import JlcPartDetails  # noqa: E402
 
 
 def component(reference: str, part_code: str, sheet_path: str = "/Root"):
@@ -443,6 +444,165 @@ class SelectionTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result.sheet_path, "/Root/Power")
         self.assertEqual(result.manufacturer_part_number, "RC0402JR-0710KL")
+
+
+
+class AlternativeSearchTests(unittest.TestCase):
+    RESISTOR_FOOTPRINT = "Resistor_SMD:R_0402_1005Metric"
+    CAPACITOR_FOOTPRINT = "Capacitor_SMD:C_0603_1608Metric"
+
+    @staticmethod
+    def resistor(lcsc: str, *, package: str = "0402") -> JlcPartDetails:
+        return JlcPartDetails(
+            lcsc=lcsc,
+            description="10K Ohm thick film resistor",
+            manufacturer_part_number="RC0402-test",
+            package=package,
+            stock=1000,
+            unit_price_usd=0.001,
+            is_basic=True,
+            is_buyable=True,
+            category="Resistors",
+            attributes={"Resistance": "10KΩ", "Tolerance": "1%"},
+        )
+
+    @staticmethod
+    def capacitor(
+        lcsc: str, *, package: str = "0603", with_mpn: bool = True
+    ) -> JlcPartDetails:
+        return JlcPartDetails(
+            lcsc=lcsc,
+            description="100nF ceramic capacitor",
+            manufacturer_part_number="CL10B104KB8NNNC" if with_mpn else "",
+            package=package,
+            stock=1000,
+            unit_price_usd=0.001,
+            is_basic=True,
+            is_buyable=True,
+            category="Capacitors",
+            attributes={"Capacitance": "100nF", "Tolerance": "10%"},
+        )
+
+    class Provider:
+        def __init__(self, details, mpn_results=(), keyword_results=()):
+            self.details = details
+            self.mpn_results = list(mpn_results)
+            self.keyword_results = list(keyword_results)
+            self.mpn_queries = []
+            self.keyword_queries = []
+
+        def lookup(self, part_code, *, force_refresh=False):
+            self.asserted_lookup = (part_code, force_refresh)
+            return self.details
+
+        def search_by_mpn(self, mpn):
+            self.mpn_queries.append(mpn)
+            return list(self.mpn_results)
+
+        def search_by_keyword(self, keyword):
+            self.keyword_queries.append(keyword)
+            return list(self.keyword_results)
+
+    @staticmethod
+    def schematic_component(
+        *, reference, value, footprint, part_code="C99999", mpn=""
+    ):
+        return SimpleNamespace(
+            reference=reference,
+            value=value,
+            footprint=footprint,
+            part_code=part_code,
+            manufacturer_part_number=mpn,
+        )
+
+    def test_sparse_resistor_mpn_results_are_filled_with_exact_value_and_footprint(self):
+        details = self.resistor("C99999")
+        mpn_results = [
+            self.resistor("C10001"),
+            self.resistor("C10002"),
+        ]
+        keyword_results = [
+            self.resistor("C10002"),  # duplicate of the MPN result
+            self.resistor("C10003"),
+            self.resistor("C10004"),
+            self.resistor("C10005"),
+            self.resistor("C10006"),
+            self.resistor("C10007", package="0603"),  # wrong footprint
+            self.capacitor("C10008"),  # wrong component type and value
+        ]
+        provider = self.Provider(details, mpn_results, keyword_results)
+        component = self.schematic_component(
+            reference="R1",
+            value="10k",
+            footprint=self.RESISTOR_FOOTPRINT,
+            part_code="C99999",
+            mpn="RC0402-base",
+        )
+
+        loaded, image_data, alternatives, search_error = (
+            ComponentBrowser._load_catalogue_details(provider, component)
+        )
+
+        self.assertIs(loaded, details)
+        self.assertIsNone(image_data)
+        self.assertEqual(search_error, "")
+        self.assertEqual(
+            [item.lcsc for item in alternatives],
+            ["C10001", "C10002", "C10003", "C10004", "C10005"],
+        )
+        self.assertEqual(provider.mpn_queries, ["RC0402-base"])
+        self.assertEqual(provider.keyword_queries, ["10k"])
+
+    def test_five_mpn_results_skip_passive_fallback_and_are_capped(self):
+        details = self.resistor("C99999")
+        provider = self.Provider(
+            details,
+            [self.resistor(f"C1000{index}") for index in range(1, 7)],
+            [self.resistor("C20001")],
+        )
+        component = self.schematic_component(
+            reference="R1",
+            value="10k",
+            footprint=self.RESISTOR_FOOTPRINT,
+            part_code="C99999",
+            mpn="RC0402-base",
+        )
+
+        _loaded, _image, alternatives, error = (
+            ComponentBrowser._load_catalogue_details(provider, component)
+        )
+
+        self.assertEqual(error, "")
+        self.assertEqual(len(alternatives), 5)
+        self.assertEqual(provider.keyword_queries, [])
+
+    def test_capacitor_without_mpn_uses_exact_value_and_footprint_search(self):
+        details = self.capacitor("C99998", with_mpn=False)
+        keyword_results = [
+            self.capacitor(f"C3000{index}") for index in range(1, 7)
+        ] + [
+            self.capacitor("C30007", package="0402"),
+            self.resistor("C30008"),
+        ]
+        provider = self.Provider(details, keyword_results=keyword_results)
+        component = self.schematic_component(
+            reference="C1",
+            value="100nF",
+            footprint=self.CAPACITOR_FOOTPRINT,
+            part_code="C99998",
+        )
+
+        _loaded, _image, alternatives, error = (
+            ComponentBrowser._load_catalogue_details(provider, component)
+        )
+
+        self.assertEqual(error, "")
+        self.assertEqual(
+            [item.lcsc for item in alternatives],
+            ["C30001", "C30002", "C30003", "C30004", "C30005"],
+        )
+        self.assertEqual(provider.mpn_queries, [])
+        self.assertEqual(provider.keyword_queries, ["100nF"])
 
 
 if __name__ == "__main__":
