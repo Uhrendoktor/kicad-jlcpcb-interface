@@ -611,7 +611,7 @@ class ComponentPopulator:
         self.candidate_title = ttk.Label(
             candidate_header,
             text="Search results",
-            style="CardTitle.TLabel",
+            style="SectionTitleSurface.TLabel",
         )
         self.candidate_title.grid(row=0, column=0, sticky="w")
         self.candidate_tree = ttk.Treeview(
@@ -676,7 +676,7 @@ class ComponentPopulator:
         ttk.Label(
             component_section,
             text="KiCad properties",
-            style="CardTitle.TLabel",
+            style="SectionTitleSurface.TLabel",
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
         row = 1
@@ -765,7 +765,7 @@ class ComponentPopulator:
         ttk.Label(
             proposal_section,
             text="Fields to write",
-            style="CardTitle.TLabel",
+            style="SectionTitleSurface.TLabel",
         ).grid(row=0, column=0, sticky="w", pady=(0, 8))
         self.proposal_rows = ttk.Frame(
             proposal_section, style="Card.TFrame"
