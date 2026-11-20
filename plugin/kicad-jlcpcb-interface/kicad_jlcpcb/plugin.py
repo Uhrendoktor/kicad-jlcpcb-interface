@@ -327,18 +327,31 @@ class ComponentBrowser:
         self.body = body
         body.grid(row=1, column=0, sticky="nsew", padx=UI_SPACING["lg"], pady=(0, UI_SPACING["md"]))
         if self.selected_component is None:
-            list_frame = ttk.Frame(body, padding=(0, 0, UI_SPACING["md"], 0))
+            list_frame = ttk.Frame(body)
             list_frame.columnconfigure(0, weight=1)
-            list_frame.rowconfigure(1, weight=1)
+            list_frame.rowconfigure(0, weight=1)
             body.add(list_frame, weight=1)
-            ttk.Label(
+
+            list_card = ttk.Frame(
                 list_frame,
+                style="Card.TFrame",
+                padding=UI_SPACING["lg"],
+            )
+            self.component_list_card = list_card
+            list_card.grid(row=0, column=0, sticky="nsew")
+            list_card.columnconfigure(0, weight=1)
+            list_card.rowconfigure(1, weight=1)
+            self.component_list_title = ttk.Label(
+                list_card,
                 text="LINKED SCHEMATIC COMPONENTS",
-                style="SectionTitle.TLabel",
-            ).grid(row=0, column=0, sticky="w", pady=(0, 8))
+                style="SectionTitleSurface.TLabel",
+            )
+            self.component_list_title.grid(
+                row=0, column=0, sticky="w", pady=(0, UI_SPACING["sm"])
+            )
             columns = ("reference", "value", "part", "footprint", "sheet")
             self.tree = ttk.Treeview(
-                list_frame, columns=columns, show="headings", selectmode="browse"
+                list_card, columns=columns, show="headings", selectmode="browse"
             )
             headings = {
                 "reference": ("Reference", 90), "value": ("Value", 220),
@@ -359,12 +372,17 @@ class ComponentBrowser:
                 command=self.tree.yview,
                 palette=self.palette,
             )
-            self.tree_scrollbar.grid(row=1, column=1, sticky="ns")
+            self.tree_scrollbar.grid(row=0, column=1, sticky="ns")
             self.tree.configure(yscrollcommand=self.tree_scrollbar.set)
             self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
             self.tree.bind("<Double-1>", lambda _event: self.select_selected())
 
-        detail_frame = ttk.Frame(body, padding=(UI_SPACING["md"], 0, 0, 0))
+        detail_padding = (
+            (0, 0, 0, 0)
+            if self.selected_component is None
+            else (UI_SPACING["md"], 0, 0, 0)
+        )
+        detail_frame = ttk.Frame(body, padding=detail_padding)
         detail_frame.columnconfigure(0, weight=1)
         detail_frame.rowconfigure(0, weight=1)
         body.add(
@@ -440,7 +458,7 @@ class ComponentBrowser:
         catalogue_extra = ttk.Frame(
             content,
             style="Card.TFrame",
-            padding=UI_SPACING["md"],
+            padding=UI_SPACING["lg"],
         )
         self.catalogue_details_card = catalogue_extra
         catalogue_extra.grid(
@@ -469,14 +487,27 @@ class ComponentBrowser:
                 justify="left",
             ).grid(row=row, column=1, sticky="ew", pady=3)
 
-        alternatives = ttk.LabelFrame(
-            content, text="Other listings", padding=UI_SPACING["sm"]
+        alternatives = ttk.Frame(
+            content,
+            style="Card.TFrame",
+            padding=UI_SPACING["lg"],
         )
-        alternatives.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        self.alternatives_card = alternatives
+        alternatives.grid(
+            row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0)
+        )
         alternatives.columnconfigure(0, weight=1)
-        self.alternatives_status_var = self.tk.StringVar(
-            value=""
+        alternatives.rowconfigure(1, weight=1)
+        self.alternatives_title = ttk.Label(
+            alternatives,
+            text="OTHER LISTINGS",
+            style="SectionTitleSurface.TLabel",
         )
+        self.alternatives_title.grid(
+            row=0, column=0, columnspan=2, sticky="w",
+            pady=(0, UI_SPACING["sm"]),
+        )
+        self.alternatives_status_var = self.tk.StringVar(value="")
         self.alternatives_tree = ttk.Treeview(
             alternatives,
             columns=("part", "mpn", "package", "match", "class", "stock", "minimum", "price"),
@@ -502,14 +533,14 @@ class ComponentBrowser:
         self.alternatives_tree.tag_configure(
             "stripe-alt", background=self.palette["surface_alt"]
         )
-        self.alternatives_tree.grid(row=0, column=0, sticky="ew")
+        self.alternatives_tree.grid(row=1, column=0, sticky="nsew")
         self.alternatives_scrollbar = AutoHideScrollbar(
             alternatives,
             orient="vertical",
             command=self.alternatives_tree.yview,
             palette=self.palette,
         )
-        self.alternatives_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.alternatives_scrollbar.grid(row=1, column=1, sticky="ns")
         self.alternatives_tree.configure(yscrollcommand=self.alternatives_scrollbar.set)
         self.alternatives_tree.bind(
             "<Double-1>", lambda _event: self.open_selected_alternative()
@@ -519,12 +550,12 @@ class ComponentBrowser:
             textvariable=self.alternatives_status_var,
             style="Muted.TLabel",
             wraplength=850,
-        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(5, 0))
 
         schematic = ttk.Frame(
             content,
             style="Card.TFrame",
-            padding=UI_SPACING["md"],
+            padding=UI_SPACING["lg"],
         )
         self.schematic_properties_card = schematic
         schematic.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
@@ -545,7 +576,7 @@ class ComponentBrowser:
         )
         for row, (label, key) in enumerate(schematic_fields, start=1):
             ttk.Label(schematic, text=label, style="CardMeta.TLabel").grid(
-                row=row, column=0, sticky="nw", padx=(0, 12), pady=3
+                row=row, column=0, sticky="nw", padx=(0, 14), pady=3
             )
             ttk.Label(
                 schematic,
@@ -555,7 +586,7 @@ class ComponentBrowser:
                 justify="left",
             ).grid(row=row, column=1, sticky="ew", pady=3)
 
-        actions = ttk.Frame(content)
+        actions = ttk.Frame(content, padding=(UI_SPACING["lg"], 0))
         actions.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         ttk.Button(
             actions, text="Select in schematic", command=self.select_selected,
