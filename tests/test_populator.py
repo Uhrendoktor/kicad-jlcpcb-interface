@@ -888,6 +888,37 @@ class CadSuggestionTests(unittest.TestCase):
         self.assertEqual(populator.footprint_var.get(), "My_Footprints:Verified")
         self.assertEqual(populator.draft.footprint, "")
 
+    def test_update_preserves_a_valid_local_footprint_when_showing_cad_comparison(self):
+        populator = self.populator(create_mode=False)
+        populator.footprint_var.set("Resistor_SMD:R_0603_1608Metric")
+        populator.draft = replace(
+            self.draft, footprint="Resistor_SMD:R_0603_1608Metric"
+        )
+
+        with patch(
+            "kicad_jlcpcb.populator.footprint_library_entry_available",
+            return_value=True,
+        ):
+            populator._apply_cad_suggestions(self.assets)
+
+        self.assertEqual(
+            populator.footprint_var.get(), "Resistor_SMD:R_0603_1608Metric"
+        )
+        self.assertEqual(
+            populator.draft.footprint, "Resistor_SMD:R_0603_1608Metric"
+        )
+
+    def test_update_keeps_manual_footprint_and_still_allows_comparison_preview(self):
+        populator = self.populator(create_mode=False, manual_fields={"footprint"})
+        populator.footprint_var.set("My_Footprints:Verified")
+        self._apply_assets_to_populator(populator)
+
+        self.assertEqual(populator.footprint_var.get(), "My_Footprints:Verified")
+        self.assertNotEqual(populator.draft.footprint, self.assets.footprint_library_id)
+
+    def _apply_assets_to_populator(self, populator):
+        populator._apply_cad_suggestions(self.assets)
+
 
     def test_switching_catalogue_candidate_resets_previous_manual_edits(self):
         populator = self.populator(create_mode=True, manual_fields={"footprint"})
@@ -1100,6 +1131,54 @@ class FieldFeedbackTests(unittest.TestCase):
         self.assertEqual(
             populator._set_field_feedback.call_args.args[:2],
             ("footprint", "error"),
+        )
+
+    def test_update_footprint_change_adds_explicit_compatibility_warning(self):
+        class Variable:
+            def __init__(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = False
+        populator.draft = SimpleNamespace()
+        populator._original_footprint = "Resistor_SMD:R_0402_1005Metric"
+        populator.footprint_var = Variable("Resistor_SMD:R_0603_1608Metric")
+        populator._notes_messages = ("Info: Existing catalogue note.",)
+        populator._cad_assets = SimpleNamespace(has_3d_model=True)
+        populator._set_notes = Mock()
+
+        populator._refresh_update_compatibility_notes()
+
+        notes = populator._set_notes.call_args.args[0]
+        warning = next(note for note in notes if note.startswith(
+            "Warning: Update proposes a footprint change"
+        ))
+        self.assertIn("R_0402_1005Metric", warning)
+        self.assertIn("R_0603_1608Metric", warning)
+        self.assertIn("preserves the selected schematic symbol", warning)
+        self.assertIn("pad count/numbering", warning)
+        self.assertIn("3D model", warning)
+        self.assertTrue(any("STEP 3D model" in note for note in notes))
+        self.assertIn("Info: Existing catalogue note.", notes)
+
+    def test_unchanged_update_footprint_does_not_add_compatibility_warning(self):
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = False
+        populator.draft = SimpleNamespace()
+        populator._original_footprint = "Resistor_SMD:R_0402_1005Metric"
+        populator.footprint_var = SimpleNamespace(
+            get=lambda: "Resistor_SMD:R_0402_1005Metric"
+        )
+        populator._notes_messages = ("Info: Existing catalogue note.",)
+        populator._set_notes = Mock()
+
+        populator._refresh_update_compatibility_notes()
+
+        populator._set_notes.assert_called_once_with(
+            ("Info: Existing catalogue note.",)
         )
 
     def test_sync_button_remains_disabled_for_non_writable_libraries(self):
