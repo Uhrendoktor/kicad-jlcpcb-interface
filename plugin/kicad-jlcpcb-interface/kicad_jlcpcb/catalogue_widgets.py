@@ -260,6 +260,7 @@ class FlatTabControl:
     """Theme-coherent tab selector with a flat, fixed-size active underline."""
 
     def __init__(self, parent: Any, ttk: Any) -> None:
+        self.ttk = ttk
         self.frame = ttk.Frame(parent, style="ProductPreview.TFrame")
         self.frame.columnconfigure(0, weight=1)
         self.frame.rowconfigure(1, weight=1)
@@ -289,22 +290,17 @@ class FlatTabControl:
             self.select(page)
 
     def _tab_item(self, page: Any, text: str, index: int) -> tuple[Any, Any]:
-        ttk = self.frame.tk
-        del ttk
-        # The ttk factory is retained explicitly by the tab bar's widget class.
-        from tkinter import ttk as ttk_module
-
-        item = ttk_module.Frame(self.tabbar, style="TabItem.TFrame")
+        item = self.ttk.Frame(self.tabbar, style="TabItem.TFrame")
         item.grid(row=0, column=index, sticky="ew")
         item.columnconfigure(0, weight=1)
-        button = ttk_module.Button(
+        button = self.ttk.Button(
             item,
             text=text,
             style="Tab.TButton",
             command=lambda selected=page: self.select(selected),
         )
         button.grid(row=0, column=0, sticky="ew")
-        indicator = ttk_module.Frame(
+        indicator = self.ttk.Frame(
             item, style="TabIndicatorInactive.TFrame", height=2
         )
         indicator.grid(row=1, column=0, sticky="ew")
