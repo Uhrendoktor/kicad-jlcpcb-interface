@@ -411,13 +411,17 @@ def _entry_text(entry: list[Sexp] | None, field: str) -> str:
     return _string_value(node[1]) if node is not None and len(node) >= 2 else ""
 
 
-def _is_kicad_footprint_directory_uri(uri: str) -> bool:
-    """Recognize stock footprint-table URIs when KiCad IPC omits named path keys."""
-    return re.match(
-        r"^\$\{?KICAD(?:\d+)?_FOOTPRINT_DIR\}?[/\\]",
-        str(uri or "").strip(),
-        flags=re.IGNORECASE,
+def _is_kicad_footprint_directory_uri(uri: str, nickname: str) -> bool:
+    """Recognize only the stock library path when KiCad IPC omits named path keys."""
+    pattern = (
+        r"^\$\{?KICAD(?:\d+)?_FOOTPRINT_DIR\}?[/\\]"
+        + re.escape(nickname)
+        + r"\.pretty[/\\]?$"
+    )
+    return re.fullmatch(
+        pattern, str(uri or "").strip(), flags=re.IGNORECASE
     ) is not None
+
 
 
 def _uri_path(
@@ -716,7 +720,7 @@ def footprint_library_entry_available(
                 # scan below resolve the nickname from those IPC path values.
                 if (
                     table_path != project_table_path
-                    and _is_kicad_footprint_directory_uri(uri)
+                    and _is_kicad_footprint_directory_uri(uri, nickname)
                 ):
                     continue
                 return False
