@@ -233,19 +233,22 @@ class ComponentBrowser:
                 style="ProductPreview.TFrame",
                 padding=(UI_SPACING["lg"], UI_SPACING["md"]),
             )
+            self.project_overview_card = overview
             overview.grid(
                 row=2,
                 column=0,
                 columnspan=5,
                 sticky="ew",
+                padx=(0, AutoHideScrollbar.ACTIVE_WIDTH),
                 pady=(UI_SPACING["md"], 0),
             )
             overview.columnconfigure((0, 1, 2, 3), weight=1)
-            ttk.Label(
+            self.project_overview_title = ttk.Label(
                 overview,
                 text="DESIGN OVERVIEW",
                 style="SectionTitleSurface.TLabel",
-            ).grid(
+            )
+            self.project_overview_title.grid(
                 row=0,
                 column=0,
                 columnspan=4,
@@ -263,14 +266,16 @@ class ComponentBrowser:
                 cell = ttk.Frame(
                     overview,
                     style="ProductPreview.TFrame",
-                    padding=(5, 0),
                 )
                 cell.grid(row=1, column=column, sticky="ew")
-                ttk.Label(
+                key_label = ttk.Label(
                     cell,
                     text=label,
                     style="ProductKey.TLabel",
-                ).pack(anchor="w")
+                )
+                key_label.pack(anchor="w")
+                if column == 0:
+                    self.project_overview_first_key = key_label
                 ttk.Label(
                     cell,
                     textvariable=self.summary_vars[key],
