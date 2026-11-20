@@ -49,7 +49,7 @@ from kicad_jlcpcb.populator import (  # noqa: E402
     resolve_passive_library_id,
 )
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
-from kicad_jlcpcb.theme import apply_tk_theme  # noqa: E402
+from kicad_jlcpcb.theme import AutoHideScrollbar, apply_tk_theme  # noqa: E402
 
 ASSET_NAMES = (
     "component-browser-initial.png",
@@ -1110,6 +1110,38 @@ def _position_eeschema_window(width: int = 940, height: int = 1400) -> None:
     )
 
 
+def _assert_auto_hide_scrollbar(scrollbar: Any, name: str) -> None:
+    """Check the compact idle rail and wider interaction state in live Tk."""
+    if not isinstance(scrollbar, AutoHideScrollbar):
+        raise RuntimeError(
+            f"{name} uses {type(scrollbar).__name__}, not AutoHideScrollbar."
+        )
+    style = scrollbar._style
+    idle_width = int(style.lookup(scrollbar.idle_style, "width"))
+    active_width = int(style.lookup(scrollbar.active_style, "width"))
+    if idle_width != AutoHideScrollbar.IDLE_WIDTH:
+        raise RuntimeError(
+            f"{name} idle width is {idle_width}px, expected "
+            f"{AutoHideScrollbar.IDLE_WIDTH}px."
+        )
+    if active_width != AutoHideScrollbar.ACTIVE_WIDTH:
+        raise RuntimeError(
+            f"{name} active width is {active_width}px, expected "
+            f"{AutoHideScrollbar.ACTIVE_WIDTH}px."
+        )
+    previous_scrollable = scrollbar.scrollable
+    scrollbar._scrollable = True
+    scrollbar._reveal()
+    scrollbar.update_idletasks()
+    if scrollbar.cget("style") != scrollbar.active_style:
+        raise RuntimeError(f"{name} did not reveal while scrolling.")
+    scrollbar._cancel_hide()
+    scrollbar._scrollable = previous_scrollable
+    scrollbar._set_idle_style()
+    if scrollbar.cget("style") != scrollbar.idle_style:
+        raise RuntimeError(f"{name} did not return to its compact idle rail.")
+
+
 def _assert_section_heading_typography(root: Any) -> None:
     """Keep section headings consistent across page, card and labelled-frame surfaces."""
     from tkinter import ttk
@@ -1225,6 +1257,12 @@ def _drive_overview(
     _assert_overview_detail_cards(browser)
     _assert_overview_row_alignment(browser)
     _assert_selected_part_actions(browser)
+    for name, scrollbar in (
+        ("overview component list", browser.tree_scrollbar),
+        ("overview detail pane", browser.detail_scrollbar),
+        ("overview alternatives", browser.alternatives_scrollbar),
+    ):
+        _assert_auto_hide_scrollbar(scrollbar, name)
     failures: list[str] = []
     frames = (
         output_dir / "component-browser-initial.png",
@@ -2038,6 +2076,12 @@ def _drive_populator_form(
             populator._update_field_feedback()
             root.update()
 
+            _assert_auto_hide_scrollbar(
+                populator.content_scrollbar, "Add/Update workspace"
+            )
+            _assert_auto_hide_scrollbar(
+                populator.candidate_scrollbar, "Add/Update candidate list"
+            )
             if not populator.proposal_rows.winfo_children():
                 raise RuntimeError("The LCSC review form contains no proposed fields.")
             if not populator.apply_button.winfo_viewable():
