@@ -11,6 +11,7 @@ PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.theme import (  # noqa: E402
+    AutoHideScrollbar,
     THEME_ENVIRONMENT_VARIABLE,
     UI_FONT_SIZES,
     UI_SPACING,
@@ -95,6 +96,15 @@ class ThemeResolutionTests(unittest.TestCase):
                                     pass
                             else:
                                 kde.write_text(original, encoding="utf-8")
+
+    def test_auto_hide_scrollbar_has_compact_idle_and_clear_active_widths(self):
+        self.assertEqual(AutoHideScrollbar.IDLE_WIDTH, 2)
+        self.assertEqual(AutoHideScrollbar.ACTIVE_WIDTH, 10)
+        self.assertGreater(
+            AutoHideScrollbar.ACTIVE_WIDTH,
+            AutoHideScrollbar.IDLE_WIDTH * 3,
+        )
+        self.assertEqual(AutoHideScrollbar.HIDE_DELAY_MS, 900)
 
     def test_palettes_have_distinct_readable_surfaces(self):
         light = palette_for_theme("light")
