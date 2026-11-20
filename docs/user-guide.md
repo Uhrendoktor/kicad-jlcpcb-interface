@@ -136,7 +136,7 @@ The catalogue lookup runs outside the Tk UI thread. Product images are fetched o
 
 If the schematic symbol has an MPN custom property, the browser queries JLCPCB's parts-search endpoint using that string. If the schematic MPN field is empty, the catalogue MPN may be used.
 
-The alternatives table can display LCSC code, manufacturer P/N, package, Exact/Related match, Basic/Extended class, stock or pre-order status, minimum order and lowest price break. Exact normalized-MPN matches are shown first. Double-click a row to open that listing's product page.
+The alternatives table shows LCSC code, manufacturer P/N, package, a compact match icon, Basic/Extended class, stock or pre-order status, minimum order and the lowest available quantity-price break. Hover over a match icon for its meaning. Basic rows are highlighted in green; Extended and unclassified rows use the muted text color. Exact normalized-MPN matches are shown first. Double-click a row to open that listing's product page.
 
 A **Related** row is a search suggestion, not a declared substitute. Compare package, electrical ratings, tolerance, pinout and other attributes against the design before considering it. The fact that JLCPCB returns a row does not establish electrical or mechanical equivalence.
 
