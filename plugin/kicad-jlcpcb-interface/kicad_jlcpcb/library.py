@@ -411,6 +411,15 @@ def _entry_text(entry: list[Sexp] | None, field: str) -> str:
     return _string_value(node[1]) if node is not None and len(node) >= 2 else ""
 
 
+def _is_kicad_footprint_directory_uri(uri: str) -> bool:
+    """Recognize stock footprint-table URIs when KiCad IPC omits named path keys."""
+    return re.match(
+        r"^\$\{?KICAD(?:\d+)?_FOOTPRINT_DIR\}?[/\\]",
+        str(uri or "").strip(),
+        flags=re.IGNORECASE,
+    ) is not None
+
+
 def _uri_path(
     project_dir: Path,
     uri: str,
@@ -696,14 +705,21 @@ def footprint_library_entry_available(
                 continue
             if _entry_text(entry, "type") != "KiCad":
                 return False
-            library_path = _uri_path(
-                base_dir,
-                _entry_text(entry, "uri"),
-                path_variables,
-            )
+            uri = _entry_text(entry, "uri")
+            library_path = _uri_path(base_dir, uri, path_variables)
+            if library_path is None:
+                # get_paths() returns numeric path-enum keys, not the named
+                # KICAD*_FOOTPRINT_DIR variables used by stock fp-lib-table
+                # rows. For a global stock row only, let the installed-root
+                # scan below resolve the nickname from those IPC path values.
+                if (
+                    table_path != project_table_path
+                    and _is_kicad_footprint_directory_uri(uri)
+                ):
+                    continue
+                return False
             if (
-                library_path is None
-                or library_path.is_symlink()
+                library_path.is_symlink()
                 or not library_path.is_dir()
             ):
                 return False
