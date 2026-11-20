@@ -2146,7 +2146,7 @@ def _capture_passive_component_workflows(
         completed_asset="populate-component-applied.png",
         expected_lcsc=None,
         expected_value="10k",
-        expected_footprint=None,
+        expected_footprint="Resistor_SMD:R_0402_1005Metric",
         validate_result=validate_populate_result,
         assert_basic_shortlist=True,
         require_alternatives=True,
