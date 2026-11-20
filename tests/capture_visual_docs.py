@@ -1219,6 +1219,7 @@ def _assert_overview_row_alignment(browser: Any) -> None:
     """Align card bounds and data-row insets across the entire overview."""
     browser.root.update_idletasks()
     panels = (
+        ("Design overview", browser.project_overview_card),
         ("Component list", browser.component_list_card),
         ("Selected part", browser.product_preview.frame),
         ("Catalogue details", browser.catalogue_details_card),
@@ -1245,6 +1246,19 @@ def _assert_overview_row_alignment(browser: Any) -> None:
         raise RuntimeError(
             "The component-list heading and table do not share the card inset: "
             f"title={title_inset}px, table={tree_inset}px."
+        )
+    summary_title_inset = (
+        int(browser.project_overview_title.winfo_rootx())
+        - bounds["Design overview"][0]
+    )
+    summary_metric_inset = (
+        int(browser.project_overview_first_key.winfo_rootx())
+        - bounds["Design overview"][0]
+    )
+    if summary_title_inset != summary_metric_inset:
+        raise RuntimeError(
+            "The project-summary heading and first metric do not share an inset: "
+            f"title={summary_title_inset}px, metric={summary_metric_inset}px."
         )
 
     row_specs = (
