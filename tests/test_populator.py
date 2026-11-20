@@ -888,6 +888,56 @@ class CadSuggestionTests(unittest.TestCase):
         self.assertEqual(populator.footprint_var.get(), "My_Footprints:Verified")
         self.assertEqual(populator.draft.footprint, "")
 
+    def test_update_footprint_change_requests_cad_previews_even_for_local_target(self):
+        class Variable:
+            def __init__(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def set(self, value):
+                self.value = value
+
+        class Future:
+            def __init__(self):
+                self.callback = None
+
+            def add_done_callback(self, callback):
+                self.callback = callback
+
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = False
+        populator._cad_lcsc = "C12345"
+        populator._cad_pending = False
+        populator._cad_attempted = False
+        populator._cad_assets = None
+        populator._manual_proposal_fields = {"footprint"}
+        populator._original_footprint = "Resistor_SMD:R_0402_1005Metric"
+        populator.footprint_var = Variable("Resistor_SMD:R_0603_1608Metric")
+        populator.schematic = SimpleNamespace(get_project=lambda: None)
+        populator.kicad = None
+        populator.cad_status_var = SimpleNamespace(set=Mock())
+        populator._set_cad_preview_visible = Mock()
+        future = Future()
+        populator.cad_executor = SimpleNamespace(submit=Mock(return_value=future))
+        populator.cad_provider = SimpleNamespace(lookup=Mock())
+        populator.results = object()
+        details = SimpleNamespace(lcsc="C12345")
+
+        with patch(
+            "kicad_jlcpcb.populator.footprint_library_entry_available",
+            return_value=True,
+        ):
+            populator._request_cad_assets(details, self.draft)
+
+        populator.cad_executor.submit.assert_called_once_with(
+            populator.cad_provider.lookup, "C12345"
+        )
+        self.assertTrue(populator._cad_pending)
+        self.assertTrue(populator._cad_attempted)
+        self.assertEqual(populator.footprint_var.get(), "Resistor_SMD:R_0603_1608Metric")
+
     def test_update_preserves_a_valid_local_footprint_when_showing_cad_comparison(self):
         populator = self.populator(create_mode=False)
         populator.footprint_var.set("Resistor_SMD:R_0603_1608Metric")
