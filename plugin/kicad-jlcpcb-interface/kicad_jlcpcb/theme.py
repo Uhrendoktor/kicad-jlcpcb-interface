@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import tkinter as tk
+import weakref
 from pathlib import Path
 from tkinter import ttk
 from typing import Any
@@ -45,6 +46,15 @@ class AutoHideScrollbar(ttk.Scrollbar):
         self.bind("<Enter>", self._on_enter, add="+")
         self.bind("<Leave>", self._on_leave, add="+")
         self.bind("<Destroy>", self._on_destroy, add="+")
+
+        registry_root = self._root()
+        registry = getattr(
+            registry_root, "_kicad_jlcpcb_auto_hide_scrollbars", None
+        )
+        if registry is None:
+            registry = weakref.WeakSet()
+            registry_root._kicad_jlcpcb_auto_hide_scrollbars = registry
+        registry.add(self)
 
     @property
     def idle_style(self) -> str:
@@ -918,4 +928,16 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
     root._kicad_jlcpcb_theme = selected_theme
     root._kicad_jlcpcb_palette = palette
     _configure_classic_widgets(root, palette)
+
+    # Custom per-instance scrollbar styles are not part of the base ttk styles
+    # above. Refresh every live instance so an idle rail follows light/dark
+    # theme changes instead of retaining the palette from widget creation.
+    registry_root = root._root() if hasattr(root, "_root") else root
+    for scrollbar in tuple(
+        getattr(registry_root, "_kicad_jlcpcb_auto_hide_scrollbars", ())
+    ):
+        try:
+            scrollbar._configure_styles(palette)
+        except tk.TclError:
+            continue
     return palette
