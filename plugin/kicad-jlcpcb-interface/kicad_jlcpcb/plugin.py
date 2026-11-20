@@ -5,8 +5,8 @@ from __future__ import annotations
 import queue
 import webbrowser
 from collections import Counter
-from dataclasses import replace
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus, urlparse
