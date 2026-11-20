@@ -5,6 +5,7 @@ from __future__ import annotations
 import queue
 import webbrowser
 from collections import Counter
+from dataclasses import replace
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -918,6 +919,38 @@ class ComponentBrowser:
                                 break
                 except Exception as exc:
                     search_errors.append(f"passive value/footprint search: {exc}")
+
+        # Search listings can omit the quantity-price ladder even when their
+        # individual catalogue detail record contains it. Resolve only those
+        # sparse rows, and reuse the already-loaded selected part when possible.
+        priced_alternatives: list[JlcPartDetails] = []
+        for alternative in alternatives:
+            if alternative.buy_price_tiers or alternative.price_tiers:
+                priced_alternatives.append(alternative)
+                continue
+            try:
+                price_details = (
+                    details
+                    if alternative.lcsc == details.lcsc
+                    else provider.lookup(alternative.lcsc, force_refresh=True)
+                )
+            except Exception:
+                price_details = None
+            if price_details is not None:
+                alternative = replace(
+                    alternative,
+                    unit_price_usd=(
+                        alternative.unit_price_usd
+                        if alternative.unit_price_usd is not None
+                        else price_details.unit_price_usd
+                    ),
+                    price_tiers=price_details.price_tiers or alternative.price_tiers,
+                    buy_price_tiers=(
+                        price_details.buy_price_tiers or alternative.buy_price_tiers
+                    ),
+                )
+            priced_alternatives.append(alternative)
+        alternatives = priced_alternatives
 
         return details, image_data, alternatives, "; ".join(search_errors)
 
