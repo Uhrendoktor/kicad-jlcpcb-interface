@@ -1148,10 +1148,13 @@ def _assert_auto_hide_scrollbar(scrollbar: Any, name: str) -> None:
                 f"the active palette requires {expected!r}."
             )
 
+    # Let pending geometry/yscrollcommand updates settle first. Otherwise a
+    # freshly laid-out Treeview can report its non-scrollable range after the
+    # forced reveal and immediately put the scrollbar back into its idle style.
+    scrollbar.update_idletasks()
     previous_scrollable = scrollbar.scrollable
     scrollbar._scrollable = True
     scrollbar._reveal()
-    scrollbar.update_idletasks()
     if scrollbar.cget("style") != scrollbar.active_style:
         raise RuntimeError(f"{name} did not reveal while scrolling.")
     scrollbar._cancel_hide()
