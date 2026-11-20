@@ -22,7 +22,7 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 
 - [x] **Correct the false footprint warning for standard KiCad library footprints.** Do not warn that a footprint is unavailable or external when the exact footprint is part of KiCad's standard footprint library. Recheck the warning shown in this preview: [populate-component-dark.png](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png).
 
-- [ ] **Preview and warn about compatibility-impacting changes in Update mode.** When an update would change the footprint, schematic symbol, or 3D model, show previews of the proposed change(s) and a clear warning that applying the update may break compatibility with the current schematic.
+- [x] **Preview and warn about compatibility-impacting changes in Update mode.** When an update would change the footprint, schematic symbol, or 3D model, show previews of the proposed change(s) and a clear warning that applying the update may break compatibility with the current schematic.
 
 - [ ] **Make scrollbars less intrusive.** Reduce their visual bulk and prominence. Investigate an auto-hide behavior that keeps the scrollbar hidden while idle and reveals it during scrolling, while retaining usable scrolling controls.
 
@@ -43,6 +43,8 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 - **Selected Part actions — complete.** The normalized LCSC ID is shown as an underlined mouse/keyboard-clickable copy control; “Open in LCSC” is inside the Selected Part card beside the existing JLCPCB link. The separate Copy part ID and Search LCSC buttons were removed. Live capture asserts card containment, active LCSC action and copy bindings; the latest dark-theme screenshot was inspected.
 
 - **Standard KiCad footprint warning — complete.** The live Update capture now resolves `Resistor_SMD:R_0402_1005Metric` and asserts the inline availability warning remains hidden. The root cause in CI was an omitted `kicad-nightly-footprints` package, so the live workflow and reproduction instructions now install it. The resolver also handles KiCad IPC's numeric-key path map for stock global-table URIs and remains fail-closed for project/custom URI overrides. Python 3.12–3.14, 212 unit tests, Ruff and the live screenshot job all passed on commit `6aa03486e4a0d756cbbbb19f9055ddd09ff8a626`.
+
+- **Update-mode compatibility previews — complete.** The original footprint is tracked separately from the proposal. When the proposal changes, the EasyEDA Symbol/Footprint/3D comparison is requested even if the target stock footprint already exists, without silently replacing a valid local mapping. A warning identifies the old and proposed footprint and explains that the selected schematic symbol, library identity, graphics and pin map are preserved, while pad count/numbering, pad positions, courtyard and 3D fit can change. The live fixture resets R1 to 0603 after data preload, selects a 0402 catalogue proposal and asserts the warning plus the preview request; the final Update screenshot shows the warning indicator and CAD/3D tabs. Python 3.12–3.14, 217 unit tests, Ruff and live KiCad screenshot CI passed on commit `c8e3177b56c5a003b711aadf7660089e8cbde535`.
 
 ## Completion rule
 
