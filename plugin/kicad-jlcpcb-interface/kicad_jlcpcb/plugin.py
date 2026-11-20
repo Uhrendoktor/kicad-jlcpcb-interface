@@ -21,7 +21,7 @@ from .model import (
 )
 from .provider import JlcPartDetails, JlcSearchProvider
 from .selection import focus_schematic_items
-from .theme import AutoHideScrollbar, UI_SPACING, apply_tk_theme
+from .theme import UI_SPACING, AutoHideScrollbar, apply_tk_theme
 from .value_search import exact_passive_candidates, parse_passive_search_query
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
