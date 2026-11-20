@@ -1098,7 +1098,7 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
         library = root / "Resistor_SMD.pretty"
         library.mkdir(parents=True)
         (library / "R_0402_1005Metric.kicad_mod").write_text(
-            '(footprint "R_0402_1005Metric")\\n',
+            '(footprint "R_0402_1005Metric")\n',
             encoding="utf-8",
         )
         table = self.project / "global-fp-lib-table"
@@ -1106,7 +1106,7 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
             '(fp_lib_table (version 7) '
             '(lib (name "Resistor_SMD") (type "KiCad") '
             '(uri "${KICAD10_FOOTPRINT_DIR}/custom/Resistor_SMD.pretty") '
-            '(options "") (descr "")))\\n',
+            '(options "") (descr "")))\n',
             encoding="utf-8",
         )
         kicad = SimpleNamespace(get_paths=lambda: {16: str(root)})
@@ -1121,6 +1121,7 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
                     kicad=kicad,
                 )
             )
+
     def test_custom_global_footprint_variable_does_not_fall_back_to_stock(self):
         root = self.project / "installed-standard"
         library = root / "Resistor_SMD.pretty"
