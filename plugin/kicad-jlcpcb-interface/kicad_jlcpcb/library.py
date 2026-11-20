@@ -681,10 +681,12 @@ def footprint_library_entry_available(
             pass
 
     tables: list[tuple[Path, Path]] = []
+    project_table_path: Path | None = None
     if project_or_path is not None:
         try:
             project_dir = _project_directory(project_or_path)
-            tables.append((project_dir / "fp-lib-table", project_dir))
+            project_table_path = project_dir / "fp-lib-table"
+            tables.append((project_table_path, project_dir))
         except SymbolLibraryError:
             pass
     tables.extend(
