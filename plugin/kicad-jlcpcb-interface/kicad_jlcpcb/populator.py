@@ -46,7 +46,7 @@ from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
 from .placement import place_and_select_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
-from .theme import AutoHideScrollbar, UI_SPACING, apply_tk_theme
+from .theme import UI_SPACING, AutoHideScrollbar, apply_tk_theme
 from .value_search import (
     exact_passive_candidates,
     is_lcsc_lookup_query,
