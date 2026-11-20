@@ -329,6 +329,7 @@ class ComponentBrowser:
         if self.selected_component is None:
             list_frame = ttk.Frame(body)
             list_frame.columnconfigure(0, weight=1)
+            list_frame.columnconfigure(1, minsize=AutoHideScrollbar.ACTIVE_WIDTH)
             list_frame.rowconfigure(0, weight=1)
             body.add(list_frame, weight=1)
 
@@ -384,6 +385,7 @@ class ComponentBrowser:
         )
         detail_frame = ttk.Frame(body, padding=detail_padding)
         detail_frame.columnconfigure(0, weight=1)
+        detail_frame.columnconfigure(1, minsize=AutoHideScrollbar.ACTIVE_WIDTH)
         detail_frame.rowconfigure(0, weight=1)
         body.add(
             detail_frame,
