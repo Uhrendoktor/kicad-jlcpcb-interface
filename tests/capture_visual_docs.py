@@ -1129,6 +1129,25 @@ def _assert_auto_hide_scrollbar(scrollbar: Any, name: str) -> None:
             f"{name} active width is {active_width}px, expected "
             f"{AutoHideScrollbar.ACTIVE_WIDTH}px."
         )
+
+    palette = getattr(scrollbar.winfo_toplevel(), "_kicad_jlcpcb_palette", None)
+    if not isinstance(palette, dict):
+        raise RuntimeError(f"{name} has no active KiCad theme palette.")
+    expected_colors = (
+        (scrollbar.idle_style, "background", "background"),
+        (scrollbar.idle_style, "troughcolor", "background"),
+        (scrollbar.active_style, "background", "scroll_thumb"),
+        (scrollbar.active_style, "troughcolor", "scroll_trough"),
+    )
+    for style_name, option, palette_key in expected_colors:
+        actual = str(style.lookup(style_name, option)).casefold()
+        expected = palette[palette_key].casefold()
+        if actual != expected:
+            raise RuntimeError(
+                f"{name} {style_name} {option} is {actual!r}; "
+                f"the active palette requires {expected!r}."
+            )
+
     previous_scrollable = scrollbar.scrollable
     scrollbar._scrollable = True
     scrollbar._reveal()
@@ -1348,9 +1367,21 @@ def _drive_overview(
                 _capture_window(root, output_dir / "component-browser-light.png")
                 apply_tk_theme(root, "dark")
                 root.update()
+                for name, scrollbar in (
+                    ("overview component list", browser.tree_scrollbar),
+                    ("overview detail pane", browser.detail_scrollbar),
+                    ("overview alternatives", browser.alternatives_scrollbar),
+                ):
+                    _assert_auto_hide_scrollbar(scrollbar, name)
                 _capture_window(root, output_dir / "component-browser-dark.png")
                 apply_tk_theme(root, "light")
                 root.update()
+                for name, scrollbar in (
+                    ("overview component list", browser.tree_scrollbar),
+                    ("overview detail pane", browser.detail_scrollbar),
+                    ("overview alternatives", browser.alternatives_scrollbar),
+                ):
+                    _assert_auto_hide_scrollbar(scrollbar, name)
                 details = browser._catalogue_details
                 if details is None or details.is_cached or details.stale:
                     raise RuntimeError("Overview screenshot is not using fresh JLCPCB data.")
@@ -2100,6 +2131,12 @@ def _drive_populator_form(
             apply_tk_theme(root, "dark")
             populator._update_advanced_filter_button()
             root.update()
+            _assert_auto_hide_scrollbar(
+                populator.content_scrollbar, "Add/Update workspace"
+            )
+            _assert_auto_hide_scrollbar(
+                populator.candidate_scrollbar, "Add/Update candidate list"
+            )
             toolbar_style = populator.ttk.Style(root)
             toolbar_foreground = toolbar_style.lookup(
                 "ToolbarLink.TButton", "foreground"
@@ -2131,6 +2168,12 @@ def _drive_populator_form(
             apply_tk_theme(root, "light")
             populator._update_advanced_filter_button()
             root.update()
+            _assert_auto_hide_scrollbar(
+                populator.content_scrollbar, "Add/Update workspace"
+            )
+            _assert_auto_hide_scrollbar(
+                populator.candidate_scrollbar, "Add/Update candidate list"
+            )
 
             original_askyesno = populator.messagebox.askyesno
             original_showerror = populator.messagebox.showerror
