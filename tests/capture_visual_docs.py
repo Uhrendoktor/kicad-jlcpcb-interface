@@ -84,7 +84,9 @@ DEMO_PARTS = (
         "lib_id": "Device:R",
         "lcsc": "C60489",
         "mpn": "RC0402JR-0710KL",
-        "footprint": "Resistor_SMD:R_0402_1005Metric",
+        # Begin Update on 0603 so the reviewed 10k alternative proposes a
+        # real footprint change to 0402 and exercises compatibility guidance.
+        "footprint": "Resistor_SMD:R_0603_1608Metric",
         "position": (120.0, 80.0),
     },
     {
@@ -1682,6 +1684,7 @@ def _drive_populator_form(
     require_alternatives: bool = False,
     preferred_lcsc: str | None = None,
     avoid_lcsc: str | None = None,
+    require_update_compatibility_change: bool = False,
 ) -> None:
     """Capture the production review form and verify the resulting KiCad IPC action."""
     root = populator.root
@@ -1729,6 +1732,10 @@ def _drive_populator_form(
                 populator.draft is None
                 or str(populator.apply_button.cget("state")) != "normal"
                 or populator._image_pending
+                or (
+                    require_update_compatibility_change
+                    and populator._cad_pending
+                )
             ):
                 if time.monotonic() >= state["deadline"]:
                     raise TimeoutError(
@@ -1836,6 +1843,24 @@ def _drive_populator_form(
                         f"roots={root_diagnostics!r}"
                     )
                 populator._update_field_feedback()
+                if require_update_compatibility_change:
+                    if (
+                        populator._original_footprint
+                        == populator.footprint_var.get().strip()
+                    ):
+                        raise RuntimeError(
+                            "Update capture did not create a footprint change: "
+                            f"{populator._original_footprint!r}"
+                        )
+                    compatibility_notes = tuple(populator._notes_messages)
+                    if not any(
+                        note.startswith("Warning: Update proposes a footprint change")
+                        for note in compatibility_notes
+                    ):
+                        raise RuntimeError(
+                            "Update capture is missing the footprint compatibility warning: "
+                            f"{compatibility_notes!r}"
+                        )
                 feedback = populator._field_feedback["footprint"][1]
                 if feedback.winfo_ismapped():
                     raise RuntimeError(
@@ -2232,6 +2257,7 @@ def _capture_passive_component_workflows(
         assert_basic_shortlist=True,
         require_alternatives=True,
         avoid_lcsc="C60489",
+        require_update_compatibility_change=True,
     )
     print(
         "live-update-mode-ui=passed selected=R1 "
