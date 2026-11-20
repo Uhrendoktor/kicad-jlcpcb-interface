@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import itertools
 import os
 import subprocess
 import sys
+import tkinter as tk
 from pathlib import Path
+from tkinter import ttk
 from typing import Any
 
 THEME_ENVIRONMENT_VARIABLE = "KICAD_JLCPCB_THEME"
@@ -13,6 +16,161 @@ THEME_ENVIRONMENT_VARIABLE = "KICAD_JLCPCB_THEME"
 # Shared layout and typography tokens for every Tk window.
 UI_SPACING = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24}
 UI_FONT_SIZES = {"caption": 8, "body": 9, "section": 9, "metric": 10, "card_title": 11, "title": 16}
+
+class AutoHideScrollbar(ttk.Scrollbar):
+    """Keep a narrow idle rail and reveal the draggable thumb during interaction."""
+
+    _instances = itertools.count(1)
+    IDLE_WIDTH = 2
+    ACTIVE_WIDTH = 10
+    HIDE_DELAY_MS = 900
+
+    def __init__(self, master=None, *, palette: dict[str, str], **kwargs):
+        self._scroll_command = kwargs.pop("command", None)
+        orient = str(kwargs.get("orient", "vertical")).lower()
+        orient_name = "Horizontal" if orient.startswith("h") else "Vertical"
+        self._base_style = f"{orient_name}.TScrollbar"
+        token = next(self._instances)
+        self._idle_style = f"AutoHide{token}.Idle.{orient_name}.TScrollbar"
+        self._active_style = f"AutoHide{token}.Active.{orient_name}.TScrollbar"
+        self._style = ttk.Style(master)
+        self._hide_after_id = None
+        self._scrollable = False
+        self._hovered = False
+        self._last_fractions: tuple[float, float] | None = None
+        self._configure_styles(palette)
+        kwargs["style"] = self._idle_style
+        kwargs["command"] = self._dispatch_scroll
+        super().__init__(master, **kwargs)
+        self.bind("<Enter>", self._on_enter, add="+")
+        self.bind("<Leave>", self._on_leave, add="+")
+        self.bind("<Destroy>", self._on_destroy, add="+")
+
+    @property
+    def idle_style(self) -> str:
+        return self._idle_style
+
+    @property
+    def active_style(self) -> str:
+        return self._active_style
+
+    @property
+    def scrollable(self) -> bool:
+        return self._scrollable
+
+    def _configure_styles(self, palette: dict[str, str]) -> None:
+        layout = self._style.layout(self._base_style)
+        self._style.layout(self._idle_style, layout)
+        self._style.layout(self._active_style, layout)
+        self._style.configure(
+            self._idle_style,
+            background=palette["background"],
+            troughcolor=palette["background"],
+            bordercolor=palette["background"],
+            lightcolor=palette["background"],
+            darkcolor=palette["background"],
+            relief="flat",
+            borderwidth=0,
+            width=self.IDLE_WIDTH,
+        )
+        self._style.configure(
+            self._active_style,
+            background=palette["scroll_thumb"],
+            troughcolor=palette["scroll_trough"],
+            bordercolor=palette["scroll_trough"],
+            lightcolor=palette["scroll_thumb"],
+            darkcolor=palette["scroll_thumb"],
+            relief="flat",
+            borderwidth=0,
+            width=self.ACTIVE_WIDTH,
+        )
+        self._style.map(
+            self._active_style,
+            background=[
+                ("pressed", palette["accent"]),
+                ("active", palette["accent"]),
+                ("!disabled", palette["scroll_thumb"]),
+            ],
+        )
+
+    def set(self, first: str, last: str) -> None:
+        """Receive the content's visible range and reveal only on real movement."""
+        super().set(first, last)
+        try:
+            fractions = (float(first), float(last))
+        except (TypeError, ValueError):
+            return
+        self._scrollable = fractions[0] > 0.0 or fractions[1] < 1.0
+        changed = fractions != self._last_fractions
+        self._last_fractions = fractions
+        if not self._scrollable:
+            self._cancel_hide()
+            self._set_idle_style()
+        elif changed:
+            self._reveal()
+
+    def _dispatch_scroll(self, *args):
+        self._reveal()
+        if callable(self._scroll_command):
+            return self._scroll_command(*args)
+        if self._scroll_command:
+            return self.tk.call(self._scroll_command, *args)
+        return None
+
+    def _on_enter(self, _event=None) -> None:
+        self._hovered = True
+        self._reveal()
+
+    def _on_leave(self, _event=None) -> None:
+        self._hovered = False
+        self._schedule_hide()
+
+    def _reveal(self) -> None:
+        if not self._scrollable:
+            return
+        self._cancel_hide()
+        try:
+            self.configure(style=self._active_style)
+            self._hide_after_id = self.after(self.HIDE_DELAY_MS, self._hide_if_idle)
+        except tk.TclError:
+            self._hide_after_id = None
+
+    def _schedule_hide(self) -> None:
+        self._cancel_hide()
+        if self._scrollable and not self._hovered:
+            try:
+                self._hide_after_id = self.after(
+                    self.HIDE_DELAY_MS, self._hide_if_idle
+                )
+            except tk.TclError:
+                self._hide_after_id = None
+
+    def _hide_if_idle(self) -> None:
+        self._hide_after_id = None
+        if self._hovered:
+            return
+        self._set_idle_style()
+
+    def _set_idle_style(self) -> None:
+        try:
+            self.configure(style=self._idle_style)
+        except tk.TclError:
+            pass
+
+    def _cancel_hide(self) -> None:
+        if self._hide_after_id is None:
+            return
+        try:
+            self.after_cancel(self._hide_after_id)
+        except tk.TclError:
+            pass
+        self._hide_after_id = None
+
+    def _on_destroy(self, event=None) -> None:
+        if event is not None and getattr(event, "widget", self) is not self:
+            return
+        self._cancel_hide()
+
 
 _PALETTES: dict[str, dict[str, str]] = {
     "dark": {
