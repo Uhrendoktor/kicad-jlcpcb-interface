@@ -239,7 +239,9 @@ class ComponentBrowser:
                 column=0,
                 columnspan=5,
                 sticky="ew",
-                padx=(0, AutoHideScrollbar.ACTIVE_WIDTH),
+                # Match the lower Panedwindow content edge as well as its
+                # fixed scrollbar gutter.
+                padx=(0, AutoHideScrollbar.ACTIVE_WIDTH + 4),
                 pady=(UI_SPACING["md"], 0),
             )
             overview.columnconfigure((0, 1, 2, 3), weight=1)
