@@ -2182,6 +2182,24 @@ def _capture_passive_component_workflows(
             "The selected R1 fixture is not the canonical stock Device:R definition: "
             f"{verified_fixture_library_id!r}"
         )
+    # The live supplier-preload step above writes the default 0402 mapping.
+    # Set R1 to a different valid stock footprint after preload so the Update
+    # dialog has a real 0603 -> 0402 compatibility change to review.
+    editable_symbol.footprint_field.text.value = "Resistor_SMD:R_0603_1608Metric"
+    update_schematic_symbol(schematic, editable_symbol)
+    original_footprint = str(
+        getattr(
+            getattr(editable_symbol.footprint_field, "text", None),
+            "value",
+            "",
+        )
+        or ""
+    ).strip()
+    if original_footprint != "Resistor_SMD:R_0603_1608Metric":
+        raise RuntimeError(
+            "Could not seed the Update compatibility fixture footprint: "
+            f"{original_footprint!r}"
+        )
     populate = ComponentPopulator(
         schematic,
         editable_symbol,
@@ -2200,12 +2218,10 @@ def _capture_passive_component_workflows(
     populate.footprint_filter_var.set("0402")
     populate.tolerance_filter_var.set("5%")
     populate._toggle_advanced_filters()
-    # Keep the Update example on its known local Device:R footprint. The
-    # dedicated Add-mode fixture below exercises the live EasyEDA CAD fallback
-    # and captures the selected 3D tab; do not let that optional lookup replace
-    # this deterministic stock-mapping review example. Run the real layout
-    # decision as a local mapping, but keep the ordinary field validator intact
-    # so its warning and tooltip remain visible in the captured review form.
+    # Update retains the selected stock symbol while proposing the catalogue
+    # package. The CAD tabs provide an external comparison; the compatibility
+    # note warns that pad layout and 3D fit may change even though symbol pins
+    # and graphics remain untouched.
     request_cad_assets = populate._request_cad_assets
 
     def request_local_stock_mapping(details: Any, draft: ComponentDraft) -> None:
