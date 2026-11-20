@@ -12,6 +12,12 @@ from kicad_jlcpcb.plugin import ComponentBrowser  # noqa: E402
 from kicad_jlcpcb.provider import JlcPartDetails, PriceTier  # noqa: E402
 
 
+
+def replace_part_code(details: JlcPartDetails, lcsc: str) -> JlcPartDetails:
+    from dataclasses import replace
+
+    return replace(details, lcsc=lcsc)
+
 class AlternativeListingDisplayTests(unittest.TestCase):
     def test_basic_and_extended_rows_use_distinct_class_tags(self):
         basic = JlcPartDetails(lcsc="C1", is_basic=True)
@@ -68,6 +74,55 @@ class AlternativeListingDisplayTests(unittest.TestCase):
             "USD 0.002400",
         )
         self.assertEqual(ComponentBrowser._alternative_price(missing), "—")
+
+    def test_missing_price_ladders_are_loaded_from_part_details(self):
+        primary = JlcPartDetails(
+            lcsc="C1",
+            manufacturer_part_number="EXACT-MPN",
+            buy_price_tiers=(PriceTier(quantity=1, unit_price_usd=0.01),),
+        )
+        alternative = JlcPartDetails(
+            lcsc="C2",
+            manufacturer_part_number="RELATED-MPN",
+            mpn_match=False,
+            unit_price_usd=0.02,
+        )
+        detailed_alternative = JlcPartDetails(
+            lcsc="C2",
+            buy_price_tiers=(
+                PriceTier(quantity=1, unit_price_usd=0.02),
+                PriceTier(quantity=500, unit_price_usd=0.012),
+            ),
+        )
+
+        class Provider:
+            def lookup(self, lcsc, *, force_refresh=False):
+                self.assert_force_refresh = force_refresh
+                return primary if lcsc == "C1" else detailed_alternative
+
+            def search_by_mpn(self, _mpn):
+                return [replace_part_code(primary, "C1"), alternative]
+
+        component = type(
+            "Component",
+            (),
+            {
+                "part_code": "C1",
+                "manufacturer_part_number": "EXACT-MPN",
+                "reference": "U1",
+                "value": "controller",
+                "footprint": "",
+            },
+        )()
+        details, _image, alternatives, _error = ComponentBrowser._load_catalogue_details(
+            Provider(), component
+        )
+
+        self.assertIs(details, primary)
+        self.assertEqual(
+            ComponentBrowser._alternative_price(alternatives[1]),
+            "USD 0.012000 @ 500+",
+        )
 
     def test_stock_column_shows_only_the_count_for_available_parts(self):
         available = JlcPartDetails(lcsc="C1", stock=12500)
