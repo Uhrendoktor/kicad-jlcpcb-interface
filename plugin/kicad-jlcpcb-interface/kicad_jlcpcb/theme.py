@@ -83,6 +83,12 @@ class AutoHideScrollbar(ttk.Scrollbar):
             borderwidth=0,
             width=self.IDLE_WIDTH,
         )
+        # ttk inherits the base scrollbar's state map unless this custom style
+        # supplies its own; pin the idle thumb to the current window background.
+        self._style.map(
+            self._idle_style,
+            background=[("!disabled", palette["background"])],
+        )
         self._style.configure(
             self._active_style,
             background=palette["scroll_thumb"],
