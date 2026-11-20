@@ -154,7 +154,13 @@ def _expand_browser_to_full_height(
     root.update()
     top_height = None
     if browser.selected_component is None:
-        top_height = max(180, int(browser.tree.winfo_reqheight()) + 46)
+        # The component list now lives in a padded card with its heading inside.
+        # Size the upper pane from that complete card rather than the Treeview
+        # alone, otherwise the list remains vertically clipped in full-height
+        # screenshot captures.
+        top_height = max(
+            180, int(browser.component_list_card.winfo_reqheight()) + 8
+        )
         browser.body.sashpos(0, top_height)
         root.update_idletasks()
         root.update()
