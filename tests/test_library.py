@@ -1056,6 +1056,43 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
             footprint_library_entry_available("Package:Missing", kicad=kicad)
         )
 
+    def test_resolves_footprint_table_uri_from_kicad_ipc_path_variables(self):
+        root = self.project / "installed-standard"
+        library = root / "Resistor_SMD.pretty"
+        library.mkdir(parents=True)
+        (library / "R_0402_1005Metric.kicad_mod").write_text(
+            '(footprint "R_0402_1005Metric")\n',
+            encoding="utf-8",
+        )
+        table = self.project / "global-fp-lib-table"
+        table.write_text(
+            '(fp_lib_table (version 7) '
+            '(lib (name "Resistor_SMD") (type "KiCad") '
+            '(uri "${KICAD10_FOOTPRINT_DIR}/Resistor_SMD.pretty") '
+            '(options "") (descr "")))\n',
+            encoding="utf-8",
+        )
+        kicad = SimpleNamespace(
+            get_paths=lambda: {"KICAD10_FOOTPRINT_DIR": str(root)}
+        )
+
+        with patch(
+            "kicad_jlcpcb.library._global_library_tables",
+            return_value=(table,),
+        ):
+            self.assertTrue(
+                footprint_library_entry_available(
+                    "Resistor_SMD:R_0402_1005Metric",
+                    kicad=kicad,
+                )
+            )
+            self.assertFalse(
+                footprint_library_entry_available(
+                    "Resistor_SMD:R_0603_1608Metric",
+                    kicad=kicad,
+                )
+            )
+
 
     def test_generator_prefers_project_symbol_table_over_stock_nickname(self):
         library = self.project / "Custom.kicad_sym"
