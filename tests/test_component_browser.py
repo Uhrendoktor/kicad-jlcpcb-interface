@@ -9,15 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugin" / "kicad-jlcpcb-interface"
 sys.path.insert(0, str(PLUGIN))
 
-from kicad_jlcpcb.plugin import ComponentBrowser  # noqa: E402
-from kicad_jlcpcb.provider import JlcPartDetails, PriceTier  # noqa: E402
+from kicad_jlcpcb import plugin, provider  # noqa: E402
 
-
-
-def replace_part_code(details: JlcPartDetails, lcsc: str) -> JlcPartDetails:
-    from dataclasses import replace
-
-    return replace(details, lcsc=lcsc)
+ComponentBrowser = plugin.ComponentBrowser
+JlcPartDetails = provider.JlcPartDetails
+PriceTier = provider.PriceTier
 
 class AlternativeListingDisplayTests(unittest.TestCase):
     def test_basic_and_extended_rows_use_distinct_class_tags(self):
@@ -102,7 +98,7 @@ class AlternativeListingDisplayTests(unittest.TestCase):
                 return primary if lcsc == "C1" else detailed_alternative
 
             def search_by_mpn(self, _mpn):
-                return [replace_part_code(primary, "C1"), alternative]
+                return [replace(primary, lcsc="C1"), alternative]
 
         component = type(
             "Component",
