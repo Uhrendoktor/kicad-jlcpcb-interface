@@ -18,7 +18,7 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 
 - [x] **Broaden alternative matches for simple passive components.** For resistors, capacitors, and similar simple parts, do not rely exclusively on MPN search for the alternatives list. When MPN lookup returns fewer than five results, also search for other listings matching the component type, value, and footprint, and use those to fill the remaining results where available.
 
-- [ ] **Keep part actions inside the Selected Part box.** Place the “Open in LCSC” action and part-ID copy affordance in the Selected Part box. The displayed part ID itself should be clickable and copy its ID to the clipboard, replacing the need for a separate “Copy Part Id” button. Keep the existing JLCPCB link/action in that box as well.
+- [x] **Keep part actions inside the Selected Part box.** Place the “Open in LCSC” action and part-ID copy affordance in the Selected Part box. The displayed part ID itself should be clickable and copy its ID to the clipboard, replacing the need for a separate “Copy Part Id” button. Keep the existing JLCPCB link/action in that box as well.
 
 - [ ] **Correct the false footprint warning for standard KiCad library footprints.** Do not warn that a footprint is unavailable or external when the exact footprint is part of KiCad's standard footprint library. Recheck the warning shown in this preview: [populate-component-dark.png](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png).
 
@@ -39,6 +39,8 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 - **Component Overview row alignment — complete.** The catalogue price/attribute rows and schematic-property labels use the same card padding and are measured in the live capture; the workflow asserts their rendered left edges are identical. The latest dark-theme overview screenshot was inspected.
 
 - **Passive-component alternatives — complete.** When fewer than five MPN candidates are available, resistor and capacitor listings are supplemented by exact value/type/footprint matches from keyword search. MPN-ranked rows remain first, duplicates are removed, and the list is capped at five. Regression tests cover sparse resistor results, capacitor searches without an MPN, mismatched package/type exclusion, deduplication, and the five-result cutoff. Python 3.12–3.14, 210 unit tests, Ruff, and live KiCad visual CI passed on commit `8fa2817e6a4f4edcc66af718897de23f84ace69f`.
+
+- **Selected Part actions — complete.** The normalized LCSC ID is shown as an underlined mouse/keyboard-clickable copy control; “Open in LCSC” is inside the Selected Part card beside the existing JLCPCB link. The separate Copy part ID and Search LCSC buttons were removed. Live capture asserts card containment, active LCSC action and copy bindings; the latest dark-theme screenshot was inspected.
 
 ## Completion rule
 
