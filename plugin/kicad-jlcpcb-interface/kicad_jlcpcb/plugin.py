@@ -21,7 +21,7 @@ from .model import (
 )
 from .provider import JlcPartDetails, JlcSearchProvider
 from .selection import focus_schematic_items
-from .theme import UI_SPACING, apply_tk_theme
+from .theme import AutoHideScrollbar, UI_SPACING, apply_tk_theme
 from .value_search import exact_passive_candidates, parse_passive_search_query
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
@@ -353,9 +353,14 @@ class ComponentBrowser:
                 )
             self.tree.tag_configure("stripe-alt", background=self.palette["surface_alt"])
             self.tree.grid(row=1, column=0, sticky="nsew")
-            scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
-            scrollbar.grid(row=1, column=1, sticky="ns")
-            self.tree.configure(yscrollcommand=scrollbar.set)
+            self.tree_scrollbar = AutoHideScrollbar(
+                list_frame,
+                orient="vertical",
+                command=self.tree.yview,
+                palette=self.palette,
+            )
+            self.tree_scrollbar.grid(row=1, column=1, sticky="ns")
+            self.tree.configure(yscrollcommand=self.tree_scrollbar.set)
             self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
             self.tree.bind("<Double-1>", lambda _event: self.select_selected())
 
@@ -374,11 +379,14 @@ class ComponentBrowser:
             background=self.palette["background"],
         )
         detail_canvas.grid(row=0, column=0, sticky="nsew")
-        detail_scrollbar = ttk.Scrollbar(
-            detail_frame, orient="vertical", command=detail_canvas.yview
+        self.detail_scrollbar = AutoHideScrollbar(
+            detail_frame,
+            orient="vertical",
+            command=detail_canvas.yview,
+            palette=self.palette,
         )
-        detail_scrollbar.grid(row=0, column=1, sticky="ns")
-        detail_canvas.configure(yscrollcommand=detail_scrollbar.set)
+        self.detail_scrollbar.grid(row=0, column=1, sticky="ns")
+        detail_canvas.configure(yscrollcommand=self.detail_scrollbar.set)
         self.detail_canvas = detail_canvas
 
         content = ttk.Frame(detail_canvas)
@@ -495,11 +503,14 @@ class ComponentBrowser:
             "stripe-alt", background=self.palette["surface_alt"]
         )
         self.alternatives_tree.grid(row=0, column=0, sticky="ew")
-        alt_scroll = ttk.Scrollbar(
-            alternatives, orient="vertical", command=self.alternatives_tree.yview
+        self.alternatives_scrollbar = AutoHideScrollbar(
+            alternatives,
+            orient="vertical",
+            command=self.alternatives_tree.yview,
+            palette=self.palette,
         )
-        alt_scroll.grid(row=0, column=1, sticky="ns")
-        self.alternatives_tree.configure(yscrollcommand=alt_scroll.set)
+        self.alternatives_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.alternatives_tree.configure(yscrollcommand=self.alternatives_scrollbar.set)
         self.alternatives_tree.bind(
             "<Double-1>", lambda _event: self.open_selected_alternative()
         )
