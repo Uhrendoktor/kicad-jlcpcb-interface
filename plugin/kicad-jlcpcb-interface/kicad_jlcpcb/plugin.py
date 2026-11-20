@@ -643,7 +643,7 @@ class ComponentBrowser:
             self.root.title(f"JLCPCB Component Properties — {component.reference}")
         self.detail_vars["reference"].set(component.reference or "—")
         self.detail_vars["value"].set(component.value or "—")
-        self.detail_vars["part"].set(component.part_reference or "—")
+        self.detail_vars["part"].set(component.part_code or "—")
         self.detail_vars["footprint"].set(component.footprint or "—")
         self.detail_vars["datasheet"].set(self._format_datasheet_display(component.datasheet))
         self.detail_vars["sheet"].set(component.sheet_path or "—")
