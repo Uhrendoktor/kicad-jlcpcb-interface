@@ -1056,7 +1056,7 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
             footprint_library_entry_available("Package:Missing", kicad=kicad)
         )
 
-    def test_resolves_footprint_table_uri_from_kicad_ipc_path_variables(self):
+    def test_resolves_stock_footprint_table_uri_from_numeric_kicad_paths(self):
         root = self.project / "installed-standard"
         library = root / "Resistor_SMD.pretty"
         library.mkdir(parents=True)
@@ -1072,9 +1072,9 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
             '(options "") (descr "")))\n',
             encoding="utf-8",
         )
-        kicad = SimpleNamespace(
-            get_paths=lambda: {"KICAD10_FOOTPRINT_DIR": str(root)}
-        )
+        # KiCad IPC exposes get_paths() as dict[int, str], not as the
+        # KICAD*_FOOTPRINT_DIR variable names used by stock library tables.
+        kicad = SimpleNamespace(get_paths=lambda: {16: str(root)})
 
         with patch(
             "kicad_jlcpcb.library._global_library_tables",
@@ -1089,6 +1089,35 @@ class ProjectLibraryAvailabilityTests(unittest.TestCase):
             self.assertFalse(
                 footprint_library_entry_available(
                     "Resistor_SMD:R_0603_1608Metric",
+                    kicad=kicad,
+                )
+            )
+
+    def test_custom_global_footprint_variable_does_not_fall_back_to_stock(self):
+        root = self.project / "installed-standard"
+        library = root / "Resistor_SMD.pretty"
+        library.mkdir(parents=True)
+        (library / "R_0402_1005Metric.kicad_mod").write_text(
+            '(footprint "R_0402_1005Metric")\n',
+            encoding="utf-8",
+        )
+        table = self.project / "global-fp-lib-table"
+        table.write_text(
+            '(fp_lib_table (version 7) '
+            '(lib (name "Resistor_SMD") (type "KiCad") '
+            '(uri "${CUSTOM_FOOTPRINT_ROOT}/Resistor_SMD.pretty") '
+            '(options "") (descr "")))\n',
+            encoding="utf-8",
+        )
+        kicad = SimpleNamespace(get_paths=lambda: {16: str(root)})
+
+        with patch(
+            "kicad_jlcpcb.library._global_library_tables",
+            return_value=(table,),
+        ):
+            self.assertFalse(
+                footprint_library_entry_available(
+                    "Resistor_SMD:R_0402_1005Metric",
                     kicad=kicad,
                 )
             )
