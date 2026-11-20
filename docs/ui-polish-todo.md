@@ -20,7 +20,7 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 
 - [x] **Keep part actions inside the Selected Part box.** Place the “Open in LCSC” action and part-ID copy affordance in the Selected Part box. The displayed part ID itself should be clickable and copy its ID to the clipboard, replacing the need for a separate “Copy Part Id” button. Keep the existing JLCPCB link/action in that box as well.
 
-- [ ] **Correct the false footprint warning for standard KiCad library footprints.** Do not warn that a footprint is unavailable or external when the exact footprint is part of KiCad's standard footprint library. Recheck the warning shown in this preview: [populate-component-dark.png](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png).
+- [x] **Correct the false footprint warning for standard KiCad library footprints.** Do not warn that a footprint is unavailable or external when the exact footprint is part of KiCad's standard footprint library. Recheck the warning shown in this preview: [populate-component-dark.png](https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png).
 
 - [ ] **Preview and warn about compatibility-impacting changes in Update mode.** When an update would change the footprint, schematic symbol, or 3D model, show previews of the proposed change(s) and a clear warning that applying the update may break compatibility with the current schematic.
 
@@ -41,6 +41,8 @@ This is the persistent checklist for the UI, layout, component matching, and rev
 - **Passive-component alternatives — complete.** When fewer than five MPN candidates are available, resistor and capacitor listings are supplemented by exact value/type/footprint matches from keyword search. MPN-ranked rows remain first, duplicates are removed, and the list is capped at five. Regression tests cover sparse resistor results, capacitor searches without an MPN, mismatched package/type exclusion, deduplication, and the five-result cutoff. Python 3.12–3.14, 210 unit tests, Ruff, and live KiCad visual CI passed on commit `8fa2817e6a4f4edcc66af718897de23f84ace69f`.
 
 - **Selected Part actions — complete.** The normalized LCSC ID is shown as an underlined mouse/keyboard-clickable copy control; “Open in LCSC” is inside the Selected Part card beside the existing JLCPCB link. The separate Copy part ID and Search LCSC buttons were removed. Live capture asserts card containment, active LCSC action and copy bindings; the latest dark-theme screenshot was inspected.
+
+- **Standard KiCad footprint warning — complete.** The live Update capture now resolves `Resistor_SMD:R_0402_1005Metric` and asserts the inline availability warning remains hidden. The root cause in CI was an omitted `kicad-nightly-footprints` package, so the live workflow and reproduction instructions now install it. The resolver also handles KiCad IPC's numeric-key path map for stock global-table URIs and remains fail-closed for project/custom URI overrides. Python 3.12–3.14, 212 unit tests, Ruff and the live screenshot job all passed on commit `6aa03486e4a0d756cbbbb19f9055ddd09ff8a626`.
 
 ## Completion rule
 
