@@ -309,6 +309,7 @@ class ComponentPopulator:
             value=self._field_value(getattr(symbol, "footprint_field", None))
             if symbol is not None else ""
         )
+        self._original_footprint = self.footprint_var.get().strip()
         self.reference_prefix_var = tk.StringVar(value="")
         self.status_var = tk.StringVar(value="")
         self.catalogue_status_var = tk.StringVar(value="")
@@ -333,6 +334,9 @@ class ComponentPopulator:
                 "write",
                 lambda *_args, name=field_name: self._mark_manual_proposal_field(name),
             )
+        self.footprint_var.trace_add(
+            "write", self._on_footprint_proposal_changed
+        )
         self._product_url = ""
         self._datasheet_url = ""
 
@@ -1558,13 +1562,21 @@ class ComponentPopulator:
                 )
                 if self.symbol_hint_var.get().strip() == assets.symbol_library_id:
                     updated = replace(updated, symbol_hint=assets.symbol_library_id)
-        # A visible external footprint preview describes the selected CAD asset.
-        # Keep the editable Footprint field on that exact asset unless the user
-        # explicitly chose a different value; local mappings must not leave the
-        # preview and the schematic/export property out of sync.
+        # In Add mode an external footprint preview is the proposed asset, so
+        # keep the field aligned with it. In Update mode, retain a valid local
+        # footprint; the EasyEDA tabs are comparison candidates, not an implicit
+        # request to replace a deliberate stock/user-library mapping.
+        current_footprint = self.footprint_var.get().strip()
+        local_footprint_exists = bool(
+            current_footprint
+            and footprint_library_entry_available(
+                current_footprint, self.kicad, self.schematic.get_project()
+            )
+        )
         if (
             assets.has_footprint
             and "footprint" not in self._manual_proposal_fields
+            and (self.create_mode or not local_footprint_exists)
         ):
             self._set_proposal_field(
                 "footprint", self.footprint_var, assets.footprint_library_id
@@ -1587,12 +1599,17 @@ class ComponentPopulator:
 
         project = self.schematic.get_project()
         current_footprint = self.footprint_var.get().strip()
-        needs_footprint = (
-            "footprint" not in self._manual_proposal_fields
-            and not footprint_library_entry_available(
+        local_footprint_exists = bool(
+            current_footprint
+            and footprint_library_entry_available(
                 current_footprint, self.kicad, project
             )
         )
+        footprint_changed = (
+            not self.create_mode
+            and current_footprint != getattr(self, "_original_footprint", "")
+        )
+        needs_footprint = not local_footprint_exists or footprint_changed
         needs_symbol = False
         if self.create_mode:
             current_hint = self.symbol_hint_var.get().strip() or draft.symbol_hint
@@ -1760,10 +1777,57 @@ class ComponentPopulator:
                 self._set_field_feedback("reference_prefix", None)
         return errors
 
+    def _on_footprint_proposal_changed(self, *_args) -> None:
+        """Refresh Update compatibility guidance and candidate previews after edits."""
+        if (
+            getattr(self, "_setting_proposal_field", False)
+            or getattr(self, "create_mode", True)
+            or getattr(self, "closed", True)
+            or getattr(self, "draft", None) is None
+        ):
+            return
+        self._refresh_readiness()
+        details = getattr(self, "selected_details", None)
+        if details is not None:
+            self._request_cad_assets(details, self.draft)
+
+    def _refresh_update_compatibility_notes(self) -> None:
+        """Warn whenever Update changes the footprint while preserving the symbol."""
+        if self.create_mode or self.draft is None:
+            return
+        original = str(getattr(self, "_original_footprint", "") or "").strip()
+        proposed = self.footprint_var.get().strip()
+        prefix = "Warning: Update proposes a footprint change"
+        notes = [
+            line
+            for line in getattr(self, "_notes_messages", ())
+            if not line.startswith(prefix)
+        ]
+        if original != proposed:
+            previous = original or "(no footprint)"
+            replacement = proposed or "(no footprint)"
+            notes.append(
+                f"{prefix} from {previous} to {replacement}. Update preserves the "
+                "selected schematic symbol, library identity, graphics and pin map, "
+                "but the new footprint may change pad count/numbering, pad positions, "
+                "courtyard and the attached 3D model. Compare the Symbol, Footprint "
+                "and 3D model candidate tabs when available, then verify pad mapping "
+                "and mechanical clearance against the manufacturer datasheet before "
+                "updating the schematic."
+            )
+            assets = getattr(self, "_cad_assets", None)
+            if assets is not None and assets.has_3d_model:
+                notes.append(
+                    "Warning: The EasyEDA CAD comparison includes a STEP 3D model. "
+                    "It is a candidate preview, not a verified mechanical fit."
+                )
+        self._set_notes(tuple(notes))
+
     def _refresh_readiness(self, _event=None) -> None:
         if self.closed or self.draft is None:
             return
         errors = self._update_field_feedback()
+        self._refresh_update_compatibility_notes()
         compatible = self.create_mode or self.symbol is not None
         ready = (
             not errors
