@@ -46,7 +46,7 @@ from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
 from .placement import place_and_select_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
-from .theme import UI_SPACING, apply_tk_theme
+from .theme import AutoHideScrollbar, UI_SPACING, apply_tk_theme
 from .value_search import (
     exact_passive_candidates,
     is_lcsc_lookup_query,
@@ -510,13 +510,14 @@ class ComponentPopulator:
             borderwidth=0,
         )
         self.content_canvas.grid(row=0, column=0, sticky="nsew")
-        content_scroll = ttk.Scrollbar(
+        self.content_scrollbar = AutoHideScrollbar(
             scroll_shell,
             orient="vertical",
             command=self.content_canvas.yview,
+            palette=self.palette,
         )
-        content_scroll.grid(row=0, column=1, sticky="ns")
-        self.content_canvas.configure(yscrollcommand=content_scroll.set)
+        self.content_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.content_canvas.configure(yscrollcommand=self.content_scrollbar.set)
         content = ttk.Frame(self.content_canvas, padding=(0, 0, 8, 12))
         content.columnconfigure(0, weight=1)
         content_window = self.content_canvas.create_window(
@@ -657,13 +658,14 @@ class ComponentPopulator:
             "unknown", foreground=self.palette["muted"]
         )
         self.candidate_tree.grid(row=1, column=0, sticky="ew")
-        candidate_scroll = ttk.Scrollbar(
+        self.candidate_scrollbar = AutoHideScrollbar(
             self.candidate_section,
             orient="vertical",
             command=self.candidate_tree.yview,
+            palette=self.palette,
         )
-        candidate_scroll.grid(row=1, column=1, sticky="ns")
-        self.candidate_tree.configure(yscrollcommand=candidate_scroll.set)
+        self.candidate_scrollbar.grid(row=1, column=1, sticky="ns")
+        self.candidate_tree.configure(yscrollcommand=self.candidate_scrollbar.set)
         self.candidate_tree.bind(
             "<<TreeviewSelect>>", self._on_candidate_selected
         )
