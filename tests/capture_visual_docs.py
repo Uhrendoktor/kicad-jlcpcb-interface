@@ -30,6 +30,7 @@ from kicad_jlcpcb.draft import (  # noqa: E402
     symbol_library_id,
     update_schematic_symbol,
 )
+from kicad_jlcpcb import library as library_module  # noqa: E402
 from kicad_jlcpcb.library import (  # noqa: E402
     footprint_library_entry_available,
     generate_project_library_symbol,
@@ -1750,9 +1751,89 @@ def _drive_populator_form(
                         path_map = populator.kicad.get_paths()
                     except Exception as exc:
                         path_map = {"get_paths_error": str(exc)}
+                    project_dir = library_module._project_directory(project)
+                    table_candidates = [
+                        (project_dir / "fp-lib-table", project_dir),
+                        *(
+                            (table_path, table_path.parent)
+                            for table_path in library_module._global_library_tables(
+                                "fp-lib-table"
+                            )
+                        ),
+                    ]
+                    table_diagnostics = []
+                    for table_path, base_dir in table_candidates:
+                        if not table_path.is_file() or table_path.is_symlink():
+                            continue
+                        try:
+                            table_data = parse_sexpr(
+                                table_path.read_text(encoding="utf-8")
+                            )
+                            entry = library_module._table_entry(
+                                table_data, "Resistor_SMD"
+                            )
+                            if entry is None:
+                                continue
+                            uri = library_module._entry_text(entry, "uri")
+                            resolved = library_module._uri_path(
+                                base_dir,
+                                uri,
+                                {
+                                    str(key): str(value)
+                                    for key, value in (path_map or {}).items()
+                                    if value not in (None, "")
+                                },
+                            )
+                            table_diagnostics.append({
+                                "table": str(table_path),
+                                "type": library_module._entry_text(entry, "type"),
+                                "uri": uri,
+                                "resolved": str(resolved) if resolved else None,
+                                "resolved_is_dir": bool(
+                                    resolved is not None and resolved.is_dir()
+                                ),
+                                "resolved_library_exists": bool(
+                                    resolved is not None
+                                    and (resolved / "R_0402_1005Metric.kicad_mod").is_file()
+                                ),
+                            })
+                        except Exception as exc:
+                            table_diagnostics.append({
+                                "table": str(table_path),
+                                "error": str(exc),
+                            })
+                    root_diagnostics = []
+                    for key, value in (path_map or {}).items():
+                        root = Path(str(value)).expanduser()
+                        for candidate_root in (
+                            root,
+                            root / "footprints",
+                            root / "share" / "kicad" / "footprints",
+                        ):
+                            library_dir = candidate_root / "Resistor_SMD.pretty"
+                            item = library_dir / "R_0402_1005Metric.kicad_mod"
+                            root_diagnostics.append({
+                                "ipc_key": key,
+                                "root": str(candidate_root),
+                                "library_exists": library_dir.is_dir(),
+                                "library_symlink": library_dir.is_symlink(),
+                                "item_exists": item.is_file(),
+                                "item_symlink": item.is_symlink(),
+                                "resolved_item": (
+                                    str(item.resolve(strict=False))
+                                    if item.exists() else None
+                                ),
+                            })
+                    env_footprints = {
+                        key: value
+                        for key, value in os.environ.items()
+                        if "FOOTPRINT_DIR" in key
+                    }
                     raise RuntimeError(
                         "KiCad's standard Resistor_SMD footprint did not resolve: "
-                        f"{expected_footprint}; paths={path_map!r}"
+                        f"{expected_footprint}; paths={path_map!r}; "
+                        f"env={env_footprints!r}; tables={table_diagnostics!r}; "
+                        f"roots={root_diagnostics!r}"
                     )
                 populator._update_field_feedback()
                 feedback = populator._field_feedback["footprint"][1]
