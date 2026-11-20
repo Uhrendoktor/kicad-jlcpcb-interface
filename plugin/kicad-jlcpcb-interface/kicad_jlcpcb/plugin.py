@@ -6,6 +6,7 @@ import queue
 import webbrowser
 from collections import Counter
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus, urlparse
@@ -68,6 +69,112 @@ def _download_product_image(url: str | tuple[str, ...]) -> bytes | None:
     return download_product_image(url)
 
 
+class _TreeviewCellTooltip:
+    """Show a delayed tooltip when hovering a specific Treeview cell column."""
+
+    def __init__(self, widget: Any, column: str, text_provider: Any):
+        import tkinter as tk
+
+        self._tk = tk
+        self.widget = widget
+        self.column = column
+        self.text_provider = text_provider
+        self._after_id = None
+        self._window = None
+        self._pending_text = ""
+        self._position = (8, 8)
+        widget.bind("<Motion>", self._on_motion, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<Destroy>", self._on_destroy, add="+")
+
+    def _on_motion(self, event) -> None:
+        try:
+            row = self.widget.identify_row(event.y)
+            region = self.widget.identify_region(event.x)
+            column = self.widget.identify_column(event.x)
+            text = (
+                str(self.text_provider(row) or "").strip()
+                if row and region == "cell" and column == self.column
+                else ""
+            )
+        except self._tk.TclError:
+            return
+
+        self._position = (event.x_root + 12, event.y_root + 18)
+        if text == self._pending_text:
+            return
+        self._hide()
+        if not text:
+            return
+        self._pending_text = text
+        try:
+            self._after_id = self.widget.after(450, self._show)
+        except self._tk.TclError:
+            self._after_id = None
+
+    def _show(self) -> None:
+        self._after_id = None
+        try:
+            if not self._pending_text or not self.widget.winfo_exists():
+                return
+            root = self.widget.winfo_toplevel()
+            palette = getattr(root, "_kicad_jlcpcb_palette", {})
+            window = self._tk.Toplevel(root)
+            self._window = window
+            window.withdraw()
+            window.wm_overrideredirect(True)
+            try:
+                window.attributes("-topmost", True)
+            except self._tk.TclError:
+                pass
+            label = self._tk.Label(
+                window,
+                text=self._pending_text,
+                justify="left",
+                anchor="w",
+                wraplength=340,
+                background=palette.get("surface_alt", "#e1e4e7"),
+                foreground=palette.get("foreground", "#20252a"),
+                padx=9,
+                pady=6,
+                borderwidth=1,
+                relief="solid",
+                highlightthickness=1,
+                highlightbackground=palette.get("border", "#b8c0c8"),
+            )
+            label.pack()
+            window.update_idletasks()
+            x, y = self._position
+            width = window.winfo_reqwidth()
+            height = window.winfo_reqheight()
+            x = max(8, min(x, window.winfo_screenwidth() - width - 8))
+            if y + height > window.winfo_screenheight() - 8:
+                y = max(8, y - height - 24)
+            window.wm_geometry(f"+{x}+{y}")
+            window.deiconify()
+        except self._tk.TclError:
+            self._window = None
+
+    def _hide(self, _event=None) -> None:
+        if self._after_id is not None:
+            try:
+                self.widget.after_cancel(self._after_id)
+            except self._tk.TclError:
+                pass
+            self._after_id = None
+        if self._window is not None:
+            try:
+                self._window.destroy()
+            except self._tk.TclError:
+                pass
+            self._window = None
+        self._pending_text = ""
+
+    def _on_destroy(self, event) -> None:
+        if event.widget is self.widget:
+            self._hide()
+
+
 class ComponentBrowser:
     """Search and inspect JLCPCB-linked symbols, then select them in Eeschema."""
 
@@ -111,6 +218,7 @@ class ComponentBrowser:
         self._catalogue_details: JlcPartDetails | None = None
         self._alternatives: list[JlcPartDetails] = []
         self._alternative_by_iid: dict[str, JlcPartDetails] = {}
+        self._alternative_tooltips: dict[str, str] = {}
         self._closed = False
 
         self.root = tk.Tk()
@@ -528,7 +636,7 @@ class ComponentBrowser:
             "part": ("JLCPCB part", 100),
             "mpn": ("Manufacturer P/N", 165),
             "package": ("Package", 75),
-            "match": ("Match", 65),
+            "match": ("Match", 48),
             "class": ("Library", 75),
             "stock": ("Stock / status", 120),
             "minimum": ("Minimum", 85),
@@ -542,6 +650,15 @@ class ComponentBrowser:
         self.alternatives_tree.tag_configure(
             "stripe-alt", background=self.palette["surface_alt"]
         )
+        self.alternatives_tree.tag_configure(
+            "basic", foreground=self.palette["basic_foreground"]
+        )
+        self.alternatives_tree.tag_configure(
+            "extended", foreground=self.palette["muted"]
+        )
+        self.alternatives_tree.tag_configure(
+            "unknown", foreground=self.palette["muted"]
+        )
         self.alternatives_tree.grid(row=1, column=0, sticky="nsew")
         self.alternatives_scrollbar = AutoHideScrollbar(
             alternatives,
@@ -551,6 +668,11 @@ class ComponentBrowser:
         )
         self.alternatives_scrollbar.grid(row=1, column=1, sticky="ns")
         self.alternatives_tree.configure(yscrollcommand=self.alternatives_scrollbar.set)
+        self.alternatives_tooltip = _TreeviewCellTooltip(
+            self.alternatives_tree,
+            "#4",
+            lambda iid: self._alternative_tooltips.get(iid, ""),
+        )
         self.alternatives_tree.bind(
             "<Double-1>", lambda _event: self.open_selected_alternative()
         )
@@ -798,6 +920,38 @@ class ComponentBrowser:
                 except Exception as exc:
                     search_errors.append(f"passive value/footprint search: {exc}")
 
+        # Search listings can omit the quantity-price ladder even when their
+        # individual catalogue detail record contains it. Resolve only those
+        # sparse rows, and reuse the already-loaded selected part when possible.
+        priced_alternatives: list[JlcPartDetails] = []
+        for alternative in alternatives:
+            if alternative.buy_price_tiers or alternative.price_tiers:
+                priced_alternatives.append(alternative)
+                continue
+            try:
+                price_details = (
+                    details
+                    if alternative.lcsc == details.lcsc
+                    else provider.lookup(alternative.lcsc, force_refresh=True)
+                )
+            except Exception:
+                price_details = None
+            if price_details is not None:
+                alternative = replace(
+                    alternative,
+                    unit_price_usd=(
+                        alternative.unit_price_usd
+                        if alternative.unit_price_usd is not None
+                        else price_details.unit_price_usd
+                    ),
+                    price_tiers=price_details.price_tiers or alternative.price_tiers,
+                    buy_price_tiers=(
+                        price_details.buy_price_tiers or alternative.buy_price_tiers
+                    ),
+                )
+            priced_alternatives.append(alternative)
+        alternatives = priced_alternatives
+
         return details, image_data, alternatives, "; ".join(search_errors)
 
     def _drain_catalogue_queue(self) -> None:
@@ -900,6 +1054,7 @@ class ComponentBrowser:
         self.catalogue_status_var.set("")
         self._alternatives.clear()
         self._alternative_by_iid.clear()
+        self._alternative_tooltips.clear()
         if hasattr(self, "alternatives_tree"):
             self.alternatives_tree.delete(*self.alternatives_tree.get_children())
             self.alternatives_status_var.set("No MPN alternatives loaded.")
@@ -975,6 +1130,7 @@ class ComponentBrowser:
         self._image_ref = None
         self._alternatives.clear()
         self._alternative_by_iid.clear()
+        self._alternative_tooltips.clear()
         if hasattr(self, "alternatives_tree"):
             self.alternatives_tree.delete(*self.alternatives_tree.get_children())
             self.alternatives_status_var.set("No linked component selected.")
@@ -993,11 +1149,37 @@ class ComponentBrowser:
     def _alternative_price(details: JlcPartDetails) -> str:
         tiers = details.buy_price_tiers or details.price_tiers
         if tiers:
-            tier = tiers[0]
+            tier = min(tiers, key=lambda item: item.unit_price_usd)
             return f"USD {tier.unit_price_usd:.6f} @ {tier.quantity:,}+"
         if details.unit_price_usd is not None:
             return f"USD {details.unit_price_usd:.6f}"
-        return "Unknown"
+        return "—"
+
+    @staticmethod
+    def _alternative_match_indicator(details: JlcPartDetails) -> tuple[str, str]:
+        if details.mpn_match is True:
+            return "✓", "Exact manufacturer part-number match."
+        if details.mpn_match is False:
+            return (
+                "≈",
+                "Related manufacturer part number returned by JLCPCB. "
+                "Check the datasheet before treating it as a substitute.",
+            )
+        return (
+            "◇",
+            "Matches the schematic component value and footprint/package. "
+            "The manufacturer part number is not an exact match.",
+        )
+
+    @staticmethod
+    def _alternative_row_tags(details: JlcPartDetails, index: int) -> tuple[str, ...]:
+        if details.is_basic is True:
+            classification = "basic"
+        elif details.is_basic is False:
+            classification = "extended"
+        else:
+            classification = "unknown"
+        return (classification, "stripe-alt") if index % 2 else (classification,)
 
     @staticmethod
     def _alternative_minimum(details: JlcPartDetails) -> str:
@@ -1011,7 +1193,7 @@ class ComponentBrowser:
         if details.stock is None:
             return "Unknown"
         if details.stock > 0:
-            return f"{details.stock:,} in stock"
+            return f"{details.stock:,}"
         if details.is_buyable is True and (details.can_presale_number or 0) > 0:
             return "Pre-order"
         return "Out of stock"
@@ -1024,6 +1206,7 @@ class ComponentBrowser:
     ) -> None:
         self._alternatives = list(alternatives)
         self._alternative_by_iid.clear()
+        self._alternative_tooltips.clear()
         self.alternatives_tree.delete(*self.alternatives_tree.get_children())
         if not alternatives:
             self.alternatives_status_var.set(
@@ -1046,20 +1229,18 @@ class ComponentBrowser:
             )
             if details.is_preferred:
                 library += " · Preferred"
+            match_icon, match_tooltip = self._alternative_match_indicator(details)
+            self._alternative_tooltips[iid] = match_tooltip
             self.alternatives_tree.insert(
                 "",
                 "end",
                 iid=iid,
-                tags=("stripe-alt",) if index % 2 else (),
+                tags=self._alternative_row_tags(details, index),
                 values=(
                     details.lcsc + ("  ✓" if details.lcsc == selected_lcsc else ""),
                     details.manufacturer_part_number or "—",
                     details.package or "—",
-                    (
-                        "Exact" if details.mpn_match is True
-                        else "Related" if details.mpn_match is False
-                        else "Value/pkg"
-                    ),
+                    match_icon,
                     library,
                     self._alternative_stock(details),
                     self._alternative_minimum(details),
