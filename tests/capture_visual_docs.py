@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(PLUGIN_ROOT))
 
 
+from kicad_jlcpcb import library as library_module  # noqa: E402
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
 from kicad_jlcpcb import populator as populator_module  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
@@ -30,7 +31,6 @@ from kicad_jlcpcb.draft import (  # noqa: E402
     symbol_library_id,
     update_schematic_symbol,
 )
-from kicad_jlcpcb import library as library_module  # noqa: E402
 from kicad_jlcpcb.library import (  # noqa: E402
     footprint_library_entry_available,
     generate_project_library_symbol,
@@ -1804,11 +1804,11 @@ def _drive_populator_form(
                             })
                     root_diagnostics = []
                     for key, value in (path_map or {}).items():
-                        root = Path(str(value)).expanduser()
+                        ipc_root = Path(str(value)).expanduser()
                         for candidate_root in (
-                            root,
-                            root / "footprints",
-                            root / "share" / "kicad" / "footprints",
+                            ipc_root,
+                            ipc_root / "footprints",
+                            ipc_root / "share" / "kicad" / "footprints",
                         ):
                             library_dir = candidate_root / "Resistor_SMD.pretty"
                             item = library_dir / "R_0402_1005Metric.kicad_mod"
