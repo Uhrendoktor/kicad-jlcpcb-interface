@@ -1273,6 +1273,12 @@ class FieldFeedbackTests(unittest.TestCase):
         populator.draft = SimpleNamespace(proposed_fields=(("Value", "10k"),))
         populator.create_mode = False
         populator.symbol = object()
+        populator.footprint_var = SimpleNamespace(
+            get=lambda: "Resistor_SMD:R_0402_1005Metric"
+        )
+        populator._original_footprint = "Resistor_SMD:R_0402_1005Metric"
+        populator._notes_messages = ()
+        populator._set_notes = Mock()
         populator.apply_button = Mock()
         populator._update_field_feedback = Mock(return_value={"footprint"})
         populator.status_var = Mock()
