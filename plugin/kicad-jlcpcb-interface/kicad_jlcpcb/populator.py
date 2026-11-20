@@ -46,7 +46,7 @@ from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
 from .placement import place_and_select_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
-from .theme import UI_SPACING, apply_tk_theme
+from .theme import UI_SPACING, AutoHideScrollbar, apply_tk_theme
 from .value_search import (
     exact_passive_candidates,
     is_lcsc_lookup_query,
@@ -309,6 +309,7 @@ class ComponentPopulator:
             value=self._field_value(getattr(symbol, "footprint_field", None))
             if symbol is not None else ""
         )
+        self._original_footprint = self.footprint_var.get().strip()
         self.reference_prefix_var = tk.StringVar(value="")
         self.status_var = tk.StringVar(value="")
         self.catalogue_status_var = tk.StringVar(value="")
@@ -333,6 +334,9 @@ class ComponentPopulator:
                 "write",
                 lambda *_args, name=field_name: self._mark_manual_proposal_field(name),
             )
+        self.footprint_var.trace_add(
+            "write", self._on_footprint_proposal_changed
+        )
         self._product_url = ""
         self._datasheet_url = ""
 
@@ -506,13 +510,14 @@ class ComponentPopulator:
             borderwidth=0,
         )
         self.content_canvas.grid(row=0, column=0, sticky="nsew")
-        content_scroll = ttk.Scrollbar(
+        self.content_scrollbar = AutoHideScrollbar(
             scroll_shell,
             orient="vertical",
             command=self.content_canvas.yview,
+            palette=self.palette,
         )
-        content_scroll.grid(row=0, column=1, sticky="ns")
-        self.content_canvas.configure(yscrollcommand=content_scroll.set)
+        self.content_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.content_canvas.configure(yscrollcommand=self.content_scrollbar.set)
         content = ttk.Frame(self.content_canvas, padding=(0, 0, 8, 12))
         content.columnconfigure(0, weight=1)
         content_window = self.content_canvas.create_window(
@@ -611,7 +616,7 @@ class ComponentPopulator:
         self.candidate_title = ttk.Label(
             candidate_header,
             text="Search results",
-            style="CardTitle.TLabel",
+            style="SectionTitleSurface.TLabel",
         )
         self.candidate_title.grid(row=0, column=0, sticky="w")
         self.candidate_tree = ttk.Treeview(
@@ -653,13 +658,14 @@ class ComponentPopulator:
             "unknown", foreground=self.palette["muted"]
         )
         self.candidate_tree.grid(row=1, column=0, sticky="ew")
-        candidate_scroll = ttk.Scrollbar(
+        self.candidate_scrollbar = AutoHideScrollbar(
             self.candidate_section,
             orient="vertical",
             command=self.candidate_tree.yview,
+            palette=self.palette,
         )
-        candidate_scroll.grid(row=1, column=1, sticky="ns")
-        self.candidate_tree.configure(yscrollcommand=candidate_scroll.set)
+        self.candidate_scrollbar.grid(row=1, column=1, sticky="ns")
+        self.candidate_tree.configure(yscrollcommand=self.candidate_scrollbar.set)
         self.candidate_tree.bind(
             "<<TreeviewSelect>>", self._on_candidate_selected
         )
@@ -676,7 +682,7 @@ class ComponentPopulator:
         ttk.Label(
             component_section,
             text="KiCad properties",
-            style="CardTitle.TLabel",
+            style="SectionTitleSurface.TLabel",
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
         row = 1
@@ -765,7 +771,7 @@ class ComponentPopulator:
         ttk.Label(
             proposal_section,
             text="Fields to write",
-            style="CardTitle.TLabel",
+            style="SectionTitleSurface.TLabel",
         ).grid(row=0, column=0, sticky="w", pady=(0, 8))
         self.proposal_rows = ttk.Frame(
             proposal_section, style="Card.TFrame"
@@ -1442,6 +1448,29 @@ class ComponentPopulator:
         self.cad_status_var.set(
             "External CAD is requested only when a local KiCad mapping is missing."
         )
+        self._set_cad_preview_visible(False)
+
+    @staticmethod
+    def _has_rendered_cad_preview(assets: CadAssetResult | None) -> bool:
+        """Whether CAD data contains at least one image that can be previewed."""
+        return bool(
+            assets is not None
+            and (
+                assets.symbol_preview_png
+                or assets.footprint_preview_png
+                or assets.model_preview_png
+            )
+        )
+
+    def _set_cad_preview_visible(self, visible: bool) -> None:
+        """Show the CAD column only when it contains a real rendered preview."""
+        if visible:
+            self.properties_column.grid_configure(columnspan=1)
+            self.preview_column.grid()
+            self.cad_preview.frame.grid()
+            return
+        self.properties_column.grid_configure(columnspan=2)
+        self.preview_column.grid_remove()
         self.cad_preview.frame.grid_remove()
 
     def _show_cad_assets(self, assets: CadAssetResult | None) -> None:
@@ -1474,6 +1503,7 @@ class ComponentPopulator:
             self.cad_preview.model_label.configure(
                 image="", text="3D preview unavailable", padding=8
             )
+            self._set_cad_preview_visible(False)
             return
         if assets.symbol_preview_png is None:
             self.cad_preview.symbol_label.configure(
@@ -1512,6 +1542,7 @@ class ComponentPopulator:
             f"EasyEDA public CAD · {summary}. Review against the manufacturer datasheet."
             + (f" {warning_text}" if warning_text else "")
         )
+        self._set_cad_preview_visible(self._has_rendered_cad_preview(assets))
 
     def _apply_cad_suggestions(self, assets: CadAssetResult) -> None:
         """Prefill only unresolved fields; never replace deliberate local/manual choices."""
@@ -1533,13 +1564,21 @@ class ComponentPopulator:
                 )
                 if self.symbol_hint_var.get().strip() == assets.symbol_library_id:
                     updated = replace(updated, symbol_hint=assets.symbol_library_id)
-        # A visible external footprint preview describes the selected CAD asset.
-        # Keep the editable Footprint field on that exact asset unless the user
-        # explicitly chose a different value; local mappings must not leave the
-        # preview and the schematic/export property out of sync.
+        # In Add mode an external footprint preview is the proposed asset, so
+        # keep the field aligned with it. In Update mode, retain a valid local
+        # footprint; the EasyEDA tabs are comparison candidates, not an implicit
+        # request to replace a deliberate stock/user-library mapping.
+        current_footprint = self.footprint_var.get().strip()
+        local_footprint_exists = bool(
+            current_footprint
+            and footprint_library_entry_available(
+                current_footprint, self.kicad, self.schematic.get_project()
+            )
+        )
         if (
             assets.has_footprint
             and "footprint" not in self._manual_proposal_fields
+            and (self.create_mode or not local_footprint_exists)
         ):
             self._set_proposal_field(
                 "footprint", self.footprint_var, assets.footprint_library_id
@@ -1562,12 +1601,17 @@ class ComponentPopulator:
 
         project = self.schematic.get_project()
         current_footprint = self.footprint_var.get().strip()
-        needs_footprint = (
-            "footprint" not in self._manual_proposal_fields
-            and not footprint_library_entry_available(
+        local_footprint_exists = bool(
+            current_footprint
+            and footprint_library_entry_available(
                 current_footprint, self.kicad, project
             )
         )
+        footprint_changed = (
+            not self.create_mode
+            and current_footprint != getattr(self, "_original_footprint", "")
+        )
+        needs_footprint = not local_footprint_exists or footprint_changed
         needs_symbol = False
         if self.create_mode:
             current_hint = self.symbol_hint_var.get().strip() or draft.symbol_hint
@@ -1580,28 +1624,28 @@ class ComponentPopulator:
         if not needs_symbol and not needs_footprint:
             # No external candidate is needed; let the property editor use the
             # whole review row instead of leaving an empty 40% CAD column.
-            self.properties_column.grid_configure(columnspan=2)
-            self.preview_column.grid_remove()
+            self._set_cad_preview_visible(False)
             if self._cad_assets is None:
                 self.cad_status_var.set(
                     "A local KiCad symbol/footprint mapping is already available."
                 )
             return
 
-        # A completed lookup with no result has nothing to preview. Do not
-        # leave an empty candidate column taking 40% of the review workspace.
-        if self._cad_attempted and not self._cad_pending and self._cad_assets is None:
-            self.properties_column.grid_configure(columnspan=2)
-            self.preview_column.grid_remove()
+        if self._cad_attempted and not self._cad_pending:
+            # A completed lookup may contain CAD files without a renderable
+            # preview. Keep the properties column full-width in that case.
+            self._set_cad_preview_visible(
+                self._has_rendered_cad_preview(self._cad_assets)
+            )
             return
 
-        self.properties_column.grid_configure(columnspan=1)
-        self.preview_column.grid()
-        if self._cad_pending or self._cad_attempted:
+        # Do not reserve a second column while CAD is still being fetched.
+        # Reveal it only after at least one actual preview image is available.
+        self._set_cad_preview_visible(False)
+        if self._cad_pending:
             return
         self._cad_pending = True
         self._cad_attempted = True
-        self.cad_preview.frame.grid()
         self.cad_status_var.set(
             "Searching public EasyEDA CAD by LCSC number (no credentials required)…"
         )
@@ -1735,10 +1779,57 @@ class ComponentPopulator:
                 self._set_field_feedback("reference_prefix", None)
         return errors
 
+    def _on_footprint_proposal_changed(self, *_args) -> None:
+        """Refresh Update compatibility guidance and candidate previews after edits."""
+        if (
+            getattr(self, "_setting_proposal_field", False)
+            or getattr(self, "create_mode", True)
+            or getattr(self, "closed", True)
+            or getattr(self, "draft", None) is None
+        ):
+            return
+        self._refresh_readiness()
+        details = getattr(self, "selected_details", None)
+        if details is not None:
+            self._request_cad_assets(details, self.draft)
+
+    def _refresh_update_compatibility_notes(self) -> None:
+        """Warn whenever Update changes the footprint while preserving the symbol."""
+        if self.create_mode or self.draft is None:
+            return
+        original = str(getattr(self, "_original_footprint", "") or "").strip()
+        proposed = self.footprint_var.get().strip()
+        prefix = "Warning: Update proposes a footprint change"
+        notes = [
+            line
+            for line in getattr(self, "_notes_messages", ())
+            if not line.startswith(prefix)
+        ]
+        if original != proposed:
+            previous = original or "(no footprint)"
+            replacement = proposed or "(no footprint)"
+            notes.append(
+                f"{prefix} from {previous} to {replacement}. Update preserves the "
+                "selected schematic symbol, library identity, graphics and pin map, "
+                "but the new footprint may change pad count/numbering, pad positions, "
+                "courtyard and the attached 3D model. Compare the Symbol, Footprint "
+                "and 3D model candidate tabs when available, then verify pad mapping "
+                "and mechanical clearance against the manufacturer datasheet before "
+                "updating the schematic."
+            )
+            assets = getattr(self, "_cad_assets", None)
+            if assets is not None and assets.has_3d_model:
+                notes.append(
+                    "Warning: The EasyEDA CAD comparison includes a STEP 3D model. "
+                    "It is a candidate preview, not a verified mechanical fit."
+                )
+        self._set_notes(tuple(notes))
+
     def _refresh_readiness(self, _event=None) -> None:
         if self.closed or self.draft is None:
             return
         errors = self._update_field_feedback()
+        self._refresh_update_compatibility_notes()
         compatible = self.create_mode or self.symbol is not None
         ready = (
             not errors

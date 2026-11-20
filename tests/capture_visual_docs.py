@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(PLUGIN_ROOT))
 
 
+from kicad_jlcpcb import library as library_module  # noqa: E402
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
 from kicad_jlcpcb import populator as populator_module  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
@@ -31,6 +32,7 @@ from kicad_jlcpcb.draft import (  # noqa: E402
     update_schematic_symbol,
 )
 from kicad_jlcpcb.library import (  # noqa: E402
+    footprint_library_entry_available,
     generate_project_library_symbol,
     parse_sexpr,
     reload_project_symbol_library,
@@ -47,7 +49,7 @@ from kicad_jlcpcb.populator import (  # noqa: E402
     resolve_passive_library_id,
 )
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
-from kicad_jlcpcb.theme import apply_tk_theme  # noqa: E402
+from kicad_jlcpcb.theme import AutoHideScrollbar, apply_tk_theme  # noqa: E402
 
 ASSET_NAMES = (
     "component-browser-initial.png",
@@ -82,7 +84,9 @@ DEMO_PARTS = (
         "lib_id": "Device:R",
         "lcsc": "C60489",
         "mpn": "RC0402JR-0710KL",
-        "footprint": "Resistor_SMD:R_0402_1005Metric",
+        # Begin Update on 0603 so the reviewed 10k alternative proposes a
+        # real footprint change to 0402 and exercises compatibility guidance.
+        "footprint": "Resistor_SMD:R_0603_1608Metric",
         "position": (120.0, 80.0),
     },
     {
@@ -1106,6 +1110,161 @@ def _position_eeschema_window(width: int = 940, height: int = 1400) -> None:
     )
 
 
+def _assert_auto_hide_scrollbar(scrollbar: Any, name: str) -> None:
+    """Check the compact idle rail and wider interaction state in live Tk."""
+    if not isinstance(scrollbar, AutoHideScrollbar):
+        raise RuntimeError(
+            f"{name} uses {type(scrollbar).__name__}, not AutoHideScrollbar."
+        )
+    style = scrollbar._style
+    idle_width = int(style.lookup(scrollbar.idle_style, "width"))
+    active_width = int(style.lookup(scrollbar.active_style, "width"))
+    if idle_width != AutoHideScrollbar.IDLE_WIDTH:
+        raise RuntimeError(
+            f"{name} idle width is {idle_width}px, expected "
+            f"{AutoHideScrollbar.IDLE_WIDTH}px."
+        )
+    if active_width != AutoHideScrollbar.ACTIVE_WIDTH:
+        raise RuntimeError(
+            f"{name} active width is {active_width}px, expected "
+            f"{AutoHideScrollbar.ACTIVE_WIDTH}px."
+        )
+
+    palette = getattr(scrollbar.winfo_toplevel(), "_kicad_jlcpcb_palette", None)
+    if not isinstance(palette, dict):
+        raise RuntimeError(f"{name} has no active KiCad theme palette.")
+    expected_colors = (
+        (scrollbar.idle_style, "background", "background"),
+        (scrollbar.idle_style, "troughcolor", "background"),
+        (scrollbar.active_style, "background", "scroll_thumb"),
+        (scrollbar.active_style, "troughcolor", "scroll_trough"),
+    )
+    for style_name, option, palette_key in expected_colors:
+        actual = str(style.lookup(style_name, option)).casefold()
+        expected = palette[palette_key].casefold()
+        if actual != expected:
+            raise RuntimeError(
+                f"{name} {style_name} {option} is {actual!r}; "
+                f"the active palette requires {expected!r}."
+            )
+
+    previous_scrollable = scrollbar.scrollable
+    scrollbar._scrollable = True
+    scrollbar._reveal()
+    scrollbar.update_idletasks()
+    if scrollbar.cget("style") != scrollbar.active_style:
+        raise RuntimeError(f"{name} did not reveal while scrolling.")
+    scrollbar._cancel_hide()
+    scrollbar._scrollable = previous_scrollable
+    scrollbar._set_idle_style()
+    if scrollbar.cget("style") != scrollbar.idle_style:
+        raise RuntimeError(f"{name} did not return to its compact idle rail.")
+
+
+def _assert_section_heading_typography(root: Any) -> None:
+    """Keep section headings consistent across page, card and labelled-frame surfaces."""
+    from tkinter import ttk
+
+    style = ttk.Style(root)
+    heading_styles = (
+        "SectionTitle.TLabel",
+        "SectionTitleSurface.TLabel",
+        "TLabelframe.Label",
+    )
+    expected_font = style.lookup(heading_styles[0], "font")
+    expected_foreground = style.lookup(heading_styles[0], "foreground")
+    for heading_style in heading_styles[1:]:
+        actual_font = style.lookup(heading_style, "font")
+        actual_foreground = style.lookup(heading_style, "foreground")
+        if actual_font != expected_font or actual_foreground != expected_foreground:
+            raise RuntimeError(
+                "Section heading typography is inconsistent: "
+                f"{heading_styles[0]}={(expected_font, expected_foreground)!r}; "
+                f"{heading_style}={(actual_font, actual_foreground)!r}."
+            )
+
+def _assert_overview_detail_cards(browser: Any) -> None:
+    """Keep catalogue prices and schematic properties inside styled cards."""
+    for name, card in (
+        ("Catalogue details", browser.catalogue_details_card),
+        ("Schematic properties", browser.schematic_properties_card),
+    ):
+        if str(card.cget("style")) != "Card.TFrame":
+            raise RuntimeError(
+                f"{name} must use the shared card container style, "
+                f"not {card.cget('style')!r}."
+            )
+
+
+def _assert_overview_row_alignment(browser: Any) -> None:
+    """Align the left edge of catalogue and schematic-property data rows."""
+    browser.root.update_idletasks()
+    row_specs = (
+        (
+            "Catalogue details",
+            browser.catalogue_details_card,
+            ("Price breaks", "Attributes"),
+        ),
+        (
+            "Schematic properties",
+            browser.schematic_properties_card,
+            ("Reference", "Value", "LCSC / JLCPCB", "MPN property", "Footprint"),
+        ),
+    )
+    positions: dict[str, int] = {}
+    for section_name, card, expected_labels in row_specs:
+        labels = {
+            str(child.cget("text")): child
+            for child in card.winfo_children()
+            if str(child.winfo_class()) == "TLabel"
+        }
+        for label_text in expected_labels:
+            label = labels.get(label_text)
+            if label is None:
+                raise RuntimeError(
+                    f"{section_name} is missing the expected row label {label_text!r}."
+                )
+            positions[f"{section_name}/{label_text}"] = int(label.winfo_rootx())
+
+    distinct_edges = set(positions.values())
+    if len(distinct_edges) != 1:
+        raise RuntimeError(
+            "Component Overview data rows do not share one left inset: "
+            f"{positions!r}."
+        )
+
+
+def _assert_selected_part_actions(browser: Any) -> None:
+    """Keep the LCSC open/copy controls inside the Selected Part card."""
+    preview = browser.product_preview
+    if preview.lcsc_button is None:
+        raise RuntimeError("Selected Part card is missing its Open in LCSC action.")
+    if str(preview.lcsc_button.cget("text")) != "Open in LCSC ↗":
+        raise RuntimeError("Selected Part card has an unexpected LCSC action label.")
+    if str(preview.lcsc_button.cget("state")) != "normal":
+        raise RuntimeError("Open in LCSC must be enabled for the selected part.")
+
+    def is_descendant(widget: Any, ancestor: Any) -> bool:
+        current = widget
+        while current is not None:
+            if current == ancestor:
+                return True
+            current = getattr(current, "master", None)
+        return False
+
+    for name, widget in (
+        ("Open in LCSC", preview.lcsc_button),
+        ("Copyable LCSC part ID", preview.lcsc_label),
+    ):
+        if not is_descendant(widget, preview.frame):
+            raise RuntimeError(f"{name} is outside the Selected Part card.")
+
+    if not preview.lcsc_label.bind("<Button-1>"):
+        raise RuntimeError("The displayed LCSC part ID is not clickable.")
+    if not preview.lcsc_label.bind("<Return>"):
+        raise RuntimeError("The displayed LCSC part ID is not keyboard accessible.")
+
+
 def _drive_overview(
     schematic: Any, output_dir: Path, cache_dir: Path
 ) -> None:
@@ -1113,6 +1272,16 @@ def _drive_overview(
     browser = browser_module.ComponentBrowser(schematic, cache_dir, theme="light")
     browser.root.geometry("1480x1250+20+20")
     root = browser.root
+    _assert_section_heading_typography(root)
+    _assert_overview_detail_cards(browser)
+    _assert_overview_row_alignment(browser)
+    _assert_selected_part_actions(browser)
+    for name, scrollbar in (
+        ("overview component list", browser.tree_scrollbar),
+        ("overview detail pane", browser.detail_scrollbar),
+        ("overview alternatives", browser.alternatives_scrollbar),
+    ):
+        _assert_auto_hide_scrollbar(scrollbar, name)
     failures: list[str] = []
     frames = (
         output_dir / "component-browser-initial.png",
@@ -1198,9 +1367,21 @@ def _drive_overview(
                 _capture_window(root, output_dir / "component-browser-light.png")
                 apply_tk_theme(root, "dark")
                 root.update()
+                for name, scrollbar in (
+                    ("overview component list", browser.tree_scrollbar),
+                    ("overview detail pane", browser.detail_scrollbar),
+                    ("overview alternatives", browser.alternatives_scrollbar),
+                ):
+                    _assert_auto_hide_scrollbar(scrollbar, name)
                 _capture_window(root, output_dir / "component-browser-dark.png")
                 apply_tk_theme(root, "light")
                 root.update()
+                for name, scrollbar in (
+                    ("overview component list", browser.tree_scrollbar),
+                    ("overview detail pane", browser.detail_scrollbar),
+                    ("overview alternatives", browser.alternatives_scrollbar),
+                ):
+                    _assert_auto_hide_scrollbar(scrollbar, name)
                 details = browser._catalogue_details
                 if details is None or details.is_cached or details.stale:
                     raise RuntimeError("Overview screenshot is not using fresh JLCPCB data.")
@@ -1572,9 +1753,11 @@ def _drive_populator_form(
     require_alternatives: bool = False,
     preferred_lcsc: str | None = None,
     avoid_lcsc: str | None = None,
+    require_update_compatibility_change: bool = False,
 ) -> None:
     """Capture the production review form and verify the resulting KiCad IPC action."""
     root = populator.root
+    _assert_section_heading_typography(root)
     failures: list[str] = []
     state = {"done": False, "deadline": time.monotonic() + 60.0}
 
@@ -1618,6 +1801,10 @@ def _drive_populator_form(
                 populator.draft is None
                 or str(populator.apply_button.cget("state")) != "normal"
                 or populator._image_pending
+                or (
+                    require_update_compatibility_change
+                    and populator._cad_pending
+                )
             ):
                 if time.monotonic() >= state["deadline"]:
                     raise TimeoutError(
@@ -1628,6 +1815,127 @@ def _drive_populator_form(
                 return
 
             draft = populator.draft
+            if (
+                not populator.create_mode
+                and expected_footprint == "Resistor_SMD:R_0402_1005Metric"
+            ):
+                project = populator.schematic.get_project()
+                if not footprint_library_entry_available(
+                    expected_footprint, populator.kicad, project
+                ):
+                    try:
+                        path_map = populator.kicad.get_paths()
+                    except Exception as exc:
+                        path_map = {"get_paths_error": str(exc)}
+                    project_dir = library_module._project_directory(project)
+                    table_candidates = [
+                        (project_dir / "fp-lib-table", project_dir),
+                        *(
+                            (table_path, table_path.parent)
+                            for table_path in library_module._global_library_tables(
+                                "fp-lib-table"
+                            )
+                        ),
+                    ]
+                    table_diagnostics = []
+                    for table_path, base_dir in table_candidates:
+                        if not table_path.is_file() or table_path.is_symlink():
+                            continue
+                        try:
+                            table_data = parse_sexpr(
+                                table_path.read_text(encoding="utf-8")
+                            )
+                            entry = library_module._table_entry(
+                                table_data, "Resistor_SMD"
+                            )
+                            if entry is None:
+                                continue
+                            uri = library_module._entry_text(entry, "uri")
+                            resolved = library_module._uri_path(
+                                base_dir,
+                                uri,
+                                {
+                                    str(key): str(value)
+                                    for key, value in (path_map or {}).items()
+                                    if value not in (None, "")
+                                },
+                            )
+                            table_diagnostics.append({
+                                "table": str(table_path),
+                                "type": library_module._entry_text(entry, "type"),
+                                "uri": uri,
+                                "resolved": str(resolved) if resolved else None,
+                                "resolved_is_dir": bool(
+                                    resolved is not None and resolved.is_dir()
+                                ),
+                                "resolved_library_exists": bool(
+                                    resolved is not None
+                                    and (resolved / "R_0402_1005Metric.kicad_mod").is_file()
+                                ),
+                            })
+                        except Exception as exc:
+                            table_diagnostics.append({
+                                "table": str(table_path),
+                                "error": str(exc),
+                            })
+                    root_diagnostics = []
+                    for key, value in (path_map or {}).items():
+                        ipc_root = Path(str(value)).expanduser()
+                        for candidate_root in (
+                            ipc_root,
+                            ipc_root / "footprints",
+                            ipc_root / "share" / "kicad" / "footprints",
+                        ):
+                            library_dir = candidate_root / "Resistor_SMD.pretty"
+                            item = library_dir / "R_0402_1005Metric.kicad_mod"
+                            root_diagnostics.append({
+                                "ipc_key": key,
+                                "root": str(candidate_root),
+                                "library_exists": library_dir.is_dir(),
+                                "library_symlink": library_dir.is_symlink(),
+                                "item_exists": item.is_file(),
+                                "item_symlink": item.is_symlink(),
+                                "resolved_item": (
+                                    str(item.resolve(strict=False))
+                                    if item.exists() else None
+                                ),
+                            })
+                    env_footprints = {
+                        key: value
+                        for key, value in os.environ.items()
+                        if "FOOTPRINT_DIR" in key
+                    }
+                    raise RuntimeError(
+                        "KiCad's standard Resistor_SMD footprint did not resolve: "
+                        f"{expected_footprint}; paths={path_map!r}; "
+                        f"env={env_footprints!r}; tables={table_diagnostics!r}; "
+                        f"roots={root_diagnostics!r}"
+                    )
+                populator._update_field_feedback()
+                if require_update_compatibility_change:
+                    if (
+                        populator._original_footprint
+                        == populator.footprint_var.get().strip()
+                    ):
+                        raise RuntimeError(
+                            "Update capture did not create a footprint change: "
+                            f"{populator._original_footprint!r}"
+                        )
+                    compatibility_notes = tuple(populator._notes_messages)
+                    if not any(
+                        note.startswith("Warning: Update proposes a footprint change")
+                        for note in compatibility_notes
+                    ):
+                        raise RuntimeError(
+                            "Update capture is missing the footprint compatibility warning: "
+                            f"{compatibility_notes!r}"
+                        )
+                feedback = populator._field_feedback["footprint"][1]
+                if feedback.winfo_ismapped():
+                    raise RuntimeError(
+                        "A standard KiCad footprint is incorrectly flagged as unavailable: "
+                        f"{feedback.cget('text')!r}"
+                    )
             if not populator.candidate_tree.get_children():
                 raise RuntimeError(
                     "The shared catalogue match list did not render a selected part."
@@ -1799,6 +2107,12 @@ def _drive_populator_form(
             populator._update_field_feedback()
             root.update()
 
+            _assert_auto_hide_scrollbar(
+                populator.content_scrollbar, "Add/Update workspace"
+            )
+            _assert_auto_hide_scrollbar(
+                populator.candidate_scrollbar, "Add/Update candidate list"
+            )
             if not populator.proposal_rows.winfo_children():
                 raise RuntimeError("The LCSC review form contains no proposed fields.")
             if not populator.apply_button.winfo_viewable():
@@ -1817,6 +2131,12 @@ def _drive_populator_form(
             apply_tk_theme(root, "dark")
             populator._update_advanced_filter_button()
             root.update()
+            _assert_auto_hide_scrollbar(
+                populator.content_scrollbar, "Add/Update workspace"
+            )
+            _assert_auto_hide_scrollbar(
+                populator.candidate_scrollbar, "Add/Update candidate list"
+            )
             toolbar_style = populator.ttk.Style(root)
             toolbar_foreground = toolbar_style.lookup(
                 "ToolbarLink.TButton", "foreground"
@@ -1848,6 +2168,12 @@ def _drive_populator_form(
             apply_tk_theme(root, "light")
             populator._update_advanced_filter_button()
             root.update()
+            _assert_auto_hide_scrollbar(
+                populator.content_scrollbar, "Add/Update workspace"
+            )
+            _assert_auto_hide_scrollbar(
+                populator.candidate_scrollbar, "Add/Update candidate list"
+            )
 
             original_askyesno = populator.messagebox.askyesno
             original_showerror = populator.messagebox.showerror
@@ -1943,6 +2269,24 @@ def _capture_passive_component_workflows(
             "The selected R1 fixture is not the canonical stock Device:R definition: "
             f"{verified_fixture_library_id!r}"
         )
+    # The live supplier-preload step above writes the default 0402 mapping.
+    # Set R1 to a different valid stock footprint after preload so the Update
+    # dialog has a real 0603 -> 0402 compatibility change to review.
+    editable_symbol.footprint_field.text.value = "Resistor_SMD:R_0603_1608Metric"
+    update_schematic_symbol(schematic, editable_symbol)
+    original_footprint = str(
+        getattr(
+            getattr(editable_symbol.footprint_field, "text", None),
+            "value",
+            "",
+        )
+        or ""
+    ).strip()
+    if original_footprint != "Resistor_SMD:R_0603_1608Metric":
+        raise RuntimeError(
+            "Could not seed the Update compatibility fixture footprint: "
+            f"{original_footprint!r}"
+        )
     populate = ComponentPopulator(
         schematic,
         editable_symbol,
@@ -1961,12 +2305,10 @@ def _capture_passive_component_workflows(
     populate.footprint_filter_var.set("0402")
     populate.tolerance_filter_var.set("5%")
     populate._toggle_advanced_filters()
-    # Keep the Update example on its known local Device:R footprint. The
-    # dedicated Add-mode fixture below exercises the live EasyEDA CAD fallback
-    # and captures the selected 3D tab; do not let that optional lookup replace
-    # this deterministic stock-mapping review example. Run the real layout
-    # decision as a local mapping, but keep the ordinary field validator intact
-    # so its warning and tooltip remain visible in the captured review form.
+    # Update retains the selected stock symbol while proposing the catalogue
+    # package. The CAD tabs provide an external comparison; the compatibility
+    # note warns that pad layout and 3D fit may change even though symbol pins
+    # and graphics remain untouched.
     request_cad_assets = populate._request_cad_assets
 
     def request_local_stock_mapping(details: Any, draft: ComponentDraft) -> None:
@@ -2013,11 +2355,12 @@ def _capture_passive_component_workflows(
         completed_asset="populate-component-applied.png",
         expected_lcsc=None,
         expected_value="10k",
-        expected_footprint=None,
+        expected_footprint="Resistor_SMD:R_0402_1005Metric",
         validate_result=validate_populate_result,
         assert_basic_shortlist=True,
         require_alternatives=True,
         avoid_lcsc="C60489",
+        require_update_compatibility_change=True,
     )
     print(
         "live-update-mode-ui=passed selected=R1 "

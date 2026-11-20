@@ -21,7 +21,8 @@ from .model import (
 )
 from .provider import JlcPartDetails, JlcSearchProvider
 from .selection import focus_schematic_items
-from .theme import UI_SPACING, apply_tk_theme
+from .theme import UI_SPACING, AutoHideScrollbar, apply_tk_theme
+from .value_search import exact_passive_candidates, parse_passive_search_query
 
 PLUGIN_IDENTIFIER = "org.uhrendoktor.kicadjlcpcb"
 
@@ -243,7 +244,7 @@ class ComponentBrowser:
             ttk.Label(
                 overview,
                 text="DESIGN OVERVIEW",
-                style="ProductEyebrow.TLabel",
+                style="SectionTitleSurface.TLabel",
             ).grid(
                 row=0,
                 column=0,
@@ -330,9 +331,11 @@ class ComponentBrowser:
             list_frame.columnconfigure(0, weight=1)
             list_frame.rowconfigure(1, weight=1)
             body.add(list_frame, weight=1)
-            ttk.Label(list_frame, text="LINKED SCHEMATIC COMPONENTS", style="Section.TLabel").grid(
-                row=0, column=0, sticky="w", pady=(0, 8)
-            )
+            ttk.Label(
+                list_frame,
+                text="LINKED SCHEMATIC COMPONENTS",
+                style="SectionTitle.TLabel",
+            ).grid(row=0, column=0, sticky="w", pady=(0, 8))
             columns = ("reference", "value", "part", "footprint", "sheet")
             self.tree = ttk.Treeview(
                 list_frame, columns=columns, show="headings", selectmode="browse"
@@ -350,9 +353,14 @@ class ComponentBrowser:
                 )
             self.tree.tag_configure("stripe-alt", background=self.palette["surface_alt"])
             self.tree.grid(row=1, column=0, sticky="nsew")
-            scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
-            scrollbar.grid(row=1, column=1, sticky="ns")
-            self.tree.configure(yscrollcommand=scrollbar.set)
+            self.tree_scrollbar = AutoHideScrollbar(
+                list_frame,
+                orient="vertical",
+                command=self.tree.yview,
+                palette=self.palette,
+            )
+            self.tree_scrollbar.grid(row=1, column=1, sticky="ns")
+            self.tree.configure(yscrollcommand=self.tree_scrollbar.set)
             self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
             self.tree.bind("<Double-1>", lambda _event: self.select_selected())
 
@@ -371,11 +379,14 @@ class ComponentBrowser:
             background=self.palette["background"],
         )
         detail_canvas.grid(row=0, column=0, sticky="nsew")
-        detail_scrollbar = ttk.Scrollbar(
-            detail_frame, orient="vertical", command=detail_canvas.yview
+        self.detail_scrollbar = AutoHideScrollbar(
+            detail_frame,
+            orient="vertical",
+            command=detail_canvas.yview,
+            palette=self.palette,
         )
-        detail_scrollbar.grid(row=0, column=1, sticky="ns")
-        detail_canvas.configure(yscrollcommand=detail_scrollbar.set)
+        self.detail_scrollbar.grid(row=0, column=1, sticky="ns")
+        detail_canvas.configure(yscrollcommand=self.detail_scrollbar.set)
         self.detail_canvas = detail_canvas
 
         content = ttk.Frame(detail_canvas)
@@ -416,6 +427,8 @@ class ComponentBrowser:
             self.catalogue_status_var,
             product_command=self.open_product_page,
             datasheet_command=self.open_datasheet,
+            lcsc_command=self.search_lcsc,
+            copy_lcsc_command=self.copy_part_id,
             variable_keys={"lcsc": "part", "library": "basic"},
         )
         self.product_preview.frame.grid(
@@ -424,21 +437,34 @@ class ComponentBrowser:
         self.image_label = self.product_preview.image_label
         self._image_ref = None
 
-        catalogue_extra = ttk.Frame(content)
+        catalogue_extra = ttk.Frame(
+            content,
+            style="Card.TFrame",
+            padding=UI_SPACING["md"],
+        )
+        self.catalogue_details_card = catalogue_extra
         catalogue_extra.grid(
             row=1, column=0, columnspan=2, sticky="ew", pady=(0, 10)
         )
         catalogue_extra.columnconfigure(1, weight=1)
+        ttk.Label(
+            catalogue_extra,
+            text="CATALOGUE DETAILS",
+            style="SectionTitleSurface.TLabel",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
         for row, (label, key) in enumerate((
             ("Price breaks", "price_breaks"),
             ("Attributes", "attributes"),
-        )):
-            ttk.Label(catalogue_extra, text=label, style="Section.TLabel").grid(
+        ), start=1):
+            ttk.Label(
+                catalogue_extra, text=label, style="CardMeta.TLabel"
+            ).grid(
                 row=row, column=0, sticky="nw", padx=(0, 14), pady=3
             )
             ttk.Label(
                 catalogue_extra,
                 textvariable=self.detail_vars[key],
+                style="Card.TLabel",
                 wraplength=860,
                 justify="left",
             ).grid(row=row, column=1, sticky="ew", pady=3)
@@ -477,11 +503,14 @@ class ComponentBrowser:
             "stripe-alt", background=self.palette["surface_alt"]
         )
         self.alternatives_tree.grid(row=0, column=0, sticky="ew")
-        alt_scroll = ttk.Scrollbar(
-            alternatives, orient="vertical", command=self.alternatives_tree.yview
+        self.alternatives_scrollbar = AutoHideScrollbar(
+            alternatives,
+            orient="vertical",
+            command=self.alternatives_tree.yview,
+            palette=self.palette,
         )
-        alt_scroll.grid(row=0, column=1, sticky="ns")
-        self.alternatives_tree.configure(yscrollcommand=alt_scroll.set)
+        self.alternatives_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.alternatives_tree.configure(yscrollcommand=self.alternatives_scrollbar.set)
         self.alternatives_tree.bind(
             "<Double-1>", lambda _event: self.open_selected_alternative()
         )
@@ -492,9 +521,19 @@ class ComponentBrowser:
             wraplength=850,
         ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
 
-        schematic = ttk.LabelFrame(content, text="Schematic properties", padding=UI_SPACING["md"])
+        schematic = ttk.Frame(
+            content,
+            style="Card.TFrame",
+            padding=UI_SPACING["md"],
+        )
+        self.schematic_properties_card = schematic
         schematic.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         schematic.columnconfigure(1, weight=1)
+        ttk.Label(
+            schematic,
+            text="SCHEMATIC PROPERTIES",
+            style="SectionTitleSurface.TLabel",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
         schematic_fields = (
             ("Reference", "reference"),
             ("Value", "value"),
@@ -504,13 +543,14 @@ class ComponentBrowser:
             ("Datasheet", "datasheet"),
             ("Sheet", "sheet"),
         )
-        for row, (label, key) in enumerate(schematic_fields):
-            ttk.Label(schematic, text=label).grid(
+        for row, (label, key) in enumerate(schematic_fields, start=1):
+            ttk.Label(schematic, text=label, style="CardMeta.TLabel").grid(
                 row=row, column=0, sticky="nw", padx=(0, 12), pady=3
             )
             ttk.Label(
                 schematic,
                 textvariable=self.detail_vars[key],
+                style="Card.TLabel",
                 wraplength=430,
                 justify="left",
             ).grid(row=row, column=1, sticky="ew", pady=3)
@@ -526,22 +566,6 @@ class ComponentBrowser:
             text="Select same part on sheet",
             command=self.select_same_part_on_sheet,
         ).pack(side="left")
-
-        links = ttk.Frame(content)
-        links.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-        links.columnconfigure((0, 1), weight=1)
-        link_actions = (
-            ("Copy part ID", self.copy_part_id),
-            ("Search LCSC", self.search_lcsc),
-        )
-        for index, (label, command) in enumerate(link_actions):
-            ttk.Button(links, text=label, command=command).grid(
-                row=index // 2,
-                column=index % 2,
-                sticky="ew",
-                padx=(0, 6) if index % 2 == 0 else (0, 0),
-                pady=(0, 4),
-            )
 
         footer = ttk.Frame(self.root, padding=(16, 0, 16, 12))
         footer.grid(row=2, column=0, sticky="ew")
@@ -630,7 +654,7 @@ class ComponentBrowser:
             self.root.title(f"JLCPCB Component Properties — {component.reference}")
         self.detail_vars["reference"].set(component.reference or "—")
         self.detail_vars["value"].set(component.value or "—")
-        self.detail_vars["part"].set(component.part_reference or "—")
+        self.detail_vars["part"].set(component.part_code or "—")
         self.detail_vars["footprint"].set(component.footprint or "—")
         self.detail_vars["datasheet"].set(self._format_datasheet_display(component.datasheet))
         self.detail_vars["sheet"].set(component.sheet_path or "—")
@@ -691,13 +715,50 @@ class ComponentBrowser:
             details.manufacturer_part_number if details is not None else ""
         )
         alternatives: list[JlcPartDetails] = []
-        alternative_error = ""
+        search_errors: list[str] = []
         if mpn and details is not None:
             try:
-                alternatives = provider.search_by_mpn(mpn)
+                alternatives = list(provider.search_by_mpn(mpn))[:5]
             except Exception as exc:
-                alternative_error = str(exc)
-        return details, image_data, alternatives, alternative_error
+                search_errors.append(f"MPN search: {exc}")
+
+        # A sparse MPN search should not hide interchangeable simple passives.
+        # Use the schematic value and exact KiCad footprint to discover more
+        # candidates, but keep the MPN-ranked results at the top.
+        if details is not None and len(alternatives) < 5:
+            reference = str(component.reference or "").strip().upper()
+            expected_kind = (
+                "resistor" if reference.startswith("R")
+                else "capacitor" if reference.startswith("C")
+                else ""
+            )
+            value = str(component.value or "").strip()
+            footprint = str(component.footprint or "").strip()
+            if expected_kind and value and footprint:
+                try:
+                    criteria = parse_passive_search_query(value)
+                    if criteria.kind == expected_kind:
+                        keyword_results = provider.search_by_keyword(
+                            criteria.supplier_query
+                        )
+                        passive_matches = exact_passive_candidates(
+                            criteria.supplier_query,
+                            keyword_results,
+                            footprint=footprint,
+                            max_results=5,
+                        )
+                        known_codes = {item.lcsc for item in alternatives}
+                        for candidate, _draft in passive_matches:
+                            if candidate.lcsc in known_codes:
+                                continue
+                            alternatives.append(candidate)
+                            known_codes.add(candidate.lcsc)
+                            if len(alternatives) == 5:
+                                break
+                except Exception as exc:
+                    search_errors.append(f"passive value/footprint search: {exc}")
+
+        return details, image_data, alternatives, "; ".join(search_errors)
 
     def _drain_catalogue_queue(self) -> None:
         if self._closed:
@@ -926,9 +987,12 @@ class ComponentBrowser:
         self.alternatives_tree.delete(*self.alternatives_tree.get_children())
         if not alternatives:
             self.alternatives_status_var.set(
-                f"MPN search failed: {search_error}"
+                f"Alternative search failed: {search_error}"
                 if search_error
-                else "No purchasable exact-MPN listings were returned by JLCPCB."
+                else (
+                    "No purchasable MPN or matching passive value/footprint "
+                    "listings were returned by JLCPCB."
+                )
             )
             return
 
@@ -951,7 +1015,11 @@ class ComponentBrowser:
                     details.lcsc + ("  ✓" if details.lcsc == selected_lcsc else ""),
                     details.manufacturer_part_number or "—",
                     details.package or "—",
-                    "Exact" if details.mpn_match else "Related",
+                    (
+                        "Exact" if details.mpn_match is True
+                        else "Related" if details.mpn_match is False
+                        else "Value/pkg"
+                    ),
                     library,
                     self._alternative_stock(details),
                     self._alternative_minimum(details),

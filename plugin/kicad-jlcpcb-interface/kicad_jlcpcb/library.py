@@ -411,13 +411,46 @@ def _entry_text(entry: list[Sexp] | None, field: str) -> str:
     return _string_value(node[1]) if node is not None and len(node) >= 2 else ""
 
 
-def _uri_path(project_dir: Path, uri: str) -> Path | None:
+def _is_kicad_footprint_directory_uri(uri: str, nickname: str) -> bool:
+    """Recognize only the stock library path when KiCad IPC omits named path keys."""
+    pattern = (
+        r"^\$\{?KICAD(?:\d+)?_FOOTPRINT_DIR\}?[/\\]"
+        + re.escape(nickname)
+        + r"\.pretty[/\\]?$"
+    )
+    return re.fullmatch(
+        pattern, str(uri or "").strip(), flags=re.IGNORECASE
+    ) is not None
+
+
+
+def _uri_path(
+    project_dir: Path,
+    uri: str,
+    path_variables: dict[str, str] | None = None,
+) -> Path | None:
+    """Resolve a KiCad library URI using process and IPC-provided path variables."""
     raw = str(uri or "").strip()
     if not raw:
         return None
     raw = raw.replace("${KIPRJMOD}", str(project_dir))
+    variables = {
+        str(name): str(value)
+        for name, value in (path_variables or {}).items()
+        if value not in (None, "")
+    }
+
+    def replace_variable(match: re.Match[str]) -> str:
+        name = match.group(1) or match.group(2)
+        return variables.get(name, match.group(0))
+
+    raw = re.sub(
+        r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)",
+        replace_variable,
+        raw,
+    )
     raw = os.path.expandvars(raw)
-    if "$" + "{" in raw:
+    if "$" + "{" in raw or re.search(r"\$[A-Za-z_]", raw):
         return None
     candidate = Path(raw).expanduser()
     if not candidate.is_absolute():
@@ -638,11 +671,26 @@ def footprint_library_entry_available(
     if not re.fullmatch(r"[A-Za-z0-9_+.-]{1,120}", footprint_name):
         return False
 
+    path_variables: dict[str, str] = {}
+    if kicad is not None:
+        try:
+            raw_paths = kicad.get_paths()
+            if isinstance(raw_paths, dict):
+                path_variables = {
+                    str(name): str(value)
+                    for name, value in raw_paths.items()
+                    if value not in (None, "")
+                }
+        except Exception:
+            pass
+
     tables: list[tuple[Path, Path]] = []
+    project_table_path: Path | None = None
     if project_or_path is not None:
         try:
             project_dir = _project_directory(project_or_path)
-            tables.append((project_dir / "fp-lib-table", project_dir))
+            project_table_path = project_dir / "fp-lib-table"
+            tables.append((project_table_path, project_dir))
         except SymbolLibraryError:
             pass
     tables.extend(
@@ -663,10 +711,21 @@ def footprint_library_entry_available(
                 continue
             if _entry_text(entry, "type") != "KiCad":
                 return False
-            library_path = _uri_path(base_dir, _entry_text(entry, "uri"))
+            uri = _entry_text(entry, "uri")
+            library_path = _uri_path(base_dir, uri, path_variables)
+            if library_path is None:
+                # get_paths() returns numeric path-enum keys, not the named
+                # KICAD*_FOOTPRINT_DIR variables used by stock fp-lib-table
+                # rows. For a global stock row only, let the installed-root
+                # scan below resolve the nickname from those IPC path values.
+                if (
+                    table_path != project_table_path
+                    and _is_kicad_footprint_directory_uri(uri, nickname)
+                ):
+                    continue
+                return False
             if (
-                library_path is None
-                or library_path.is_symlink()
+                library_path.is_symlink()
                 or not library_path.is_dir()
             ):
                 return False
@@ -676,35 +735,34 @@ def footprint_library_entry_available(
             continue
 
     candidates: list[Path] = []
-    if kicad is not None:
-        try:
-            candidates.extend(
-                Path(value).expanduser()
-                for value in kicad.get_paths().values()
-                if value
-            )
-        except Exception:
-            pass
-    for variable in (
-        "KICAD_FOOTPRINT_DIR",
-        "KICAD8_FOOTPRINT_DIR",
-        "KICAD9_FOOTPRINT_DIR",
-        "KICAD10_FOOTPRINT_DIR",
-        "KICAD11_FOOTPRINT_DIR",
-    ):
-        value = os.environ.get(variable, "").strip()
-        if value:
-            candidates.append(Path(value).expanduser())
+    for value in path_variables.values():
+        resolved = _uri_path(Path.cwd(), value, path_variables)
+        if resolved is not None:
+            candidates.append(resolved)
+    for variable, value in os.environ.items():
+        if variable.endswith("_FOOTPRINT_DIR") and value.strip():
+            candidates.append(Path(os.path.expandvars(value)).expanduser())
     candidates.extend(
         Path(value)
         for value in (
             "/usr/share/kicad-nightly/footprints",
+            "/usr/share/kicad-nightly/share/kicad/footprints",
             "/usr/share/kicad/footprints",
+            "/usr/share/kicad/share/kicad/footprints",
             "/usr/local/share/kicad/footprints",
             "/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints",
             "C:/Program Files/KiCad/share/kicad/footprints",
         )
     )
+    for system_share in (Path("/usr/share"), Path("/usr/local/share"), Path("/opt")):
+        for pattern in (
+            "kicad*/footprints",
+            "kicad*/share/kicad/footprints",
+        ):
+            try:
+                candidates.extend(system_share.glob(pattern))
+            except OSError:
+                continue
     seen_roots: set[Path] = set()
     for candidate in candidates:
         root = Path(candidate).expanduser()
@@ -717,9 +775,16 @@ def footprint_library_entry_available(
             if library_root in seen_roots:
                 continue
             seen_roots.add(library_root)
-            item = library_root / f"{nickname}.pretty" / f"{footprint_name}.kicad_mod"
-            if item.is_file() and not item.is_symlink():
-                return True
+            library_root = library_root / f"{nickname}.pretty"
+            try:
+                library_root = library_root.resolve(strict=True)
+                item = (library_root / f"{footprint_name}.kicad_mod").resolve(
+                    strict=True
+                )
+                if item.is_file() and item.is_relative_to(library_root):
+                    return True
+            except (OSError, RuntimeError):
+                continue
     return False
 
 

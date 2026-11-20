@@ -888,6 +888,87 @@ class CadSuggestionTests(unittest.TestCase):
         self.assertEqual(populator.footprint_var.get(), "My_Footprints:Verified")
         self.assertEqual(populator.draft.footprint, "")
 
+    def test_update_footprint_change_requests_cad_previews_even_for_local_target(self):
+        class Variable:
+            def __init__(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def set(self, value):
+                self.value = value
+
+        class Future:
+            def __init__(self):
+                self.callback = None
+
+            def add_done_callback(self, callback):
+                self.callback = callback
+
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = False
+        populator._cad_lcsc = "C12345"
+        populator._cad_pending = False
+        populator._cad_attempted = False
+        populator._cad_assets = None
+        populator._manual_proposal_fields = {"footprint"}
+        populator._original_footprint = "Resistor_SMD:R_0402_1005Metric"
+        populator.footprint_var = Variable("Resistor_SMD:R_0603_1608Metric")
+        populator.schematic = SimpleNamespace(get_project=lambda: None)
+        populator.kicad = None
+        populator.cad_status_var = SimpleNamespace(set=Mock())
+        populator._set_cad_preview_visible = Mock()
+        future = Future()
+        populator.cad_executor = SimpleNamespace(submit=Mock(return_value=future))
+        populator.cad_provider = SimpleNamespace(lookup=Mock())
+        populator.results = object()
+        details = SimpleNamespace(lcsc="C12345")
+
+        with patch(
+            "kicad_jlcpcb.populator.footprint_library_entry_available",
+            return_value=True,
+        ):
+            populator._request_cad_assets(details, self.draft)
+
+        populator.cad_executor.submit.assert_called_once_with(
+            populator.cad_provider.lookup, "C12345"
+        )
+        self.assertTrue(populator._cad_pending)
+        self.assertTrue(populator._cad_attempted)
+        self.assertEqual(populator.footprint_var.get(), "Resistor_SMD:R_0603_1608Metric")
+
+    def test_update_preserves_a_valid_local_footprint_when_showing_cad_comparison(self):
+        populator = self.populator(create_mode=False)
+        populator.footprint_var.set("Resistor_SMD:R_0603_1608Metric")
+        populator.draft = replace(
+            self.draft, footprint="Resistor_SMD:R_0603_1608Metric"
+        )
+
+        with patch(
+            "kicad_jlcpcb.populator.footprint_library_entry_available",
+            return_value=True,
+        ):
+            populator._apply_cad_suggestions(self.assets)
+
+        self.assertEqual(
+            populator.footprint_var.get(), "Resistor_SMD:R_0603_1608Metric"
+        )
+        self.assertEqual(
+            populator.draft.footprint, "Resistor_SMD:R_0603_1608Metric"
+        )
+
+    def test_update_keeps_manual_footprint_and_still_allows_comparison_preview(self):
+        populator = self.populator(create_mode=False, manual_fields={"footprint"})
+        populator.footprint_var.set("My_Footprints:Verified")
+        self._apply_assets_to_populator(populator)
+
+        self.assertEqual(populator.footprint_var.get(), "My_Footprints:Verified")
+        self.assertNotEqual(populator.draft.footprint, self.assets.footprint_library_id)
+
+    def _apply_assets_to_populator(self, populator):
+        populator._apply_cad_suggestions(self.assets)
+
 
     def test_switching_catalogue_candidate_resets_previous_manual_edits(self):
         populator = self.populator(create_mode=True, manual_fields={"footprint"})
@@ -933,6 +1014,7 @@ class CadSuggestionTests(unittest.TestCase):
 
         notebook = Notebook()
         labels = SimpleNamespace(
+            frame=Mock(),
             notebook=notebook,
             symbol_tab=object(),
             footprint_tab=object(),
@@ -942,6 +1024,8 @@ class CadSuggestionTests(unittest.TestCase):
             model_label=Label(),
         )
         populator = object.__new__(ComponentPopulator)
+        populator.properties_column = Mock()
+        populator.preview_column = Mock()
         populator.cad_preview = labels
         populator.root = object()
         populator.cad_status_var = self.Variable()
@@ -958,7 +1042,75 @@ class CadSuggestionTests(unittest.TestCase):
         self.assertEqual(displayed[2][1], b"3d-preview")
         self.assertEqual(displayed[2][3], (400, 210))
         self.assertEqual(notebook.selected, [labels.model_tab])
+        populator.properties_column.grid_configure.assert_called_once_with(
+            columnspan=1
+        )
+        populator.preview_column.grid.assert_called_once_with()
+        labels.frame.grid.assert_called_once_with()
         self.assertIn("3D model", populator.cad_status_var.get())
+
+    def _preview_layout_populator(self):
+        populator = object.__new__(ComponentPopulator)
+        populator.properties_column = Mock()
+        populator.preview_column = Mock()
+        populator.root = object()
+        populator.cad_status_var = self.Variable()
+        populator.cad_preview = SimpleNamespace(
+            frame=Mock(),
+            notebook=Mock(),
+            symbol_tab=object(),
+            footprint_tab=object(),
+            model_tab=object(),
+            symbol_label=Mock(),
+            footprint_label=Mock(),
+            model_label=Mock(),
+        )
+        return populator
+
+    def test_hides_empty_cad_preview_column_when_no_rendered_images_exist(self):
+        populator = self._preview_layout_populator()
+
+        with patch(
+            "kicad_jlcpcb.populator.display_product_image", return_value=None
+        ):
+            populator._show_cad_assets(self.assets)
+
+        populator.properties_column.grid_configure.assert_called_once_with(
+            columnspan=2
+        )
+        populator.preview_column.grid_remove.assert_called_once_with()
+        populator.cad_preview.frame.grid_remove.assert_called_once_with()
+        populator.preview_column.grid.assert_not_called()
+
+    def test_expands_cad_preview_column_when_an_image_is_available(self):
+        populator = self._preview_layout_populator()
+        assets = replace(self.assets, symbol_preview_png=b"symbol-preview")
+
+        with patch(
+            "kicad_jlcpcb.populator.display_product_image", return_value=object()
+        ):
+            populator._show_cad_assets(assets)
+
+        populator.properties_column.grid_configure.assert_called_once_with(
+            columnspan=1
+        )
+        populator.preview_column.grid.assert_called_once_with()
+        populator.cad_preview.frame.grid.assert_called_once_with()
+        populator.preview_column.grid_remove.assert_not_called()
+
+    def test_hides_cad_preview_column_when_lookup_returns_no_assets(self):
+        populator = self._preview_layout_populator()
+
+        with patch(
+            "kicad_jlcpcb.populator.display_product_image", return_value=None
+        ):
+            populator._show_cad_assets(None)
+
+        populator.properties_column.grid_configure.assert_called_once_with(
+            columnspan=2
+        )
+        populator.preview_column.grid_remove.assert_called_once_with()
+        populator.cad_preview.frame.grid_remove.assert_called_once_with()
 
     def test_update_mode_only_prefills_footprint_and_never_symbol(self):
         populator = self.populator(create_mode=False)
@@ -1031,6 +1183,54 @@ class FieldFeedbackTests(unittest.TestCase):
             ("footprint", "error"),
         )
 
+    def test_update_footprint_change_adds_explicit_compatibility_warning(self):
+        class Variable:
+            def __init__(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = False
+        populator.draft = SimpleNamespace()
+        populator._original_footprint = "Resistor_SMD:R_0402_1005Metric"
+        populator.footprint_var = Variable("Resistor_SMD:R_0603_1608Metric")
+        populator._notes_messages = ("Info: Existing catalogue note.",)
+        populator._cad_assets = SimpleNamespace(has_3d_model=True)
+        populator._set_notes = Mock()
+
+        populator._refresh_update_compatibility_notes()
+
+        notes = populator._set_notes.call_args.args[0]
+        warning = next(note for note in notes if note.startswith(
+            "Warning: Update proposes a footprint change"
+        ))
+        self.assertIn("R_0402_1005Metric", warning)
+        self.assertIn("R_0603_1608Metric", warning)
+        self.assertIn("preserves the selected schematic symbol", warning)
+        self.assertIn("pad count/numbering", warning)
+        self.assertIn("3D model", warning)
+        self.assertTrue(any("STEP 3D model" in note for note in notes))
+        self.assertIn("Info: Existing catalogue note.", notes)
+
+    def test_unchanged_update_footprint_does_not_add_compatibility_warning(self):
+        populator = object.__new__(ComponentPopulator)
+        populator.create_mode = False
+        populator.draft = SimpleNamespace()
+        populator._original_footprint = "Resistor_SMD:R_0402_1005Metric"
+        populator.footprint_var = SimpleNamespace(
+            get=lambda: "Resistor_SMD:R_0402_1005Metric"
+        )
+        populator._notes_messages = ("Info: Existing catalogue note.",)
+        populator._set_notes = Mock()
+
+        populator._refresh_update_compatibility_notes()
+
+        populator._set_notes.assert_called_once_with(
+            ("Info: Existing catalogue note.",)
+        )
+
     def test_sync_button_remains_disabled_for_non_writable_libraries(self):
         populator = object.__new__(ComponentPopulator)
         populator.create_mode = False
@@ -1073,6 +1273,12 @@ class FieldFeedbackTests(unittest.TestCase):
         populator.draft = SimpleNamespace(proposed_fields=(("Value", "10k"),))
         populator.create_mode = False
         populator.symbol = object()
+        populator.footprint_var = SimpleNamespace(
+            get=lambda: "Resistor_SMD:R_0402_1005Metric"
+        )
+        populator._original_footprint = "Resistor_SMD:R_0402_1005Metric"
+        populator._notes_messages = ()
+        populator._set_notes = Mock()
         populator.apply_button = Mock()
         populator._update_field_feedback = Mock(return_value={"footprint"})
         populator.status_var = Mock()

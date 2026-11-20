@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import itertools
 import os
 import subprocess
 import sys
+import tkinter as tk
+import weakref
 from pathlib import Path
+from tkinter import ttk
 from typing import Any
 
 THEME_ENVIRONMENT_VARIABLE = "KICAD_JLCPCB_THEME"
@@ -13,6 +17,176 @@ THEME_ENVIRONMENT_VARIABLE = "KICAD_JLCPCB_THEME"
 # Shared layout and typography tokens for every Tk window.
 UI_SPACING = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24}
 UI_FONT_SIZES = {"caption": 8, "body": 9, "section": 9, "metric": 10, "card_title": 11, "title": 16}
+
+class AutoHideScrollbar(ttk.Scrollbar):
+    """Keep a narrow idle rail and reveal the draggable thumb during interaction."""
+
+    _instances = itertools.count(1)
+    IDLE_WIDTH = 2
+    ACTIVE_WIDTH = 10
+    HIDE_DELAY_MS = 900
+
+    def __init__(self, master=None, *, palette: dict[str, str], **kwargs):
+        self._scroll_command = kwargs.pop("command", None)
+        orient = str(kwargs.get("orient", "vertical")).lower()
+        orient_name = "Horizontal" if orient.startswith("h") else "Vertical"
+        self._base_style = f"{orient_name}.TScrollbar"
+        token = next(self._instances)
+        self._idle_style = f"AutoHide{token}.Idle.{orient_name}.TScrollbar"
+        self._active_style = f"AutoHide{token}.Active.{orient_name}.TScrollbar"
+        self._style = ttk.Style(master)
+        self._hide_after_id = None
+        self._scrollable = False
+        self._hovered = False
+        self._last_fractions: tuple[float, float] | None = None
+        self._configure_styles(palette)
+        kwargs["style"] = self._idle_style
+        kwargs["command"] = self._dispatch_scroll
+        super().__init__(master, **kwargs)
+        self.bind("<Enter>", self._on_enter, add="+")
+        self.bind("<Leave>", self._on_leave, add="+")
+        self.bind("<Destroy>", self._on_destroy, add="+")
+
+        registry_root = self._root()
+        registry = getattr(
+            registry_root, "_kicad_jlcpcb_auto_hide_scrollbars", None
+        )
+        if registry is None:
+            registry = weakref.WeakSet()
+            registry_root._kicad_jlcpcb_auto_hide_scrollbars = registry
+        registry.add(self)
+
+    @property
+    def idle_style(self) -> str:
+        return self._idle_style
+
+    @property
+    def active_style(self) -> str:
+        return self._active_style
+
+    @property
+    def scrollable(self) -> bool:
+        return self._scrollable
+
+    def _configure_styles(self, palette: dict[str, str]) -> None:
+        layout = self._style.layout(self._base_style)
+        self._style.layout(self._idle_style, layout)
+        self._style.layout(self._active_style, layout)
+        self._style.configure(
+            self._idle_style,
+            background=palette["background"],
+            troughcolor=palette["background"],
+            bordercolor=palette["background"],
+            lightcolor=palette["background"],
+            darkcolor=palette["background"],
+            relief="flat",
+            borderwidth=0,
+            width=self.IDLE_WIDTH,
+        )
+        # ttk inherits the base scrollbar's state map unless this custom style
+        # supplies its own; pin the idle thumb to the current window background.
+        self._style.map(
+            self._idle_style,
+            background=[("!disabled", palette["background"])],
+        )
+        self._style.configure(
+            self._active_style,
+            background=palette["scroll_thumb"],
+            troughcolor=palette["scroll_trough"],
+            bordercolor=palette["scroll_trough"],
+            lightcolor=palette["scroll_thumb"],
+            darkcolor=palette["scroll_thumb"],
+            relief="flat",
+            borderwidth=0,
+            width=self.ACTIVE_WIDTH,
+        )
+        self._style.map(
+            self._active_style,
+            background=[
+                ("pressed", palette["accent"]),
+                ("active", palette["accent"]),
+                ("!disabled", palette["scroll_thumb"]),
+            ],
+        )
+
+    def set(self, first: str, last: str) -> None:
+        """Receive the content's visible range and reveal only on real movement."""
+        super().set(first, last)
+        try:
+            fractions = (float(first), float(last))
+        except (TypeError, ValueError):
+            return
+        self._scrollable = fractions[0] > 0.0 or fractions[1] < 1.0
+        changed = fractions != self._last_fractions
+        self._last_fractions = fractions
+        if not self._scrollable:
+            self._cancel_hide()
+            self._set_idle_style()
+        elif changed:
+            self._reveal()
+
+    def _dispatch_scroll(self, *args):
+        self._reveal()
+        if callable(self._scroll_command):
+            return self._scroll_command(*args)
+        if self._scroll_command:
+            return self.tk.call(self._scroll_command, *args)
+        return None
+
+    def _on_enter(self, _event=None) -> None:
+        self._hovered = True
+        self._reveal()
+
+    def _on_leave(self, _event=None) -> None:
+        self._hovered = False
+        self._schedule_hide()
+
+    def _reveal(self) -> None:
+        if not self._scrollable:
+            return
+        self._cancel_hide()
+        try:
+            self.configure(style=self._active_style)
+            self._hide_after_id = self.after(self.HIDE_DELAY_MS, self._hide_if_idle)
+        except tk.TclError:
+            self._hide_after_id = None
+
+    def _schedule_hide(self) -> None:
+        self._cancel_hide()
+        if self._scrollable and not self._hovered:
+            try:
+                self._hide_after_id = self.after(
+                    self.HIDE_DELAY_MS, self._hide_if_idle
+                )
+            except tk.TclError:
+                self._hide_after_id = None
+
+    def _hide_if_idle(self) -> None:
+        self._hide_after_id = None
+        if self._hovered:
+            return
+        self._set_idle_style()
+
+    def _set_idle_style(self) -> None:
+        try:
+            self.configure(style=self._idle_style)
+        except tk.TclError:
+            pass
+
+    def _cancel_hide(self) -> None:
+        if self._hide_after_id is None:
+            return
+        try:
+            self.after_cancel(self._hide_after_id)
+        except tk.TclError:
+            pass
+        self._hide_after_id = None
+
+    def _on_destroy(self, event=None) -> None:
+        if event is not None and getattr(event, "widget", self) is not self:
+            return
+        self._cancel_hide()
+
 
 _PALETTES: dict[str, dict[str, str]] = {
     "dark": {
@@ -315,12 +489,6 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         relief="flat",
     )
     style.configure(
-        "ProductEyebrow.TLabel",
-        background=palette["surface"],
-        foreground=palette["accent"],
-        font=("TkDefaultFont", 8, "bold"),
-    )
-    style.configure(
         "ProductImage.TFrame",
         background=palette["surface_alt"],
         borderwidth=0,
@@ -355,6 +523,16 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         font=("TkDefaultFont", 10, "bold"),
     )
     style.configure(
+        "CopyablePartId.TLabel",
+        background=palette["surface"],
+        foreground=palette["accent"],
+        font=("TkDefaultFont", 10, "bold", "underline"),
+    )
+    style.map(
+        "CopyablePartId.TLabel",
+        foreground=[("active", palette["foreground"]), ("!disabled", palette["accent"])],
+    )
+    style.configure(
         "Warning.TLabel",
         background=palette["background"],
         foreground=palette["muted"],
@@ -386,6 +564,21 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         background=palette["background"],
         foreground=palette["foreground"],
         font=("TkDefaultFont", UI_FONT_SIZES["title"], "bold"),
+    )
+    section_title_font = (
+        "TkDefaultFont", UI_FONT_SIZES["card_title"], "bold"
+    )
+    style.configure(
+        "SectionTitle.TLabel",
+        background=palette["background"],
+        foreground=palette["foreground"],
+        font=section_title_font,
+    )
+    style.configure(
+        "SectionTitleSurface.TLabel",
+        background=palette["surface"],
+        foreground=palette["foreground"],
+        font=section_title_font,
     )
     style.configure(
         "Subtitle.TLabel",
@@ -457,12 +650,6 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         foreground=palette["foreground"],
     )
     style.configure(
-        "CardTitle.TLabel",
-        background=palette["surface"],
-        foreground=palette["foreground"],
-        font=("TkDefaultFont", 11, "bold"),
-    )
-    style.configure(
         "CardMeta.TLabel",
         background=palette["surface"],
         foreground=palette["muted"],
@@ -486,8 +673,11 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         darkcolor=palette["background"], relief="flat", borderwidth=0,
     )
     style.configure(
-        "TLabelframe.Label", background=palette["background"], foreground=palette["muted"],
-        padding=(0, 0), font=("TkDefaultFont", UI_FONT_SIZES["section"], "bold"),
+        "TLabelframe.Label",
+        background=palette["background"],
+        foreground=palette["foreground"],
+        padding=(0, 0),
+        font=section_title_font,
     )
     style.configure(
         "TButton",
@@ -631,27 +821,54 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         "TNotebook",
         background=palette["background"],
         borderwidth=0,
-        bordercolor=palette["border"],
-        lightcolor=palette["border"],
-        darkcolor=palette["border"],
-        tabmargins=(2, 4, 2, 0),
+        bordercolor=palette["background"],
+        lightcolor=palette["background"],
+        darkcolor=palette["background"],
+        relief="flat",
+        tabmargins=(0, 4, 6, 0),
     )
     style.configure(
         "TNotebook.Tab",
         background=palette["surface_alt"],
         foreground=palette["muted"],
-        bordercolor=palette["border"],
-        padding=(13, 8),
+        borderwidth=0,
+        bordercolor=palette["surface_alt"],
+        lightcolor=palette["surface_alt"],
+        darkcolor=palette["surface_alt"],
+        relief="flat",
+        focuscolor=palette["accent"],
+        padding=(14, 8),
     )
     style.map(
         "TNotebook.Tab",
         background=[
-            ("selected", palette["surface"]),
+            ("selected", palette["selected"]),
             ("active", palette["hover"]),
         ],
         foreground=[
-            ("selected", palette["foreground"]),
+            ("selected", palette["accent"]),
             ("active", palette["foreground"]),
+        ],
+        bordercolor=[
+            ("selected", palette["selected"]),
+            ("active", palette["hover"]),
+            ("!selected", palette["surface_alt"]),
+        ],
+        lightcolor=[
+            ("selected", palette["selected"]),
+            ("!selected", palette["surface_alt"]),
+        ],
+        darkcolor=[
+            ("selected", palette["selected"]),
+            ("!selected", palette["surface_alt"]),
+        ],
+        relief=[
+            ("selected", "flat"),
+            ("!selected", "flat"),
+        ],
+        padding=[
+            ("selected", (14, 8)),
+            ("!selected", (14, 8)),
         ],
     )
     scrollbar_options = {
@@ -717,4 +934,16 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
     root._kicad_jlcpcb_theme = selected_theme
     root._kicad_jlcpcb_palette = palette
     _configure_classic_widgets(root, palette)
+
+    # Custom per-instance scrollbar styles are not part of the base ttk styles
+    # above. Refresh every live instance so an idle rail follows light/dark
+    # theme changes instead of retaining the palette from widget creation.
+    registry_root = root._root() if hasattr(root, "_root") else root
+    for scrollbar in tuple(
+        getattr(registry_root, "_kicad_jlcpcb_auto_hide_scrollbars", ())
+    ):
+        try:
+            scrollbar._configure_styles(palette)
+        except tk.TclError:
+            continue
     return palette

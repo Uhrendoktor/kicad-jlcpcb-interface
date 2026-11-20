@@ -17,6 +17,8 @@ class ProductPreviewControls:
     image_label: Any
     product_button: Any
     datasheet_button: Any
+    lcsc_button: Any | None
+    lcsc_label: Any
 
 
 def build_product_preview(
@@ -29,6 +31,8 @@ def build_product_preview(
     *,
     product_command,
     datasheet_command,
+    lcsc_command=None,
+    copy_lcsc_command=None,
     variable_keys: Mapping[str, str] | None = None,
 ) -> ProductPreviewControls:
     """Build the compact shared JLCPCB image, identity and stock/price header."""
@@ -77,7 +81,7 @@ def build_product_preview(
     ttk.Label(
         details,
         text="SELECTED PART",
-        style="ProductEyebrow.TLabel",
+        style="SectionTitleSurface.TLabel",
     ).grid(row=0, column=0, sticky="w", pady=(0, UI_SPACING["xs"]))
     description_label = ttk.Label(
         details,
@@ -120,6 +124,7 @@ def build_product_preview(
         ("CLASS", "library"),
     )
     metric_labels = []
+    lcsc_label = None
     for column, (caption, key) in enumerate(metric_specs):
         cell = ttk.Frame(metrics, style="ProductPreview.TFrame")
         cell.grid(row=0, column=column, sticky="ew", padx=(0, UI_SPACING["sm"]))
@@ -127,13 +132,33 @@ def build_product_preview(
             cell, text=caption, style="ProductKey.TLabel", wraplength=148
         )
         caption_label.pack(anchor="w")
-        value_label = ttk.Label(
-            cell,
-            textvariable=variables[keys[key]],
-            style="ProductMetric.TLabel",
-            wraplength=148,
-        )
+        if key == "lcsc" and callable(copy_lcsc_command):
+            value_label = ttk.Label(
+                cell,
+                textvariable=variables[keys[key]],
+                style="CopyablePartId.TLabel",
+                wraplength=148,
+                cursor="hand2",
+                takefocus=True,
+            )
+
+            def copy_part_id(_event=None) -> str:
+                copy_lcsc_command()
+                return "break"
+
+            value_label.bind("<Button-1>", copy_part_id)
+            value_label.bind("<Return>", copy_part_id)
+            value_label.bind("<space>", copy_part_id)
+        else:
+            value_label = ttk.Label(
+                cell,
+                textvariable=variables[keys[key]],
+                style="ProductMetric.TLabel",
+                wraplength=148,
+            )
         value_label.pack(anchor="w", pady=(3, 0))
+        if key == "lcsc":
+            lcsc_label = value_label
         metric_labels.extend((caption_label, value_label))
 
     links = ttk.Frame(details, style="ProductPreview.TFrame")
@@ -146,6 +171,16 @@ def build_product_preview(
         state="disabled",
     )
     product_button.pack(side="left", padx=(0, 14))
+    lcsc_button = None
+    if callable(lcsc_command):
+        lcsc_button = ttk.Button(
+            links,
+            text="Open in LCSC ↗",
+            command=lcsc_command,
+            style="Link.TButton",
+            state="normal",
+        )
+        lcsc_button.pack(side="left", padx=(0, 14))
     datasheet_button = ttk.Button(
         links,
         text="Datasheet ↗",
@@ -189,6 +224,8 @@ def build_product_preview(
         image_label=image_label,
         product_button=product_button,
         datasheet_button=datasheet_button,
+        lcsc_button=lcsc_button,
+        lcsc_label=lcsc_label,
     )
 
 
@@ -249,7 +286,7 @@ def build_cad_asset_preview(
     ttk.Label(
         surface,
         text="KICAD CAD CANDIDATES",
-        style="ProductEyebrow.TLabel",
+        style="SectionTitleSurface.TLabel",
     ).grid(row=0, column=0, sticky="w", pady=(0, 7))
 
     notebook = ttk.Notebook(surface)
