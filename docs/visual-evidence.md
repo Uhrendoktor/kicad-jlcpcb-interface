@@ -185,7 +185,7 @@ Pull-request runs upload the generated directory as the `kicad-jlcpcb-visual-doc
 On Ubuntu, install the same classes of system dependencies used by CI, then run:
 
 ```bash
-sudo apt-get install kicad-nightly kicad-nightly-symbols python3.12-venv python3-tk python3-pil python3-pil.imagetk xvfb xauth xdotool
+sudo apt-get install kicad-nightly kicad-nightly-symbols kicad-nightly-footprints python3.12-venv python3-tk python3-pil python3-pil.imagetk xvfb xauth xdotool
 python3.12 -m venv --system-site-packages .venv-visual
 .venv-visual/bin/pip install -r plugin/kicad-jlcpcb-interface/requirements.txt
 xvfb-run -a -s "-screen 0 1920x3000x24" \
