@@ -18,7 +18,7 @@ Other operating systems and CPU architectures are not validated yet. The KiCad I
 
 ### Appearance
 
-The browser and component review windows follow the desktop appearance where it can be detected: Windows app theme, macOS appearance, and Linux GTK/GNOME or KDE settings. ttk controls, tables, fields, scrollbars and the review-notes text area share the same palette.
+The browser and component review windows follow the desktop appearance where it can be detected: Windows app theme, macOS appearance, and Linux GTK/GNOME or KDE settings. ttk controls, tables, fields, scrollbars and the review-notes text area share the same palette. Scrollbars in the Component Overview and Add/Update windows use a narrow, low-contrast idle rail that expands during scrolling, dragging or hover, then collapses after 900 ms without interaction.
 
 Override the detected appearance by setting `KICAD_JLCPCB_THEME` before starting KiCad:
 
@@ -106,8 +106,8 @@ Select a row and use the detail panel's actions:
 
 - **Select in schematic** navigates to the selected component's sheet, zooms to its location and selects it in Eeschema.
 - **Select same part on sheet** selects all linked instances with the same LCSC code on that component's sheet. It does not select occurrences on other sheets in the same operation.
-- **Copy part ID** copies the normalized LCSC code to the clipboard.
-- **Search LCSC** opens an LCSC search for the selected code.
+- The displayed LCSC part ID in the **Selected Part** card is clickable and copies the normalized code to the clipboard; it is also keyboard-accessible with Enter or Space.
+- **Open in LCSC** opens the LCSC page/search for the selected code.
 - **Open product page** opens the supplier product page when available.
 - **Open datasheet** opens the catalogue or schematic datasheet URL when one is available.
 
