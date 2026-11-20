@@ -31,6 +31,7 @@ from kicad_jlcpcb.draft import (  # noqa: E402
     update_schematic_symbol,
 )
 from kicad_jlcpcb.library import (  # noqa: E402
+    footprint_library_entry_available,
     generate_project_library_symbol,
     parse_sexpr,
     reload_project_symbol_library,
@@ -1737,6 +1738,29 @@ def _drive_populator_form(
                 return
 
             draft = populator.draft
+            if (
+                not populator.create_mode
+                and expected_footprint == "Resistor_SMD:R_0402_1005Metric"
+            ):
+                project = populator.schematic.get_project()
+                if not footprint_library_entry_available(
+                    expected_footprint, populator.kicad, project
+                ):
+                    try:
+                        path_map = populator.kicad.get_paths()
+                    except Exception as exc:
+                        path_map = {"get_paths_error": str(exc)}
+                    raise RuntimeError(
+                        "KiCad's standard Resistor_SMD footprint did not resolve: "
+                        f"{expected_footprint}; paths={path_map!r}"
+                    )
+                populator._update_field_feedback()
+                feedback = populator._field_feedback["footprint"][1]
+                if feedback.winfo_ismapped():
+                    raise RuntimeError(
+                        "A standard KiCad footprint is incorrectly flagged as unavailable: "
+                        f"{feedback.cget('text')!r}"
+                    )
             if not populator.candidate_tree.get_children():
                 raise RuntimeError(
                     "The shared catalogue match list did not render a selected part."
