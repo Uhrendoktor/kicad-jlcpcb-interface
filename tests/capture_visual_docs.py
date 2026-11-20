@@ -154,7 +154,13 @@ def _expand_browser_to_full_height(
     root.update()
     top_height = None
     if browser.selected_component is None:
-        top_height = max(180, int(browser.tree.winfo_reqheight()) + 46)
+        # The component list now lives in a padded card with its heading inside.
+        # Size the upper pane from that complete card rather than the Treeview
+        # alone, otherwise the list remains vertically clipped in full-height
+        # screenshot captures.
+        top_height = max(
+            180, int(browser.component_list_card.winfo_reqheight()) + 8
+        )
         browser.body.sashpos(0, top_height)
         root.update_idletasks()
         root.update()
@@ -1148,10 +1154,13 @@ def _assert_auto_hide_scrollbar(scrollbar: Any, name: str) -> None:
                 f"the active palette requires {expected!r}."
             )
 
+    # Let pending geometry/yscrollcommand updates settle first. Otherwise a
+    # freshly laid-out Treeview can report its non-scrollable range after the
+    # forced reveal and immediately put the scrollbar back into its idle style.
+    scrollbar.update_idletasks()
     previous_scrollable = scrollbar.scrollable
     scrollbar._scrollable = True
     scrollbar._reveal()
-    scrollbar.update_idletasks()
     if scrollbar.cget("style") != scrollbar.active_style:
         raise RuntimeError(f"{name} did not reveal while scrolling.")
     scrollbar._cancel_hide()
@@ -1162,14 +1171,13 @@ def _assert_auto_hide_scrollbar(scrollbar: Any, name: str) -> None:
 
 
 def _assert_section_heading_typography(root: Any) -> None:
-    """Keep section headings consistent across page, card and labelled-frame surfaces."""
+    """Keep section headings consistent across page and card surfaces."""
     from tkinter import ttk
 
     style = ttk.Style(root)
     heading_styles = (
         "SectionTitle.TLabel",
         "SectionTitleSurface.TLabel",
-        "TLabelframe.Label",
     )
     expected_font = style.lookup(heading_styles[0], "font")
     expected_foreground = style.lookup(heading_styles[0], "foreground")
@@ -1184,9 +1192,11 @@ def _assert_section_heading_typography(root: Any) -> None:
             )
 
 def _assert_overview_detail_cards(browser: Any) -> None:
-    """Keep catalogue prices and schematic properties inside styled cards."""
+    """Keep every overview section in a shared card with its heading inside."""
     for name, card in (
+        ("Component list", browser.component_list_card),
         ("Catalogue details", browser.catalogue_details_card),
+        ("Other listings", browser.alternatives_card),
         ("Schematic properties", browser.schematic_properties_card),
     ):
         if str(card.cget("style")) != "Card.TFrame":
@@ -1195,10 +1205,62 @@ def _assert_overview_detail_cards(browser: Any) -> None:
                 f"not {card.cget('style')!r}."
             )
 
+    if str(browser.product_preview.frame.cget("style")) != "ProductPreview.TFrame":
+        raise RuntimeError("Selected Part must retain the shared product-preview surface.")
+    for name, title, card in (
+        ("Component list", browser.component_list_title, browser.component_list_card),
+        ("Other listings", browser.alternatives_title, browser.alternatives_card),
+    ):
+        if title.master is not card:
+            raise RuntimeError(f"{name} heading must be inside its card.")
+
 
 def _assert_overview_row_alignment(browser: Any) -> None:
-    """Align the left edge of catalogue and schematic-property data rows."""
+    """Align card bounds and data-row insets across the entire overview."""
     browser.root.update_idletasks()
+    panels = (
+        ("Design overview", browser.project_overview_card),
+        ("Component list", browser.component_list_card),
+        ("Selected part", browser.product_preview.frame),
+        ("Catalogue details", browser.catalogue_details_card),
+        ("Other listings", browser.alternatives_card),
+        ("Schematic properties", browser.schematic_properties_card),
+    )
+    bounds = {
+        name: (
+            int(panel.winfo_rootx()),
+            int(panel.winfo_rootx()) + int(panel.winfo_width()),
+        )
+        for name, panel in panels
+    }
+    left_edges = {name: position[0] for name, position in bounds.items()}
+    right_edges = {name: position[1] for name, position in bounds.items()}
+    if len(set(left_edges.values())) != 1 or len(set(right_edges.values())) != 1:
+        raise RuntimeError(
+            "Component Overview panels do not share common left and right bounds: "
+            f"{bounds!r}."
+        )
+    title_inset = int(browser.component_list_title.winfo_rootx()) - bounds["Component list"][0]
+    tree_inset = int(browser.tree.winfo_rootx()) - bounds["Component list"][0]
+    if title_inset != tree_inset:
+        raise RuntimeError(
+            "The component-list heading and table do not share the card inset: "
+            f"title={title_inset}px, table={tree_inset}px."
+        )
+    summary_title_inset = (
+        int(browser.project_overview_title.winfo_rootx())
+        - bounds["Design overview"][0]
+    )
+    summary_metric_inset = (
+        int(browser.project_overview_first_key.winfo_rootx())
+        - bounds["Design overview"][0]
+    )
+    if summary_title_inset != summary_metric_inset:
+        raise RuntimeError(
+            "The project-summary heading and first metric do not share an inset: "
+            f"title={summary_title_inset}px, metric={summary_metric_inset}px."
+        )
+
     row_specs = (
         (
             "Catalogue details",
@@ -1232,6 +1294,54 @@ def _assert_overview_row_alignment(browser: Any) -> None:
             "Component Overview data rows do not share one left inset: "
             f"{positions!r}."
         )
+
+
+def _assert_flat_cad_tabs(cad_preview: Any, root: Any, expected_page: Any = None) -> None:
+    """Check the CAD tab strip uses one surface and a single flat active marker."""
+    from tkinter import ttk
+
+    tabs = cad_preview.notebook
+    if type(tabs).__name__ != "FlatTabControl":
+        raise RuntimeError(
+            f"CAD preview must use FlatTabControl, not {type(tabs).__name__}."
+        )
+    if len(tabs.pages) != 3 or len(tabs.buttons) != 3 or len(tabs.indicators) != 3:
+        raise RuntimeError("CAD preview must expose exactly three tab pages.")
+    palette = root._kicad_jlcpcb_palette
+    style = ttk.Style(root)
+    for style_name in (
+        "TabBar.TFrame",
+        "TabItem.TFrame",
+        "ProductPreview.TFrame",
+        "TabIndicatorInactive.TFrame",
+    ):
+        actual = style.lookup(style_name, "background")
+        if actual != palette["surface"]:
+            raise RuntimeError(
+                f"{style_name} background must match the card surface: "
+                f"{actual!r} != {palette['surface']!r}."
+            )
+    if style.lookup("TabIndicator.TFrame", "background") != palette["accent"]:
+        raise RuntimeError("The active tab underline must use the theme accent.")
+    if (
+        style.lookup("Tab.TButton", "padding")
+        != style.lookup("ActiveTab.TButton", "padding")
+    ):
+        raise RuntimeError("Selecting a CAD tab must not change its size.")
+    active_buttons = [
+        button for button in tabs.buttons
+        if str(button.cget("style")) == "ActiveTab.TButton"
+    ]
+    active_indicators = [
+        indicator for indicator in tabs.indicators
+        if str(indicator.cget("style")) == "TabIndicator.TFrame"
+    ]
+    if len(active_buttons) != 1 or len(active_indicators) != 1:
+        raise RuntimeError(
+            "Exactly one CAD tab must be active and marked with an underline."
+        )
+    if expected_page is not None and tabs.selected_tab is not expected_page:
+        raise RuntimeError("The requested CAD preview page is not selected.")
 
 
 def _assert_selected_part_actions(browser: Any) -> None:
@@ -1274,7 +1384,6 @@ def _drive_overview(
     root = browser.root
     _assert_section_heading_typography(root)
     _assert_overview_detail_cards(browser)
-    _assert_overview_row_alignment(browser)
     _assert_selected_part_actions(browser)
     for name, scrollbar in (
         ("overview component list", browser.tree_scrollbar),
@@ -1282,6 +1391,7 @@ def _drive_overview(
         ("overview alternatives", browser.alternatives_scrollbar),
     ):
         _assert_auto_hide_scrollbar(scrollbar, name)
+    _assert_overview_row_alignment(browser)
     failures: list[str] = []
     frames = (
         output_dir / "component-browser-initial.png",
@@ -1758,6 +1868,7 @@ def _drive_populator_form(
     """Capture the production review form and verify the resulting KiCad IPC action."""
     root = populator.root
     _assert_section_heading_typography(root)
+    _assert_flat_cad_tabs(populator.cad_preview, root)
     failures: list[str] = []
     state = {"done": False, "deadline": time.monotonic() + 60.0}
 
@@ -2607,6 +2718,10 @@ def _capture_easyeda_3d_preview(
                     notebook.select(populator.cad_preview.model_tab)
                     root.update_idletasks()
                     root.update()
+                _assert_flat_cad_tabs(
+                    populator.cad_preview, root,
+                    expected_page=populator.cad_preview.model_tab,
+                )
                 model_label = populator.cad_preview.model_label
                 if (
                     not model_label.winfo_ismapped()

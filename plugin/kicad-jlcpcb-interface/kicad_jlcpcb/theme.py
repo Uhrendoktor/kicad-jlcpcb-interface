@@ -817,59 +817,77 @@ def apply_tk_theme(root: Any, theme: str | None = None) -> dict[str, str]:
         background=[("active", palette["hover"])],
         foreground=[("active", palette["foreground"])],
     )
+    # CAD preview tabs deliberately use flat controls rather than ttk.Notebook's
+    # platform tab chrome. Both states share identical sizing and surfaces; the
+    # active page is identified only by its compact, square accent underline.
     style.configure(
-        "TNotebook",
-        background=palette["background"],
+        "TabBar.TFrame",
+        background=palette["surface"],
         borderwidth=0,
-        bordercolor=palette["background"],
-        lightcolor=palette["background"],
-        darkcolor=palette["background"],
         relief="flat",
-        tabmargins=(0, 4, 6, 0),
     )
     style.configure(
-        "TNotebook.Tab",
-        background=palette["surface_alt"],
-        foreground=palette["muted"],
+        "TabItem.TFrame",
+        background=palette["surface"],
         borderwidth=0,
-        bordercolor=palette["surface_alt"],
-        lightcolor=palette["surface_alt"],
-        darkcolor=palette["surface_alt"],
         relief="flat",
-        focuscolor=palette["accent"],
-        padding=(14, 8),
     )
+    style.configure(
+        "TabIndicator.TFrame",
+        background=palette["accent"],
+        borderwidth=0,
+        relief="flat",
+    )
+    style.configure(
+        "TabIndicatorInactive.TFrame",
+        background=palette["surface"],
+        borderwidth=0,
+        relief="flat",
+    )
+    for tab_style, foreground in (
+        ("Tab.TButton", palette["muted"]),
+        ("ActiveTab.TButton", palette["accent"]),
+    ):
+        style.configure(
+            tab_style,
+            background=palette["surface"],
+            foreground=foreground,
+            borderwidth=0,
+            bordercolor=palette["surface"],
+            lightcolor=palette["surface"],
+            darkcolor=palette["surface"],
+            relief="flat",
+            focuscolor=palette["surface"],
+            focusthickness=0,
+            padding=(10, 6),
+            font=("TkDefaultFont", 9),
+        )
     style.map(
-        "TNotebook.Tab",
+        "Tab.TButton",
         background=[
-            ("selected", palette["selected"]),
+            ("pressed", palette["surface"]),
             ("active", palette["hover"]),
+            ("!disabled", palette["surface"]),
         ],
         foreground=[
-            ("selected", palette["accent"]),
+            ("disabled", palette["muted"]),
             ("active", palette["foreground"]),
+            ("!disabled", palette["muted"]),
         ],
-        bordercolor=[
-            ("selected", palette["selected"]),
+        bordercolor=[("!disabled", palette["surface"])],
+    )
+    style.map(
+        "ActiveTab.TButton",
+        background=[
+            ("pressed", palette["surface"]),
             ("active", palette["hover"]),
-            ("!selected", palette["surface_alt"]),
+            ("!disabled", palette["surface"]),
         ],
-        lightcolor=[
-            ("selected", palette["selected"]),
-            ("!selected", palette["surface_alt"]),
+        foreground=[
+            ("disabled", palette["muted"]),
+            ("!disabled", palette["accent"]),
         ],
-        darkcolor=[
-            ("selected", palette["selected"]),
-            ("!selected", palette["surface_alt"]),
-        ],
-        relief=[
-            ("selected", "flat"),
-            ("!selected", "flat"),
-        ],
-        padding=[
-            ("selected", (14, 8)),
-            ("!selected", (14, 8)),
-        ],
+        bordercolor=[("!disabled", palette["surface"])],
     )
     scrollbar_options = {
         "background": palette["scroll_thumb"],

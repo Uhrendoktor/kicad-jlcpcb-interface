@@ -256,6 +256,89 @@ def display_product_image(
     return photo
 
 
+class FlatTabControl:
+    """Theme-coherent tab selector with a flat, fixed-size active underline."""
+
+    def __init__(self, parent: Any, ttk: Any) -> None:
+        self.ttk = ttk
+        self.frame = ttk.Frame(parent, style="ProductPreview.TFrame")
+        self.frame.columnconfigure(0, weight=1)
+        self.frame.rowconfigure(1, weight=1)
+        self.tabbar = ttk.Frame(self.frame, style="TabBar.TFrame")
+        self.tabbar.grid(row=0, column=0, sticky="ew")
+        self.content = ttk.Frame(self.frame, style="ProductPreview.TFrame")
+        self.content.grid(row=1, column=0, sticky="nsew")
+        self.content.columnconfigure(0, weight=1)
+        self.content.rowconfigure(0, weight=1)
+        self.pages: list[Any] = []
+        self.buttons: list[Any] = []
+        self.indicators: list[Any] = []
+        self._selected: Any | None = None
+
+    @property
+    def selected_tab(self) -> Any | None:
+        return self._selected
+
+    def add(self, page: Any, *, text: str) -> None:
+        """Register one page and its same-sized text/underline controls."""
+        index = len(self.pages)
+        item = self._tab_item(page, text, index)
+        self.pages.append(page)
+        self.buttons.append(item[0])
+        self.indicators.append(item[1])
+        if self._selected is None:
+            self.select(page)
+
+    def _tab_item(self, page: Any, text: str, index: int) -> tuple[Any, Any]:
+        item = self.ttk.Frame(self.tabbar, style="TabItem.TFrame")
+        item.grid(row=0, column=index, sticky="ew")
+        item.columnconfigure(0, weight=1)
+        button = self.ttk.Button(
+            item,
+            text=text,
+            style="Tab.TButton",
+            command=lambda selected=page: self.select(selected),
+        )
+        button.grid(row=0, column=0, sticky="ew")
+        indicator = self.ttk.Frame(
+            item, style="TabIndicatorInactive.TFrame", height=2
+        )
+        indicator.grid(row=1, column=0, sticky="ew")
+        indicator.grid_propagate(False)
+        page.grid(row=0, column=0, sticky="nsew")
+        page.grid_remove()
+        return button, indicator
+
+    def select(self, page: Any | None = None) -> str:
+        """Select a page, or return the selected page path when called without one."""
+        if page is None:
+            return str(self._selected) if self._selected is not None else ""
+        selected = next(
+            (
+                candidate for candidate in self.pages
+                if candidate is page or str(candidate) == str(page)
+            ),
+            None,
+        )
+        if selected is None:
+            raise ValueError(f"{page!r} is not a page in this tab control.")
+        self._selected = selected
+        for candidate, button, indicator in zip(
+            self.pages, self.buttons, self.indicators, strict=True
+        ):
+            is_selected = candidate is selected
+            if is_selected:
+                candidate.grid()
+                candidate.tkraise()
+                button.configure(style="ActiveTab.TButton")
+                indicator.configure(style="TabIndicator.TFrame")
+            else:
+                candidate.grid_remove()
+                button.configure(style="Tab.TButton")
+                indicator.configure(style="TabIndicatorInactive.TFrame")
+        return str(selected)
+
+
 @dataclass(slots=True)
 class CadAssetPreviewControls:
     """Tabbed symbol, footprint and 3D previews for one EasyEDA CAD result."""
@@ -289,8 +372,9 @@ def build_cad_asset_preview(
         style="SectionTitleSurface.TLabel",
     ).grid(row=0, column=0, sticky="w", pady=(0, 7))
 
-    notebook = ttk.Notebook(surface)
-    notebook.grid(row=1, column=0, sticky="nsew")
+    notebook = FlatTabControl(surface, ttk)
+    notebook.frame.grid(row=1, column=0, sticky="nsew")
+    surface.rowconfigure(1, weight=1)
     tabs = []
     labels = []
     for caption, placeholder in (
@@ -298,7 +382,9 @@ def build_cad_asset_preview(
         ("Footprint", "No footprint preview"),
         ("3D model", "No 3D model preview"),
     ):
-        tab = ttk.Frame(notebook, style="ProductPreview.TFrame", padding=8)
+        tab = ttk.Frame(
+            notebook.content, style="ProductPreview.TFrame", padding=8
+        )
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(0, weight=1)
         notebook.add(tab, text=caption)
