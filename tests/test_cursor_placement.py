@@ -149,7 +149,7 @@ class CursorPlacementTests(unittest.TestCase):
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "Return"], runner.commands
         )
-        self.assertIn(0.6, pauses)
+        self.assertIn(0.8, pauses)
 
     def test_reports_missing_native_chooser(self):
         runner = FakeRunner(["0x100"] * 55)
