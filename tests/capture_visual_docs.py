@@ -24,6 +24,7 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 from kicad_jlcpcb import library as library_module  # noqa: E402
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
 from kicad_jlcpcb import populator as populator_module  # noqa: E402
+from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -48,7 +49,6 @@ from kicad_jlcpcb.populator import (  # noqa: E402
     resolve_component_action_target,
     resolve_passive_library_id,
 )
-from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
 from kicad_jlcpcb.theme import AutoHideScrollbar, apply_tk_theme  # noqa: E402
 
