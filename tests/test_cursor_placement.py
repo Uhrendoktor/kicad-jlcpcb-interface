@@ -209,9 +209,6 @@ class CursorPlacementTests(unittest.TestCase):
                     kicad=FakeKiCad(),
                 )
 
-
-
-
     def test_falls_back_to_add_hotkey_when_ipc_status_is_not_ok(self):
         runner = FakeRunner(["0x200", "0x100"])
 
