@@ -289,7 +289,9 @@ def start_native_symbol_placement(
     if chooser_width > 250 and chooser_height > 250:
         # The dialog gives keyboard focus to its symbol tree on some wxGTK
         # builds. Click the Filter field explicitly before replacing its text.
-        filter_x = min(chooser_width - 100, max(100, int(chooser_width * 0.25)))
+        # The Filter control belongs to the left tree pane, not the full-width
+        # chooser. Keep the click well inside that pane on wide displays.
+        filter_x = min(220, max(80, int(chooser_width * 0.12)))
         # LIB_TREE creates the Filter wxSearchCtrl at the top of the chooser.
         # Keep the click inside that short search row (not in the symbol tree).
         filter_y = min(28, max(12, int(chooser_height * 0.025)))
@@ -324,6 +326,26 @@ def start_native_symbol_placement(
 
     focused_id = send("getwindowfocus")
     focused_title = send("getwindowname", focused_id) if focused_id else ""
+    focused_pid = send("getwindowpid", focused_id) if focused_id else ""
+    try:
+        from PIL import ImageGrab
+
+        output_dir = os.environ.get("OUTPUT_DIR")
+        if output_dir:
+            debug_path = os.path.join(
+                output_dir, "add-component-chooser-debug.png"
+            )
+            ImageGrab.grab(bbox=(0, 0, 1920, 1500)).save(debug_path)
+            print(
+                "cursor-chooser-debug="
+                f"window={chooser_id!r} geometry={chooser_geometry!r} "
+                f"filter_xy=({filter_x},{filter_y}) "
+                f"focus={focused_id!r} focus_pid={focused_pid!r} "
+                f"focus_title={focused_title!r} screenshot={debug_path}",
+                flush=True,
+            )
+    except Exception as exc:
+        print(f"cursor-chooser-debug-capture-failed={type(exc).__name__}: {exc}", flush=True)
     raise RuntimeError(
         "KiCad accepted the symbol chooser selection but did not return to the "
         f"Schematic Editor. The focused window is {focused_title!r}."

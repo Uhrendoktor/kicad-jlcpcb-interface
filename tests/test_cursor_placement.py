@@ -132,7 +132,7 @@ class CursorPlacementTests(unittest.TestCase):
                 "--sync",
                 "--window",
                 "0x200",
-                "350",
+                "168",
                 "27",
             ],
             runner.commands,
