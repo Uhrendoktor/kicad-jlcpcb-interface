@@ -43,7 +43,6 @@ from kicad_jlcpcb.model import (  # noqa: E402
     find_selected_component,
     iter_schematic_symbols,
 )
-from kicad_jlcpcb.placement import schematic_page_center_mm  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
     resolve_component_action_target,
