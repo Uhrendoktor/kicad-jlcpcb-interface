@@ -237,7 +237,7 @@ For the selected KiCad Library:Symbol, the add-on:
 - Writes or extends the project-local `JLCPCB_Generated.kicad_sym` library and registers it in `sym-lib-table` using a project-relative KiCad project variable URI.
 - When the reviewed Footprint field matches the retrieved CAD candidate, copies the converted `.kicad_mod` into a project-local `JLCPCB_<LCSC>.pretty` library and registers it in `fp-lib-table`. Existing modified or unowned footprint libraries are not overwritten.
 - When either retrieved symbol or footprint geometry is accepted, copies the converter's source/author/licence notes into `JLCPCB_<LCSC>_CREDITS.txt` beside the project. Existing user-owned credits files are never overwritten.
-- Reloads the project library, inserts the generated part at the current sheet center through schematic IPC, then focuses and selects it for the next Move operation.
+- Reloads the project library and opens KiCad's native Add Symbol chooser with the generated part selected when X11/xdotool is available. Select it manually in the chooser on sessions without X11 automation, then click to place or press Esc to cancel.
 
 The generated symbol ID uses the selected reference prefix and LCSC part number, so repeat generation for the same part can reuse the existing project-local symbol. The generator protects unowned files and refuses to overwrite a generated symbol that has been manually modified. The library writer uses atomic file replacement and creates a backup when extending an existing generated library.
 
@@ -251,11 +251,11 @@ Eeschema loads the project symbol table when it opens the project. When this act
 4. Close and reopen the project in Eeschema.
 5. Run **JLCPCB Add or Update Component** again with the same LCSC code or query.
 
-The existing generated symbol is detected and reused; placement can continue when the reopened editor resolves the library. Once the nickname is loaded, later additions can extend and reload that library within the running session.
+The existing generated symbol is detected and reused; the native Add Symbol chooser can select it after the reopened editor resolves the project library. Once the nickname is loaded, later additions can extend and reload that library within the running session.
 
 #### Placement and electrical checks
 
-Add-mode placement uses the schematic IPC API to insert at the page center and select the generated symbol. The position is automatic; no coordinates are entered. If KiCad cannot focus or select the new instance, the add-on reports the IPC error and does not claim placement succeeded.
+Add mode opens KiCad's native Add Symbol chooser and hands the generated symbol to the cursor. With X11/xdotool, the chooser search is filled automatically; otherwise choose the generated symbol manually. Click to place it or press Esc to cancel. The add-on checks the IPC action status before treating the chooser as open, and falls back to the configured Add Symbol hotkey when the IPC action is unavailable or rejected.
 
 The optional Footprint field is a KiCad footprint-library reference, not a footprint generator. A symbol can be created without a footprint, but it will need a suitable footprint before PCB layout. Always inspect the symbol/footprint pair and verify pin numbers, electrical types, package dimensions and ratings against the manufacturer datasheet.
 
@@ -289,7 +289,7 @@ The optional Footprint field is a KiCad footprint-library reference, not a footp
 The add-on is an early prototype, with a deliberately conservative scope:
 
 - Update mode writes reviewed catalogue fields to one selected editable schematic symbol of any component family; it does not replace the symbol or rewrite pins.
-- Add mode generates a project-local copy of a standalone KiCad stock symbol. Common resistor/capacitor value searches offer up to five exact candidates with Basic parts first and automatically select the generic stock symbol, reference prefix and mapped footprint when available. Basic-first ordering also applies to general keyword results; the **Basic parts only** checkbox can hide Extended and unclassified catalogue results. Exact LCSC-code lookups are not filtered. Other recognized categories receive cautious symbol suggestions; ambiguous categories require manual symbol selection. Placement is page-center-and-select through KiCad schematic IPC; use KiCad's Move tool for final positioning.
+- Add mode generates a project-local copy of a standalone KiCad stock symbol. Common resistor/capacitor value searches offer up to five exact candidates with Basic parts first and automatically select the generic stock symbol, reference prefix and mapped footprint when available. Basic-first ordering also applies to general keyword results; the **Basic parts only** checkbox can hide Extended and unclassified catalogue results. Exact LCSC-code lookups are not filtered. Other recognized categories receive cautious symbol suggestions; ambiguous categories require manual symbol selection. Placement uses KiCad's native Add Symbol chooser; click to place the cursor-attached symbol or press Esc to cancel.
 - The generator does not infer manufacturer-specific pin maps, electrical pin types or IC symbol geometry. It copies the pin definitions of the symbol selected by the user.
 - EasyEDA CAD retrieval uses undocumented public website endpoints and only works when a public CAD record exists for the LCSC part. Some parts have no symbol, no footprint, incomplete geometry or unavailable previews. The conversion path is best-effort and preserves upstream attribution/licence notes.
 - Downloaded symbols, footprints and STEP models are unverified candidates. When EasyEDA attaches a 3D model, the review panel attempts a native KiCad 3D preview; the model is copied into the project only when the associated footprint is accepted. Some parts have no upstream model or no renderable preview. No 3D geometry is generated and no PCB-rule validation is performed. Inspect pin numbers, electrical types, pad dimensions, drills, model alignment and ratings against the datasheet before manufacturing.

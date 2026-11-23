@@ -118,7 +118,7 @@ class TkGarbageCollectionLeaseTests(unittest.TestCase):
 
 
 class ComponentCreationApplyTests(unittest.TestCase):
-    def test_add_action_places_without_confirmation_dialog(self):
+    def test_add_action_hands_symbol_to_cursor_without_confirmation_dialog(self):
         details = JlcPartDetails(
             lcsc="C12345",
             description="10kΩ thick film resistor",
@@ -140,13 +140,16 @@ class ComponentCreationApplyTests(unittest.TestCase):
             def get(self):
                 return self.value
 
+            def set(self, value):
+                self.value = value
+
         project = object()
         kicad = object()
         generated = SimpleNamespace(
             library_id="JLCPCB_Generated:R_C12345",
+            symbol_name="R_C12345",
             reference_prefix="R",
         )
-        placed_symbol = object()
         askyesno = Mock(
             side_effect=AssertionError("Add mode must not show a confirmation dialog.")
         )
@@ -164,7 +167,9 @@ class ComponentCreationApplyTests(unittest.TestCase):
         )
         populator.root = SimpleNamespace(
             grab_current=Mock(return_value=None),
-            withdraw=Mock(),
+            iconify=Mock(),
+            deiconify=Mock(),
+            lift=Mock(),
             update_idletasks=Mock(),
         )
         populator.tk = SimpleNamespace(TclError=RuntimeError)
@@ -174,6 +179,8 @@ class ComponentCreationApplyTests(unittest.TestCase):
         populator.generated_library_symbol = None
         populator.placed_symbol = None
         populator.placement_completed = False
+        populator.cursor_placement_started = False
+        populator.editor_window_id = "0x100"
         populator.closed = False
         populator.status_var = Variable()
         populator.close = Mock()
@@ -189,19 +196,23 @@ class ComponentCreationApplyTests(unittest.TestCase):
             ) as reload_library,
             patch.object(
                 populator_module,
-                "place_and_select_component_from_draft",
-                return_value=placed_symbol,
-            ) as place_symbol,
+                "start_native_symbol_placement",
+            ) as start_placement,
         ):
             populator.apply()
 
         askyesno.assert_not_called()
         generate_symbol.assert_called_once()
         reload_library.assert_called_once_with(kicad, generated)
-        place_symbol.assert_called_once()
+        populator.root.iconify.assert_called_once_with()
+        start_placement.assert_called_once_with(
+            "0x100", "R_C12345", kicad=kicad
+        )
         self.assertIs(populator.generated_library, generated)
-        self.assertIs(populator.placed_symbol, placed_symbol)
-        self.assertTrue(populator.placement_completed)
+        self.assertIsNone(populator.placed_symbol)
+        self.assertFalse(populator.placement_completed)
+        self.assertTrue(populator.cursor_placement_started)
+        self.assertIn("attached to KiCad's cursor", populator.status_var.value)
         populator.close.assert_called_once_with()
 
 

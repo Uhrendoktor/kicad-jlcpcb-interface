@@ -20,6 +20,10 @@ from .catalogue_widgets import (
     build_product_preview,
     display_product_image,
 )
+from .cursor_placement import (
+    capture_eeschema_window_id,
+    start_native_symbol_placement,
+)
 from .draft import (
     SUPPORTED_PLACEHOLDERS,
     ComponentDraft,
@@ -44,7 +48,6 @@ from .library import (
 )
 from .media import MAX_PRODUCT_IMAGE_BYTES, download_product_image
 from .model import component_from_symbol, iter_schematic_symbols
-from .placement import place_and_select_component_from_draft
 from .provider import JlcSearchProvider, normalize_lcsc_code
 from .theme import UI_SPACING, AutoHideScrollbar, apply_tk_theme
 from .value_search import (
@@ -211,6 +214,7 @@ class ComponentPopulator:
         kicad: Any | None = None,
         library_id: str | None = None,
         theme: str | None = None,
+        editor_window_id: str | None = None,
     ):
         import tkinter as tk
         from tkinter import messagebox, ttk
@@ -222,6 +226,11 @@ class ComponentPopulator:
         self.symbol = symbol
         self.kicad = kicad
         self.create_mode = bool(create_mode)
+        self.editor_window_id = str(editor_window_id or "").strip() or None
+        self.cursor_placement_available = bool(
+            callable(getattr(kicad, "run_action", None)) or self.editor_window_id
+        )
+        self.cursor_placement_started = False
         self.generated_library = None
         self.generated_library_symbol = None
         self.placed_symbol = None
@@ -762,6 +771,33 @@ class ComponentPopulator:
                 row=row, column=0, columnspan=2, sticky="w", pady=(5, 2)
             )
             self.passive_mapping_label.grid_remove()
+            row += 1
+            placement_text = (
+                "After generation, KiCad opens its native Add Symbol chooser. "
+                "The generated symbol is selected automatically when X11/xdotool "
+                "is available; otherwise select it in the chooser. Click to place "
+                "or press Esc to cancel."
+                if self.cursor_placement_available
+                else (
+                    "Cursor placement is unavailable in this session. Use a KiCad "
+                    "build exposing the Place Symbol IPC action, or launch Eeschema "
+                    "on X11 with xdotool installed."
+                )
+            )
+            self.placement_note = ttk.Label(
+                component_section,
+                text=placement_text,
+                style=(
+                    "CardMeta.TLabel"
+                    if self.cursor_placement_available
+                    else "ValidationWarning.TLabel"
+                ),
+                wraplength=max(160, self.properties_column.winfo_width() - 30),
+                justify="left",
+            )
+            self.placement_note.grid(
+                row=row, column=0, columnspan=2, sticky="w", pady=(5, 2)
+            )
             row += 1
         proposal_section = ttk.Frame(
             self.properties_column, style="Card.TFrame", padding=12
@@ -1835,6 +1871,7 @@ class ComponentPopulator:
             not errors
             and bool(self.draft.proposed_fields)
             and compatible
+            and (not self.create_mode or self.cursor_placement_available)
         )
         self.apply_button.configure(state="normal" if ready else "disabled")
         if errors:
@@ -2416,6 +2453,7 @@ class ComponentPopulator:
             compatible
             and bool(draft.proposed_fields)
             and (not self.create_mode or complete_for_placement)
+            and (not self.create_mode or self.cursor_placement_available)
         )
         status = (
             ""
@@ -2528,16 +2566,19 @@ class ComponentPopulator:
                         current_grab.grab_release()
                 except self.tk.TclError:
                     pass
-                self.root.withdraw()
+                self.root.iconify()
                 self.root.update_idletasks()
                 withdrawn = True
-                self.placed_symbol = place_and_select_component_from_draft(
-                    self.schematic,
-                    draft,
-                    library_id=generated.library_id,
-                    reference_prefix=generated.reference_prefix or draft.reference_prefix,
+                start_native_symbol_placement(
+                    self.editor_window_id,
+                    generated.symbol_name,
+                    kicad=self.kicad,
                 )
-                self.placement_completed = True
+                self.cursor_placement_started = True
+                self.status_var.set(
+                    f"{generated.library_id} is attached to KiCad's cursor. "
+                    "Click to place or press Esc to cancel."
+                )
                 self.close()
                 return
             except Exception as exc:
@@ -2645,6 +2686,7 @@ class ComponentPopulator:
                 "generated_library_symbol",
                 "placed_symbol",
                 "placement_completed",
+                "cursor_placement_started",
                 "selected_details",
                 "draft",
                 "symbol",
@@ -2815,6 +2857,7 @@ def run_component_action() -> None:
         symbol, library_id, create_mode = resolve_component_action_target(
             schematic, list(schematic.get_selection())
         )
+        editor_window_id = capture_eeschema_window_id() if create_mode else None
         settings_directory = Path(
             kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
         ).expanduser()
@@ -2825,6 +2868,7 @@ def run_component_action() -> None:
             create_mode=create_mode,
             kicad=kicad,
             library_id=library_id or None,
+            editor_window_id=editor_window_id,
         ).run()
     except Exception as exc:
         import tkinter as tk

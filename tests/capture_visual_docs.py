@@ -24,6 +24,7 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 from kicad_jlcpcb import library as library_module  # noqa: E402
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
 from kicad_jlcpcb import populator as populator_module  # noqa: E402
+from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -41,8 +42,8 @@ from kicad_jlcpcb.media import download_product_image  # noqa: E402
 from kicad_jlcpcb.model import (  # noqa: E402
     find_linked_components,
     find_selected_component,
+    iter_schematic_symbols,
 )
-from kicad_jlcpcb.placement import schematic_page_center_mm  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
     resolve_component_action_target,
@@ -59,7 +60,7 @@ ASSET_NAMES = (
     "populate-component-proposed.png",
     "populate-component-applied.png",
     "add-component-proposed.png",
-    "add-component-placed-selected.png",
+    "add-component-cursor.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
     "schematic-properties-opened.png",
@@ -1864,6 +1865,7 @@ def _drive_populator_form(
     preferred_lcsc: str | None = None,
     avoid_lcsc: str | None = None,
     require_update_compatibility_change: bool = False,
+    cursor_completion: bool = False,
 ) -> None:
     """Capture the production review form and verify the resulting KiCad IPC action."""
     root = populator.root
@@ -2307,7 +2309,30 @@ def _drive_populator_form(
                 populator.messagebox.showerror = original_showerror
 
             validate_result(populator)
-            if populator.create_mode:
+            if cursor_completion:
+                if not populator.cursor_placement_started:
+                    raise RuntimeError(
+                        "Add mode did not hand the generated symbol to KiCad's cursor."
+                    )
+                time.sleep(0.25)
+                _capture_desktop(output_dir / completed_asset)
+                subprocess.run(
+                    ["xdotool", "key", "--clearmodifiers", "Escape"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                time.sleep(0.15)
+                expected_count = getattr(populator, "_visual_initial_symbol_count", None)
+                if expected_count is not None:
+                    actual_count = len(list(iter_schematic_symbols(populator.schematic)))
+                    if actual_count != expected_count:
+                        raise RuntimeError(
+                            "Escape did not cancel cursor placement cleanly: "
+                            f"symbol count changed {expected_count} -> {actual_count}."
+                        )
+            elif populator.create_mode:
                 if not populator.placement_completed or populator.placed_symbol is None:
                     raise RuntimeError(
                         "Add mode did not place and select the generated project symbol."
@@ -2496,9 +2521,13 @@ def _capture_passive_component_workflows(
         cache_dir / "add-ui-cache",
         create_mode=True,
         kicad=kicad,
+        editor_window_id=capture_eeschema_window_id(),
         theme="light",
     )
     create.root.geometry("1024x768+780+30")
+    create._visual_initial_symbol_count = len(
+        list(iter_schematic_symbols(schematic))
+    )
     create.lcsc_var.set("10k")
     create.lookup()
 
@@ -2515,13 +2544,27 @@ def _capture_passive_component_workflows(
             or generated.library_id != f"JLCPCB_Generated:R_{details.lcsc}"
             or not generated.library_path.is_file()
             or populator.symbol is not None
-            or not populator.placement_completed
-            or populator.placed_symbol is None
+            or not populator.cursor_placement_started
         ):
             raise RuntimeError(
                 "The passive value-search Add action did not generate the selected "
-                "project-local resistor symbol or incorrectly inserted an instance "
-                "before the page-center placement."
+                "project-local resistor symbol and hand it to KiCad's native cursor tool."
+            )
+        if len(list(iter_schematic_symbols(schematic))) != populator._visual_initial_symbol_count:
+            raise RuntimeError(
+                "Cursor handoff inserted a schematic instance before the user placed the symbol."
+            )
+        focused = subprocess.run(
+            ["xdotool", "getwindowfocus"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+        if focused != populator.editor_window_id:
+            raise RuntimeError(
+                "KiCad did not regain focus with the generated symbol on the cursor: "
+                f"focused={focused!r}, editor={populator.editor_window_id!r}."
             )
         generated_root = parse_sexpr(
             generated.library_path.read_text(encoding="utf-8")
@@ -2546,36 +2589,6 @@ def _capture_passive_component_workflows(
             and len(node) >= 3
             and getattr(node[0], "value", "") == "property"
         }
-        expected_x, expected_y = schematic_page_center_mm(schematic)
-        position = getattr(populator.placed_symbol, "position", None)
-        if position is None:
-            raise RuntimeError("The placed schematic symbol has no IPC position.")
-        actual_x = float(position.x) / 1_000_000
-        actual_y = float(position.y) / 1_000_000
-        if (
-            abs(actual_x - expected_x) > 0.02
-            or abs(actual_y - expected_y) > 0.02
-        ):
-            raise RuntimeError(
-                "The generated symbol is not at the schematic page center: "
-                f"expected=({expected_x}, {expected_y}) mm; "
-                f"actual=({actual_x}, {actual_y}) mm."
-            )
-        placed_id = str(
-            getattr(getattr(populator.placed_symbol, "id", None), "value", None)
-            or getattr(populator.placed_symbol, "id", "")
-        )
-        selected_ids = {
-            str(
-                getattr(getattr(item, "id", None), "value", None)
-                or getattr(item, "id", "")
-            )
-            for item in schematic.get_selection()
-        }
-        if not placed_id or placed_id not in selected_ids:
-            raise RuntimeError(
-                "Eeschema did not confirm that the newly placed symbol is selected."
-            )
         if (
             generated_properties.get("Value") != "10k"
             or generated_properties.get("LCSC") != details.lcsc
@@ -2591,19 +2604,20 @@ def _capture_passive_component_workflows(
         proposal_asset="add-component-proposed.png",
         light_asset="add-component-light.png",
         dark_asset="add-component-dark.png",
-        completed_asset="add-component-placed-selected.png",
+        completed_asset="add-component-cursor.png",
         expected_lcsc=None,
         expected_value="10k",
         expected_footprint=None,
         validate_result=validate_create_result,
         assert_basic_shortlist=True,
         avoid_lcsc="C60489",
+        cursor_completion=True,
     )
     print(
         "live-add-mode-ui=passed "
         f"query=10k selected={create.selected_details.lcsc} "
         f"library_id={create.generated_library.library_id} "
-        "placement=page-center-and-selected",
+        "placement=native-cursor-handoff",
         flush=True,
     )
 

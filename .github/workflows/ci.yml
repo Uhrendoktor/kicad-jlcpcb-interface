@@ -56,8 +56,38 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends software-properties-common
           sudo add-apt-repository --yes ppa:kicad/kicad-dev-nightly
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends kicad-nightly python3.12-venv python3-tk python3-pil python3-pil.imagetk kicad-nightly-symbols kicad-nightly-footprints xvfb xauth xdotool x11-utils openbox
+          packages=(
+            kicad-nightly
+            python3.12-venv
+            python3-tk
+            python3-pil
+            python3-pil.imagetk
+            kicad-nightly-symbols
+            kicad-nightly-footprints
+            xvfb
+            xauth
+            xdotool
+            x11-utils
+            openbox
+          )
+          installed=0
+          for attempt in 1 2 3; do
+            echo "KiCad nightly install attempt $attempt/3"
+            if sudo apt-get -o Acquire::Retries=3 update -qq &&
+              sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends "${packages[@]}"; then
+              installed=1
+              break
+            fi
+            if [[ "$attempt" -lt 3 ]]; then
+              delay=$((attempt * 20))
+              echo "::warning::KiCad nightly PPA fetch failed; refreshing package indexes and retrying in ${delay}s"
+              sleep "$delay"
+            fi
+          done
+          if [[ "$installed" != 1 ]]; then
+            echo "::error::Could not install KiCad nightly after three PPA attempts"
+            exit 1
+          fi
           CLI="$(command -v kicad-cli-nightly || command -v kicad-cli || true)"
           if [[ -z "$CLI" ]]; then
             echo "::error::KiCad CLI was not installed"
