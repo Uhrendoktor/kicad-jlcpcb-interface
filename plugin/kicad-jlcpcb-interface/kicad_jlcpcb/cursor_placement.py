@@ -107,6 +107,7 @@ def start_native_symbol_placement(
         )
     run_action = getattr(kicad, "run_action", None)
     action_started = False
+    action_status = "not attempted"
     action_failure = "is not available"
     if callable(run_action):
         try:
@@ -125,6 +126,7 @@ def start_native_symbol_placement(
                 }.get(status, f"status {status}")
             else:
                 status_name = str(status) if status is not None else "missing status"
+            action_status = status_name
             action_started = status_name == "RAS_OK"
             if not action_started:
                 action_failure = f"returned {status_name}"
@@ -175,38 +177,64 @@ def start_native_symbol_placement(
         pause(0.1)
         send("key", "--clearmodifiers", "a")
 
-    chooser_id = ""
-    chooser_pid = editor_pid
-    focused_id = ""
-    for _ in range(50):
-        focused_id = send("getwindowfocus")
-        if focused_id and focused_id != str(editor_window_id or ""):
-            focused_pid = send("getwindowpid", focused_id)
-            focused_title = send("getwindowname", focused_id).casefold()
-            same_process = bool(editor_pid and focused_pid == editor_pid)
-            chooser_title = (
-                "choose symbol" in focused_title
-                or "select symbol" in focused_title
-            )
-            if same_process or chooser_title:
-                chooser_id = focused_id
-                chooser_pid = focused_pid or editor_pid
-                break
+    def wait_for_chooser() -> tuple[str, str, str]:
+        chooser = ""
+        chooser_process = editor_pid
+        focused = ""
+        for _ in range(50):
+            focused = send("getwindowfocus")
+            if focused and focused != str(editor_window_id or ""):
+                focused_process = send("getwindowpid", focused)
+                focused_title = send("getwindowname", focused).casefold()
+                same_process = bool(
+                    editor_pid and focused_process == editor_pid
+                )
+                chooser_title = (
+                    "symbol" in focused_title
+                    and ("choose" in focused_title or "select" in focused_title)
+                )
+                if same_process or chooser_title:
+                    chooser = focused
+                    chooser_process = focused_process or editor_pid
+                    break
+            pause(0.1)
+        return chooser, chooser_process, focused
+
+    chooser_id, chooser_pid, focused_id = wait_for_chooser()
+    hotkey_fallback_attempted = False
+    if not chooser_id and action_started and editor_window_id:
+        # RAS_OK confirms that KiCad accepted the IPC request, but some builds
+        # do not dispatch this interactive action from the plugin IPC context.
+        # Retry from the actual editor window using its configured Add hotkey.
+        send("windowfocus", "--sync", str(editor_window_id))
         pause(0.1)
+        send("key", "--clearmodifiers", "Escape")
+        pause(0.1)
+        send("key", "--clearmodifiers", "a")
+        hotkey_fallback_attempted = True
+        chooser_id, chooser_pid, focused_id = wait_for_chooser()
 
     if not chooser_id:
-        if (
-            not action_started
-            and editor_window_id
-            and send("getwindowfocus") == str(editor_window_id)
-        ):
+        focused_id = send("getwindowfocus")
+        focused_pid = send("getwindowpid", focused_id) if focused_id else ""
+        focused_title = send("getwindowname", focused_id) if focused_id else ""
+        if editor_window_id and focused_id == str(editor_window_id):
             try:
                 send("key", "--clearmodifiers", "Escape")
             except subprocess.SubprocessError:
                 pass
+        fallback_note = (
+            " after retrying the Eeschema Add hotkey"
+            if hotkey_fallback_attempted
+            else ""
+        )
         raise RuntimeError(
-            "KiCad's native symbol chooser did not open. Confirm that Eeschema "
-            "is active and that Add Symbol is available in its hotkeys."
+            "KiCad's native symbol chooser did not open"
+            f"{fallback_note}; IPC status={action_status!r}, "
+            f"action_error={action_failure!r}, editor_window={editor_window_id!r}, "
+            f"editor_pid={editor_pid!r}, focused_window={focused_id!r}, "
+            f"focused_pid={focused_pid!r}, focused_title={focused_title!r}. "
+            "Confirm Eeschema is active and the Place/Add Symbol action is available."
         )
 
     # KiCad remembers its last symbol search across chooser sessions. Replace

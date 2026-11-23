@@ -229,6 +229,65 @@ class CursorPlacementTests(unittest.TestCase):
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
         )
 
+
+    def test_falls_back_to_add_hotkey_when_ras_ok_does_not_open_chooser(self):
+        class DelayedChooserRunner(FakeRunner):
+            def __init__(self):
+                super().__init__()
+                self.hotkey_sent = False
+                self.selection_accepted = False
+
+            def __call__(self, arguments, **kwargs):
+                self.commands.append(arguments)
+                command = arguments[1]
+                if command == "getwindowpid":
+                    return SimpleNamespace(stdout="4242", returncode=0)
+                if command == "getwindowfocus":
+                    focused = (
+                        "0x200"
+                        if self.hotkey_sent and not self.selection_accepted
+                        else "0x100"
+                    )
+                    return SimpleNamespace(stdout=focused, returncode=0)
+                if command == "getwindowname":
+                    title = (
+                        "Choose Symbol"
+                        if arguments[-1] == "0x200"
+                        else "Schematic Editor"
+                    )
+                    return SimpleNamespace(stdout=title, returncode=0)
+                if command == "getwindowclassname":
+                    return SimpleNamespace(stdout="eeschema", returncode=0)
+                if command == "key" and arguments[-1] == "a":
+                    self.hotkey_sent = True
+                elif command == "key" and arguments[-1] == "Return":
+                    self.selection_accepted = True
+                return SimpleNamespace(stdout="", returncode=0)
+
+        runner = DelayedChooserRunner()
+
+        class FakeKiCad:
+            def run_action(self, _action):
+                return SimpleNamespace(status="RAS_OK")
+
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            kicad=FakeKiCad(),
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+
+        self.assertTrue(runner.hotkey_sent)
+        self.assertTrue(runner.selection_accepted)
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "Escape"], runner.commands
+        )
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        )
+
     def test_reports_non_ok_ipc_status_when_xdotool_is_unavailable(self):
         class FakeKiCad:
             def run_action(self, _action):
