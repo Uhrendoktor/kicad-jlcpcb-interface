@@ -290,7 +290,9 @@ def start_native_symbol_placement(
         # The dialog gives keyboard focus to its symbol tree on some wxGTK
         # builds. Click the Filter field explicitly before replacing its text.
         filter_x = min(chooser_width - 100, max(100, int(chooser_width * 0.25)))
-        filter_y = min(chooser_height - 100, max(35, int(chooser_height * 0.08)))
+        # LIB_TREE creates the Filter wxSearchCtrl at the top of the chooser.
+        # Keep the click inside that short search row (not in the symbol tree).
+        filter_y = min(28, max(12, int(chooser_height * 0.025)))
         send(
             "mousemove",
             "--sync",
@@ -303,9 +305,9 @@ def start_native_symbol_placement(
     send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.8)
-    # Move focus from the Filter entry to the filtered symbol list, then
-    # accept its selected match. This avoids sending Return to the text box.
-    send("key", "--clearmodifiers", "Tab")
+    # LIB_TREE handles Up/Down/Enter while the Filter control has focus. Move
+    # to the first filtered symbol and accept it without leaving the search box.
+    send("key", "--clearmodifiers", "Down")
     pause(0.1)
     send("key", "--clearmodifiers", "Return")
 

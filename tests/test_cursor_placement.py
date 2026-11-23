@@ -133,12 +133,12 @@ class CursorPlacementTests(unittest.TestCase):
                 "--window",
                 "0x200",
                 "350",
-                "88",
+                "18",
             ],
             runner.commands,
         )
         self.assertIn(
-            ["xdotool", "key", "--clearmodifiers", "Tab"], runner.commands
+            ["xdotool", "key", "--clearmodifiers", "Down"], runner.commands
         )
         self.assertIn(
             [
