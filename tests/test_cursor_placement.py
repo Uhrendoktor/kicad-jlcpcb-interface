@@ -133,7 +133,7 @@ class CursorPlacementTests(unittest.TestCase):
                 "--window",
                 "0x200",
                 "350",
-                "18",
+                "27",
             ],
             runner.commands,
         )
