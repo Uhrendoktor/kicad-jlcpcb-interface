@@ -156,6 +156,42 @@ def start_native_symbol_placement(
         )
         return str(getattr(result, "stdout", "") or "").strip()
 
+    def focus_editor_canvas() -> None:
+        if not editor_window_id:
+            raise RuntimeError("Cannot focus the Eeschema drawing canvas without its window ID.")
+        try:
+            send("windowactivate", "--sync", str(editor_window_id))
+        except subprocess.SubprocessError:
+            # Some minimal window managers do not implement EWMH activation.
+            send("windowfocus", "--sync", str(editor_window_id))
+        pause(0.1)
+        geometry = send("getwindowgeometry", "--shell", str(editor_window_id))
+        dimensions = {}
+        for line in geometry.splitlines():
+            key, separator, value = line.partition("=")
+            if separator and key in {"WIDTH", "HEIGHT"}:
+                try:
+                    dimensions[key] = int(value)
+                except ValueError:
+                    pass
+        width = dimensions.get("WIDTH", 0)
+        height = dimensions.get("HEIGHT", 0)
+        if width > 250 and height > 250:
+            # Focus an empty point inside the drawing canvas, away from the
+            # left properties pane and the symbol already in the visual fixture.
+            x = min(width - 80, max(100, int(width * 0.8)))
+            y = min(height - 80, max(100, int(height * 0.35)))
+            send(
+                "mousemove",
+                "--sync",
+                "--window",
+                str(editor_window_id),
+                str(x),
+                str(y),
+            )
+            send("click", "--clearmodifiers", "1")
+        pause(0.1)
+
     editor_pid = ""
     if editor_window_id:
         try:
@@ -173,8 +209,7 @@ def start_native_symbol_placement(
         editor_pid = send("getwindowpid", str(editor_window_id))
         if not editor_pid:
             raise RuntimeError("Could not determine the active Eeschema process.")
-        send("windowfocus", "--sync", str(editor_window_id))
-        pause(0.1)
+        focus_editor_canvas()
         send("key", "--clearmodifiers", "a")
 
     def wait_for_chooser() -> tuple[str, str, str]:
@@ -206,10 +241,8 @@ def start_native_symbol_placement(
         # RAS_OK confirms that KiCad accepted the IPC request, but some builds
         # do not dispatch this interactive action from the plugin IPC context.
         # Retry from the actual editor window using its configured Add hotkey.
-        send("windowfocus", "--sync", str(editor_window_id))
-        pause(0.1)
         send("key", "--clearmodifiers", "Escape")
-        pause(0.1)
+        focus_editor_canvas()
         send("key", "--clearmodifiers", "a")
         hotkey_fallback_attempted = True
         chooser_id, chooser_pid, focused_id = wait_for_chooser()
