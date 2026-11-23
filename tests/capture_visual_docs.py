@@ -21,8 +21,9 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(PLUGIN_ROOT))
 
 
+from kicad_jlcpcb import library as library_module  # noqa: E402
 from kicad_jlcpcb import plugin as browser_module  # noqa: E402
-from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
+from kicad_jlcpcb import populator as populator_module  # noqa: E402
 from kicad_jlcpcb.draft import (  # noqa: E402
     ComponentDraft,
     apply_component_draft_fields,
@@ -31,6 +32,7 @@ from kicad_jlcpcb.draft import (  # noqa: E402
     update_schematic_symbol,
 )
 from kicad_jlcpcb.library import (  # noqa: E402
+    footprint_library_entry_available,
     generate_project_library_symbol,
     parse_sexpr,
     reload_project_symbol_library,
@@ -41,13 +43,15 @@ from kicad_jlcpcb.model import (  # noqa: E402
     find_selected_component,
     iter_schematic_symbols,
 )
+from kicad_jlcpcb.placement import schematic_page_center_mm  # noqa: E402
 from kicad_jlcpcb.populator import (  # noqa: E402
     ComponentPopulator,
     resolve_component_action_target,
     resolve_passive_library_id,
 )
+from kicad_jlcpcb.cursor_placement import capture_eeschema_window_id  # noqa: E402
 from kicad_jlcpcb.provider import JlcSearchProvider  # noqa: E402
-from kicad_jlcpcb.theme import apply_tk_theme  # noqa: E402
+from kicad_jlcpcb.theme import AutoHideScrollbar, apply_tk_theme  # noqa: E402
 
 ASSET_NAMES = (
     "component-browser-initial.png",
@@ -55,10 +59,8 @@ ASSET_NAMES = (
     "component-browser-selected.png",
     "component-properties-selected.png",
     "populate-component-proposed.png",
-    "populate-component-confirmation.png",
     "populate-component-applied.png",
     "add-component-proposed.png",
-    "add-component-confirmation.png",
     "add-component-cursor.png",
     "schematic-before-selection.png",
     "schematic-component-selected.png",
@@ -84,7 +86,9 @@ DEMO_PARTS = (
         "lib_id": "Device:R",
         "lcsc": "C60489",
         "mpn": "RC0402JR-0710KL",
-        "footprint": "Resistor_SMD:R_0402_1005Metric",
+        # Begin Update on 0603 so the reviewed 10k alternative proposes a
+        # real footprint change to 0402 and exercises compatibility guidance.
+        "footprint": "Resistor_SMD:R_0603_1608Metric",
         "position": (120.0, 80.0),
     },
     {
@@ -103,7 +107,7 @@ DEMO_PARTS = (
         "lcsc": "C60489",
         "mpn": "RC0402JR-0710KL",
         "footprint": "Resistor_SMD:R_0402_1005Metric",
-        "position": (240.0, 175.0),
+        "position": (170.0, 80.0),
     },
     {
         "reference": "C1",
@@ -135,16 +139,284 @@ def _capture_window(root: Any, destination: Path) -> None:
     image.save(destination, format="PNG", optimize=True)
 
 
+def _expand_browser_to_full_height(
+    browser: browser_module.ComponentBrowser,
+) -> tuple[int, int]:
+    """Expand Overview/Properties windows until details and result rows are unscrolled."""
+    root = browser.root
+    canvas = browser.detail_canvas
+
+    if browser.selected_component is None:
+        browser.tree.configure(height=max(1, len(browser.components)))
+    alternatives = getattr(browser, "alternatives_tree", None)
+    if alternatives is not None:
+        alternatives.configure(height=max(1, len(browser._alternatives)))
+
+    root.update_idletasks()
+    root.update()
+    top_height = None
+    if browser.selected_component is None:
+        # The component list now lives in a padded card with its heading inside.
+        # Size the upper pane from that complete card rather than the Treeview
+        # alone, otherwise the list remains vertically clipped in full-height
+        # screenshot captures.
+        top_height = max(
+            180, int(browser.component_list_card.winfo_reqheight()) + 8
+        )
+        browser.body.sashpos(0, top_height)
+        root.update_idletasks()
+        root.update()
+
+    bounds = canvas.bbox("all")
+    if not bounds:
+        raise RuntimeError("The component detail view has no content bounds.")
+    content_height = int(bounds[3] - bounds[1])
+    width = int(root.winfo_width())
+    initial_height = int(root.winfo_height())
+    viewport_height = int(canvas.winfo_height())
+    if content_height <= 0 or viewport_height <= 0:
+        raise RuntimeError(
+            f"Invalid full-height browser geometry: content={content_height}, "
+            f"viewport={viewport_height}."
+        )
+
+    target_height = initial_height + max(0, content_height - viewport_height) + 12
+    if target_height > 2800:
+        raise RuntimeError(
+            "The component detail view exceeds the full-height visual capture limit: "
+            f"{target_height}px."
+        )
+    x, y = int(root.winfo_rootx()), int(root.winfo_rooty())
+    root.geometry(f"{width}x{target_height}+{x}+{y}")
+    root.update_idletasks()
+    root.update()
+    if top_height is not None:
+        browser.body.sashpos(0, top_height)
+        root.update_idletasks()
+        root.update()
+
+    canvas.yview_moveto(0.0)
+    first, last = canvas.yview()
+    actual_height = int(canvas.winfo_height())
+    if actual_height < content_height - 2 or first > 0.001 or last < 0.999:
+        raise RuntimeError(
+            "The expanded component detail view still clips content: "
+            f"content={content_height}, viewport={actual_height}, "
+            f"yview=({first:.4f}, {last:.4f})."
+        )
+
+    if browser.selected_component is None:
+        first, last = browser.tree.yview()
+        if first > 0.001 or last < 0.999:
+            raise RuntimeError(
+                "The expanded Component Overview still scrolls its component list: "
+                f"yview=({first:.4f}, {last:.4f})."
+            )
+    if alternatives is not None:
+        first, last = alternatives.yview()
+        if first > 0.001 or last < 0.999:
+            raise RuntimeError(
+                "The expanded Component Properties view still scrolls its MPN results: "
+                f"yview=({first:.4f}, {last:.4f})."
+            )
+
+    print(
+        "full-height-browser=passed "
+        f"size={root.winfo_width()}x{root.winfo_height()} "
+        f"content_height={content_height} viewport_height={actual_height}",
+        flush=True,
+    )
+    return int(root.winfo_width()), int(root.winfo_height())
+
+
+def _expand_populator_to_full_height(populator: ComponentPopulator) -> tuple[int, int]:
+    """Expand the Tk window until its complete scrollable workspace is visible."""
+    root = populator.root
+    canvas = populator.content_canvas
+    root.update_idletasks()
+    root.update()
+    bounds = canvas.bbox("all")
+    if not bounds:
+        raise RuntimeError("The component workspace has no scrollable content bounds.")
+    content_height = int(bounds[3] - bounds[1])
+    width = int(root.winfo_width())
+    initial_height = int(root.winfo_height())
+    canvas_height = int(canvas.winfo_height())
+    if content_height <= 0 or canvas_height <= 0:
+        raise RuntimeError(
+            f"Invalid full-height capture geometry: content={content_height}, "
+            f"canvas={canvas_height}."
+        )
+    target_height = initial_height + max(0, content_height - canvas_height)
+    if target_height > 2800:
+        raise RuntimeError(
+            "The component workspace exceeds the full-height visual capture limit: "
+            f"{target_height}px."
+        )
+    x, y = int(root.winfo_rootx()), int(root.winfo_rooty())
+    root.geometry(f"{width}x{target_height}+{x}+{y}")
+    root.update_idletasks()
+    root.update()
+    first, last = canvas.yview()
+    if first > 0.001:
+        canvas.yview_moveto(0.0)
+        root.update_idletasks()
+        root.update()
+        first, last = canvas.yview()
+    actual_height = int(canvas.winfo_height())
+    if actual_height < content_height - 2 or first > 0.001 or last < 0.999:
+        raise RuntimeError(
+            "The expanded window still clips scrollable content: "
+            f"content={content_height}, viewport={actual_height}, "
+            f"yview=({first:.4f}, {last:.4f})."
+        )
+    print(
+        "full-height-window=passed "
+        f"size={root.winfo_width()}x{root.winfo_height()} "
+        f"content_height={content_height} viewport_height={actual_height}",
+        flush=True,
+    )
+    return int(root.winfo_width()), int(root.winfo_height())
+
+
 def _capture_desktop(destination: Path) -> None:
-    """Capture the full Xvfb desktop, including the selected Eeschema symbol."""
+    """Capture the upper 1500px of Xvfb for the Eeschema desktop evidence."""
     from PIL import ImageGrab, ImageStat
 
-    image = ImageGrab.grab().convert("RGB")
+    image = ImageGrab.grab(bbox=(0, 0, 1920, 1500)).convert("RGB")
     if image.width < 1600 or image.height < 1000:
         raise RuntimeError(f"Desktop capture is too small: {image.size}")
     if max(ImageStat.Stat(image.resize((48, 32))).stddev) < 2.0:
         raise RuntimeError("Eeschema desktop capture appears blank.")
     image.save(destination, format="PNG", optimize=True)
+
+
+def _verify_x11_keyboard_input() -> None:
+    """Verify XTest typing reaches a focused text entry in this Xvfb session.
+
+    This isolates X11/Openbox keyboard delivery from KiCad's wxGTK Search
+    widget. The temporary Tk window is destroyed before Eeschema is launched.
+    """
+    import tkinter as tk
+
+    xdotool = shutil.which("xdotool")
+    if not xdotool:
+        raise FileNotFoundError("xdotool is required for the X11 keyboard smoke test")
+
+    original = subprocess.run(
+        [xdotool, "getmouselocation", "--shell"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    ).stdout
+    root = tk.Tk()
+    root.title("KiCad X11 keyboard smoke test")
+    root.geometry("480x140+40+40")
+    root.resizable(False, False)
+    tk.Label(
+        root,
+        text="X11 input diagnostic — the field below should read x11-smoke",
+    ).pack(anchor="w", padx=14, pady=(14, 8))
+    value = tk.StringVar()
+    entry = tk.Entry(root, textvariable=value, width=42)
+    entry.pack(fill="x", padx=14, pady=(0, 12))
+    try:
+        root.deiconify()
+        visibility_deadline = time.monotonic() + 5.0
+        while not root.winfo_viewable() and time.monotonic() < visibility_deadline:
+            root.update()
+            time.sleep(0.05)
+        if not root.winfo_viewable():
+            raise RuntimeError(
+                "The X11 keyboard smoke-test window did not become visible "
+                "within five seconds."
+            )
+        print("x11-keyboard-smoke=window-visible", flush=True)
+        entry.focus_force()
+        root.update()
+
+        x = entry.winfo_rootx() + entry.winfo_width() // 2
+        y = entry.winfo_rooty() + entry.winfo_height() // 2
+        subprocess.run(
+            [xdotool, "mousemove", "--sync", str(x), str(y)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        subprocess.run(
+            [xdotool, "click", "1"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        print(
+            f"x11-keyboard-smoke=entry-clicked point=({x},{y})",
+            flush=True,
+        )
+        subprocess.run(
+            [xdotool, "key", "--clearmodifiers", "ctrl+a"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        subprocess.run(
+            [xdotool, "type", "--clearmodifiers", "--delay", "50", "x11-smoke"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        time.sleep(0.15)
+        root.update()
+        actual = value.get()
+        focused = subprocess.run(
+            [xdotool, "getwindowfocus"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+        print(
+            "x11-keyboard-smoke="
+            f"{'passed' if actual == 'x11-smoke' else 'failed'} "
+            f"text={actual!r} focus={focused!r} entry=({x},{y})",
+            flush=True,
+        )
+        if actual != "x11-smoke":
+            raise RuntimeError(
+                "XTest keyboard input did not reach a focused Tk Entry; "
+                f"expected 'x11-smoke', received {actual!r}."
+            )
+    finally:
+        try:
+            root.destroy()
+        finally:
+            try:
+                position = {
+                    key: int(value)
+                    for key, value in (
+                        line.split("=", 1) for line in original.splitlines()
+                        if "=" in line
+                    )
+                    if key in {"X", "Y"}
+                }
+                if {"X", "Y"}.issubset(position):
+                    subprocess.run(
+                        [
+                            xdotool, "mousemove", "--sync",
+                            str(position["X"]), str(position["Y"]),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+            except Exception:
+                pass
 
 
 def _validate_live_supplier_data(cache_dir: Path) -> None:
@@ -738,6 +1010,9 @@ def _open_live_eeschema(output_dir: Path, work_dir: Path):
         table_text = generated_library.table_path.read_text(encoding="utf-8")
         if generated_library.nickname not in table_text:
             raise RuntimeError("The project symbol table does not register the generated library.")
+        saved_schematic = (work_dir / "jlcpcb-live-demo.kicad_sch").read_text(encoding="utf-8")
+        if not saved_schematic.strip():
+            raise RuntimeError("The live schematic was not saved after catalogue field population.")
         print(
             "live-project-library-generation=passed "
             f"library_id={generated_library.library_id} "
@@ -843,6 +1118,265 @@ def _position_eeschema_window(width: int = 940, height: int = 1400) -> None:
     )
 
 
+def _assert_auto_hide_scrollbar(scrollbar: Any, name: str) -> None:
+    """Check the compact idle rail and wider interaction state in live Tk."""
+    if not isinstance(scrollbar, AutoHideScrollbar):
+        raise RuntimeError(
+            f"{name} uses {type(scrollbar).__name__}, not AutoHideScrollbar."
+        )
+    style = scrollbar._style
+    idle_width = int(style.lookup(scrollbar.idle_style, "width"))
+    active_width = int(style.lookup(scrollbar.active_style, "width"))
+    if idle_width != AutoHideScrollbar.IDLE_WIDTH:
+        raise RuntimeError(
+            f"{name} idle width is {idle_width}px, expected "
+            f"{AutoHideScrollbar.IDLE_WIDTH}px."
+        )
+    if active_width != AutoHideScrollbar.ACTIVE_WIDTH:
+        raise RuntimeError(
+            f"{name} active width is {active_width}px, expected "
+            f"{AutoHideScrollbar.ACTIVE_WIDTH}px."
+        )
+
+    palette = getattr(scrollbar.winfo_toplevel(), "_kicad_jlcpcb_palette", None)
+    if not isinstance(palette, dict):
+        raise RuntimeError(f"{name} has no active KiCad theme palette.")
+    expected_colors = (
+        (scrollbar.idle_style, "background", "background"),
+        (scrollbar.idle_style, "troughcolor", "background"),
+        (scrollbar.active_style, "background", "scroll_thumb"),
+        (scrollbar.active_style, "troughcolor", "scroll_trough"),
+    )
+    for style_name, option, palette_key in expected_colors:
+        actual = str(style.lookup(style_name, option)).casefold()
+        expected = palette[palette_key].casefold()
+        if actual != expected:
+            raise RuntimeError(
+                f"{name} {style_name} {option} is {actual!r}; "
+                f"the active palette requires {expected!r}."
+            )
+
+    # Let pending geometry/yscrollcommand updates settle first. Otherwise a
+    # freshly laid-out Treeview can report its non-scrollable range after the
+    # forced reveal and immediately put the scrollbar back into its idle style.
+    scrollbar.update_idletasks()
+    previous_scrollable = scrollbar.scrollable
+    scrollbar._scrollable = True
+    scrollbar._reveal()
+    if scrollbar.cget("style") != scrollbar.active_style:
+        raise RuntimeError(f"{name} did not reveal while scrolling.")
+    scrollbar._cancel_hide()
+    scrollbar._scrollable = previous_scrollable
+    scrollbar._set_idle_style()
+    if scrollbar.cget("style") != scrollbar.idle_style:
+        raise RuntimeError(f"{name} did not return to its compact idle rail.")
+
+
+def _assert_section_heading_typography(root: Any) -> None:
+    """Keep section headings consistent across page and card surfaces."""
+    from tkinter import ttk
+
+    style = ttk.Style(root)
+    heading_styles = (
+        "SectionTitle.TLabel",
+        "SectionTitleSurface.TLabel",
+    )
+    expected_font = style.lookup(heading_styles[0], "font")
+    expected_foreground = style.lookup(heading_styles[0], "foreground")
+    for heading_style in heading_styles[1:]:
+        actual_font = style.lookup(heading_style, "font")
+        actual_foreground = style.lookup(heading_style, "foreground")
+        if actual_font != expected_font or actual_foreground != expected_foreground:
+            raise RuntimeError(
+                "Section heading typography is inconsistent: "
+                f"{heading_styles[0]}={(expected_font, expected_foreground)!r}; "
+                f"{heading_style}={(actual_font, actual_foreground)!r}."
+            )
+
+def _assert_overview_detail_cards(browser: Any) -> None:
+    """Keep every overview section in a shared card with its heading inside."""
+    for name, card in (
+        ("Component list", browser.component_list_card),
+        ("Catalogue details", browser.catalogue_details_card),
+        ("Other listings", browser.alternatives_card),
+        ("Schematic properties", browser.schematic_properties_card),
+    ):
+        if str(card.cget("style")) != "Card.TFrame":
+            raise RuntimeError(
+                f"{name} must use the shared card container style, "
+                f"not {card.cget('style')!r}."
+            )
+
+    if str(browser.product_preview.frame.cget("style")) != "ProductPreview.TFrame":
+        raise RuntimeError("Selected Part must retain the shared product-preview surface.")
+    for name, title, card in (
+        ("Component list", browser.component_list_title, browser.component_list_card),
+        ("Other listings", browser.alternatives_title, browser.alternatives_card),
+    ):
+        if title.master is not card:
+            raise RuntimeError(f"{name} heading must be inside its card.")
+
+
+def _assert_overview_row_alignment(browser: Any) -> None:
+    """Align card bounds and data-row insets across the entire overview."""
+    browser.root.update_idletasks()
+    panels = (
+        ("Design overview", browser.project_overview_card),
+        ("Component list", browser.component_list_card),
+        ("Selected part", browser.product_preview.frame),
+        ("Catalogue details", browser.catalogue_details_card),
+        ("Other listings", browser.alternatives_card),
+        ("Schematic properties", browser.schematic_properties_card),
+    )
+    bounds = {
+        name: (
+            int(panel.winfo_rootx()),
+            int(panel.winfo_rootx()) + int(panel.winfo_width()),
+        )
+        for name, panel in panels
+    }
+    left_edges = {name: position[0] for name, position in bounds.items()}
+    right_edges = {name: position[1] for name, position in bounds.items()}
+    if len(set(left_edges.values())) != 1 or len(set(right_edges.values())) != 1:
+        raise RuntimeError(
+            "Component Overview panels do not share common left and right bounds: "
+            f"{bounds!r}."
+        )
+    title_inset = int(browser.component_list_title.winfo_rootx()) - bounds["Component list"][0]
+    tree_inset = int(browser.tree.winfo_rootx()) - bounds["Component list"][0]
+    if title_inset != tree_inset:
+        raise RuntimeError(
+            "The component-list heading and table do not share the card inset: "
+            f"title={title_inset}px, table={tree_inset}px."
+        )
+    summary_title_inset = (
+        int(browser.project_overview_title.winfo_rootx())
+        - bounds["Design overview"][0]
+    )
+    summary_metric_inset = (
+        int(browser.project_overview_first_key.winfo_rootx())
+        - bounds["Design overview"][0]
+    )
+    if summary_title_inset != summary_metric_inset:
+        raise RuntimeError(
+            "The project-summary heading and first metric do not share an inset: "
+            f"title={summary_title_inset}px, metric={summary_metric_inset}px."
+        )
+
+    row_specs = (
+        (
+            "Catalogue details",
+            browser.catalogue_details_card,
+            ("Price breaks", "Attributes"),
+        ),
+        (
+            "Schematic properties",
+            browser.schematic_properties_card,
+            ("Reference", "Value", "LCSC / JLCPCB", "MPN property", "Footprint"),
+        ),
+    )
+    positions: dict[str, int] = {}
+    for section_name, card, expected_labels in row_specs:
+        labels = {
+            str(child.cget("text")): child
+            for child in card.winfo_children()
+            if str(child.winfo_class()) == "TLabel"
+        }
+        for label_text in expected_labels:
+            label = labels.get(label_text)
+            if label is None:
+                raise RuntimeError(
+                    f"{section_name} is missing the expected row label {label_text!r}."
+                )
+            positions[f"{section_name}/{label_text}"] = int(label.winfo_rootx())
+
+    distinct_edges = set(positions.values())
+    if len(distinct_edges) != 1:
+        raise RuntimeError(
+            "Component Overview data rows do not share one left inset: "
+            f"{positions!r}."
+        )
+
+
+def _assert_flat_cad_tabs(cad_preview: Any, root: Any, expected_page: Any = None) -> None:
+    """Check the CAD tab strip uses one surface and a single flat active marker."""
+    from tkinter import ttk
+
+    tabs = cad_preview.notebook
+    if type(tabs).__name__ != "FlatTabControl":
+        raise RuntimeError(
+            f"CAD preview must use FlatTabControl, not {type(tabs).__name__}."
+        )
+    if len(tabs.pages) != 3 or len(tabs.buttons) != 3 or len(tabs.indicators) != 3:
+        raise RuntimeError("CAD preview must expose exactly three tab pages.")
+    palette = root._kicad_jlcpcb_palette
+    style = ttk.Style(root)
+    for style_name in (
+        "TabBar.TFrame",
+        "TabItem.TFrame",
+        "ProductPreview.TFrame",
+        "TabIndicatorInactive.TFrame",
+    ):
+        actual = style.lookup(style_name, "background")
+        if actual != palette["surface"]:
+            raise RuntimeError(
+                f"{style_name} background must match the card surface: "
+                f"{actual!r} != {palette['surface']!r}."
+            )
+    if style.lookup("TabIndicator.TFrame", "background") != palette["accent"]:
+        raise RuntimeError("The active tab underline must use the theme accent.")
+    if (
+        style.lookup("Tab.TButton", "padding")
+        != style.lookup("ActiveTab.TButton", "padding")
+    ):
+        raise RuntimeError("Selecting a CAD tab must not change its size.")
+    active_buttons = [
+        button for button in tabs.buttons
+        if str(button.cget("style")) == "ActiveTab.TButton"
+    ]
+    active_indicators = [
+        indicator for indicator in tabs.indicators
+        if str(indicator.cget("style")) == "TabIndicator.TFrame"
+    ]
+    if len(active_buttons) != 1 or len(active_indicators) != 1:
+        raise RuntimeError(
+            "Exactly one CAD tab must be active and marked with an underline."
+        )
+    if expected_page is not None and tabs.selected_tab is not expected_page:
+        raise RuntimeError("The requested CAD preview page is not selected.")
+
+
+def _assert_selected_part_actions(browser: Any) -> None:
+    """Keep the LCSC open/copy controls inside the Selected Part card."""
+    preview = browser.product_preview
+    if preview.lcsc_button is None:
+        raise RuntimeError("Selected Part card is missing its Open in LCSC action.")
+    if str(preview.lcsc_button.cget("text")) != "Open in LCSC ↗":
+        raise RuntimeError("Selected Part card has an unexpected LCSC action label.")
+    if str(preview.lcsc_button.cget("state")) != "normal":
+        raise RuntimeError("Open in LCSC must be enabled for the selected part.")
+
+    def is_descendant(widget: Any, ancestor: Any) -> bool:
+        current = widget
+        while current is not None:
+            if current == ancestor:
+                return True
+            current = getattr(current, "master", None)
+        return False
+
+    for name, widget in (
+        ("Open in LCSC", preview.lcsc_button),
+        ("Copyable LCSC part ID", preview.lcsc_label),
+    ):
+        if not is_descendant(widget, preview.frame):
+            raise RuntimeError(f"{name} is outside the Selected Part card.")
+
+    if not preview.lcsc_label.bind("<Button-1>"):
+        raise RuntimeError("The displayed LCSC part ID is not clickable.")
+    if not preview.lcsc_label.bind("<Return>"):
+        raise RuntimeError("The displayed LCSC part ID is not keyboard accessible.")
+
+
 def _drive_overview(
     schematic: Any, output_dir: Path, cache_dir: Path
 ) -> None:
@@ -850,6 +1384,16 @@ def _drive_overview(
     browser = browser_module.ComponentBrowser(schematic, cache_dir, theme="light")
     browser.root.geometry("1480x1250+20+20")
     root = browser.root
+    _assert_section_heading_typography(root)
+    _assert_overview_detail_cards(browser)
+    _assert_selected_part_actions(browser)
+    for name, scrollbar in (
+        ("overview component list", browser.tree_scrollbar),
+        ("overview detail pane", browser.detail_scrollbar),
+        ("overview alternatives", browser.alternatives_scrollbar),
+    ):
+        _assert_auto_hide_scrollbar(scrollbar, name)
+    _assert_overview_row_alignment(browser)
     failures: list[str] = []
     frames = (
         output_dir / "component-browser-initial.png",
@@ -861,7 +1405,11 @@ def _drive_overview(
         {"query": "C60489", "part": "C60489"},
         {"query": "C1591", "part": "C1591"},
     )
-    state = {"index": 0, "deadline": time.monotonic() + 45.0}
+    state = {
+        "index": 0,
+        "deadline": time.monotonic() + 45.0,
+        "expanded": False,
+    }
 
     def advance() -> None:
         try:
@@ -906,9 +1454,17 @@ def _drive_overview(
                     )
                 root.after(120, advance)
                 return
-            if browser.catalogue_status_var.get() != "Catalogue details loaded.":
+            loaded_details = browser._catalogue_details
+            loaded_part = (
+                loaded_details.lcsc.upper() if loaded_details is not None else None
+            )
+            if loaded_part != stage["part"]:
                 if time.monotonic() >= state["deadline"]:
-                    raise TimeoutError(f"Catalogue render did not settle for {stage['part']}.")
+                    raise TimeoutError(
+                        f"Catalogue data did not settle for {stage['part']}; "
+                        f"loaded={loaded_part!r}; "
+                        f"catalogue_status={browser.catalogue_status_var.get()!r}."
+                    )
                 root.after(120, advance)
                 return
             if browser.summary_status_var.get().startswith("Loading catalogue"):
@@ -916,13 +1472,28 @@ def _drive_overview(
                     raise TimeoutError("Live overview price/stock summary did not finish.")
                 root.after(120, advance)
                 return
+            if not state["expanded"]:
+                _expand_browser_to_full_height(browser)
+                state["expanded"] = True
             if index == 0:
                 _capture_window(root, output_dir / "component-browser-light.png")
                 apply_tk_theme(root, "dark")
                 root.update()
+                for name, scrollbar in (
+                    ("overview component list", browser.tree_scrollbar),
+                    ("overview detail pane", browser.detail_scrollbar),
+                    ("overview alternatives", browser.alternatives_scrollbar),
+                ):
+                    _assert_auto_hide_scrollbar(scrollbar, name)
                 _capture_window(root, output_dir / "component-browser-dark.png")
                 apply_tk_theme(root, "light")
                 root.update()
+                for name, scrollbar in (
+                    ("overview component list", browser.tree_scrollbar),
+                    ("overview detail pane", browser.detail_scrollbar),
+                    ("overview alternatives", browser.alternatives_scrollbar),
+                ):
+                    _assert_auto_hide_scrollbar(scrollbar, name)
                 details = browser._catalogue_details
                 if details is None or details.is_cached or details.stale:
                     raise RuntimeError("Overview screenshot is not using fresh JLCPCB data.")
@@ -1001,14 +1572,19 @@ def _capture_live_selection_workflow(
         nonlocal captured
         try:
             root.update()
+            loaded_details = browser._catalogue_details
+            loaded_part = (
+                loaded_details.lcsc.upper() if loaded_details is not None else None
+            )
             ready = (
                 browser.detail_vars["part"].get().upper() == "C60489"
-                and browser.catalogue_status_var.get() == "Catalogue details loaded."
+                and loaded_part == "C60489"
             )
             if ready:
                 if (
-                    browser._catalogue_details is None
-                    or browser._catalogue_details.is_cached
+                    loaded_details is None
+                    or loaded_details.is_cached
+                    or loaded_details.stale
                 ):
                     raise RuntimeError(
                         "Selected properties screenshot is not backed by live JLCPCB data."
@@ -1021,6 +1597,7 @@ def _capture_live_selection_workflow(
                     raise RuntimeError(
                         "Selected properties window has no live MPN alternatives."
                     )
+                _expand_browser_to_full_height(browser)
                 _capture_window(
                     root, output_dir / "component-properties-selected.png"
                 )
@@ -1090,7 +1667,13 @@ def _capture_live_selection_workflow(
                 browser.close()
                 return
             if time.monotonic() >= deadline:
-                raise TimeoutError("Live JLCPCB properties for the selected R1 did not load.")
+                raise TimeoutError(
+                    "Live JLCPCB properties for the selected R1 did not load; "
+                    f"selected={browser.detail_vars['part'].get()!r}; "
+                    f"loaded={loaded_part!r}; "
+                    f"catalogue_status={browser.catalogue_status_var.get()!r}; "
+                    f"browser_status={browser.status_var.get()!r}."
+                )
             root.after(120, advance)
         except BaseException as exc:
             failures.append(f"{type(exc).__name__}: {exc}")
@@ -1107,6 +1690,164 @@ def _capture_live_selection_workflow(
         raise RuntimeError("The selected-component properties window was not captured.")
 
 
+def _assert_advanced_filter_control(populator: ComponentPopulator) -> None:
+    """Verify the compact one-row filter strip and active-value summary."""
+    root = populator.root
+    entry = populator.lcsc_entry.grid_info()
+    basic_only = populator.basic_only_checkbutton.grid_info()
+    filters = populator.advanced_filters_button.grid_info()
+    summary_position = populator.advanced_filter_summary.grid_info()
+    summary_is_visible = populator.advanced_filter_summary.winfo_ismapped()
+    search = populator.lookup_button.grid_info()
+    section = populator.advanced_filters_section.grid_info()
+    section_is_visible = populator.advanced_filters_section.winfo_ismapped()
+    package_label = populator.footprint_filter_entry.grid_info()
+    tolerance = populator.tolerance_filter_entry.grid_info()
+    clear = populator.clear_filters_button.grid_info()
+    if (
+        entry.get("row") != 0
+        or entry.get("column") != 1
+        or basic_only.get("row") != 0
+        or basic_only.get("column") != 2
+        or filters.get("row") != 0
+        or filters.get("column") != 3
+        or (
+            summary_is_visible
+            and (
+                summary_position.get("row") != 0
+                or summary_position.get("column") != 4
+            )
+        )
+        or search.get("row") != 0
+        or search.get("column") != 5
+        or (
+            section_is_visible
+            and (section.get("row") != 1 or section.get("columnspan") != 6)
+        )
+        or package_label.get("row") != 0
+        or package_label.get("column") != 1
+        or tolerance.get("row") != 0
+        or tolerance.get("column") != 3
+        or clear.get("row") != 0
+        or clear.get("column") != 4
+    ):
+        raise RuntimeError(
+            "The filter toolbar or one-row advanced-filter strip is incorrectly arranged: "
+            f"entry={entry!r}, basic_only={basic_only!r}, filters={filters!r}, "
+            f"summary={summary_position!r}, search={search!r}, section={section!r}, "
+            f"section_visible={section_is_visible!r}, package={package_label!r}, "
+            f"tolerance={tolerance!r}, clear={clear!r}."
+        )
+
+    root.update_idletasks()
+    if populator.advanced_filters_section.winfo_reqheight() > 56:
+        raise RuntimeError(
+            "The advanced-filter strip is too tall for its two inline dropdowns: "
+            f"{populator.advanced_filters_section.winfo_reqheight()} px."
+        )
+    if (
+        str(populator.footprint_filter_entry.cget("state")) != "normal"
+        or str(populator.tolerance_filter_entry.cget("state")) != "normal"
+        or "0402" not in populator.footprint_filter_entry.cget("values")
+        or "5%" not in populator.tolerance_filter_entry.cget("values")
+        or populator.clear_filters_button.cget("style") != "ToolbarLink.TButton"
+        or populator.basic_only_checkbutton.cget("text") != "Basic parts only"
+    ):
+        raise RuntimeError(
+            "Search filters must remain editable, compact and clearly labelled."
+        )
+
+    if populator.basic_only_var.get():
+        raise RuntimeError("Basic parts only should be off by default.")
+    basic_status = populator.status_var.get()
+    populator.basic_only_checkbutton.invoke()
+    root.update_idletasks()
+    if not populator.basic_only_var.get() or populator.status_var.get() != basic_status:
+        raise RuntimeError("The Basic-only checkbox must toggle without auto-searching.")
+    populator.basic_only_checkbutton.invoke()
+    root.update_idletasks()
+    if populator.basic_only_var.get():
+        raise RuntimeError("The Basic-only checkbox did not return to its off state.")
+
+    active_count = populator._active_advanced_filter_count()
+    expected_button_text = (
+        "Filters" if not active_count else f"Filters ({active_count})"
+    )
+    if (
+        populator._filters_active != bool(active_count)
+        or populator.advanced_filters_button.cget("text") != expected_button_text
+        or populator.advanced_filters_button.cget("style") != "ToolbarLink.TButton"
+        or populator.advanced_filters_button.winfo_reqwidth() < 54
+    ):
+        raise RuntimeError(
+            "The labelled Filters control is not visibly reflecting the active filters: "
+            f"text={populator.advanced_filters_button.cget('text')!r}, "
+            f"expected={expected_button_text!r}, "
+            f"width={populator.advanced_filters_button.winfo_reqwidth()}."
+        )
+    summary = populator.advanced_filter_summary.cget("text")
+    if active_count:
+        if "Pkg:" not in summary or "Tol:" not in summary:
+            raise RuntimeError(
+                f"The search row does not summarize active filters: {summary!r}"
+            )
+        if not populator.advanced_filter_summary.winfo_ismapped():
+            raise RuntimeError("The active-filter summary is not visible next to the funnel.")
+    elif populator.advanced_filter_summary.winfo_ismapped():
+        raise RuntimeError("The active-filter summary should be hidden when no filter is set.")
+
+    basic_toggle = populator.basic_only_checkbutton
+    basic_toggle.event_generate("<Enter>")
+    root.update()
+    time.sleep(0.5)
+    root.update()
+    basic_tooltip = populator.basic_only_tooltip._window
+    basic_tooltip_text = " ".join(
+        str(child.cget("text"))
+        for child in basic_tooltip.winfo_children()
+        if child.winfo_class() == "Label"
+    ) if basic_tooltip is not None else ""
+    if (
+        basic_tooltip is None
+        or not basic_tooltip.winfo_exists()
+        or "Extended" not in basic_tooltip_text
+        or "rank first" not in basic_tooltip_text
+    ):
+        raise RuntimeError("The Basic-only checkbox tooltip does not explain its behavior.")
+    basic_toggle.event_generate("<Leave>")
+    root.update()
+
+    button = populator.advanced_filters_button
+    button.event_generate("<Enter>")
+    root.update()
+    time.sleep(0.5)
+    root.update()
+    tooltip = populator.advanced_filters_tooltip._window
+    if tooltip is None or not tooltip.winfo_exists():
+        raise RuntimeError("The advanced-filter hover tooltip did not appear.")
+    tooltip_text = " ".join(
+        str(child.cget("text"))
+        for child in tooltip.winfo_children()
+        if child.winfo_class() == "Label"
+    )
+    if "Advanced filters" not in tooltip_text or "Package / footprint" not in tooltip_text:
+        raise RuntimeError(f"The advanced-filter tooltip is incomplete: {tooltip_text!r}")
+    if "Tolerance" not in tooltip_text:
+        raise RuntimeError(f"The advanced-filter tooltip omits tolerance: {tooltip_text!r}")
+    for variable in (populator.footprint_filter_var, populator.tolerance_filter_var):
+        value = variable.get().strip()
+        if value and value not in tooltip_text:
+            raise RuntimeError(
+                f"The advanced-filter tooltip omits active constraint {value!r}."
+            )
+    if active_count and "Press Search" not in tooltip_text:
+        raise RuntimeError("The advanced-filter tooltip does not explain how to run the query.")
+    button.event_generate("<Leave>")
+    root.update()
+    if populator.advanced_filters_tooltip._window is not None:
+        raise RuntimeError("The advanced-filter tooltip did not close when the pointer left.")
+
+
 def _drive_populator_form(
     populator: ComponentPopulator,
     output_dir: Path,
@@ -1114,19 +1855,23 @@ def _drive_populator_form(
     proposal_asset: str,
     light_asset: str,
     dark_asset: str,
-    confirmation_asset: str,
     completed_asset: str,
-    confirmation_title: str,
-    required_confirmation_text: str,
-    expected_lcsc: str,
+    expected_lcsc: str | None,
     expected_value: str,
-    expected_footprint: str,
+    expected_footprint: str | None,
     validate_result,
     require_image: bool = False,
+    assert_basic_shortlist: bool = False,
+    require_alternatives: bool = False,
+    preferred_lcsc: str | None = None,
+    avoid_lcsc: str | None = None,
+    require_update_compatibility_change: bool = False,
     cursor_completion: bool = False,
 ) -> None:
-    """Capture the real LCSC proposal form, confirm it, and verify the IPC result."""
+    """Capture the production review form and verify the resulting KiCad IPC action."""
     root = populator.root
+    _assert_section_heading_typography(root)
+    _assert_flat_cad_tabs(populator.cad_preview, root)
     failures: list[str] = []
     state = {"done": False, "deadline": time.monotonic() + 60.0}
 
@@ -1141,29 +1886,215 @@ def _drive_populator_form(
     def advance() -> None:
         try:
             root.update()
+            if populator.candidate_rows:
+                selected_iid = None
+                if preferred_lcsc:
+                    selected_iid = next(
+                        (
+                            iid for iid, (details, _draft) in populator.candidate_rows.items()
+                            if details.lcsc == preferred_lcsc
+                        ),
+                        None,
+                    )
+                if selected_iid is None and avoid_lcsc:
+                    current = populator.candidate_tree.selection()
+                    current_details = populator.candidate_rows.get(current[0]) if current else None
+                    if current_details and current_details[0].lcsc == avoid_lcsc:
+                        selected_iid = next(
+                            (
+                                iid for iid, (details, _draft) in populator.candidate_rows.items()
+                                if details.lcsc != avoid_lcsc
+                            ),
+                            None,
+                        )
+                if selected_iid and populator.candidate_tree.selection() != (selected_iid,):
+                    populator.candidate_tree.selection_set(selected_iid)
+                    populator.candidate_tree.focus(selected_iid)
+                    populator._on_candidate_selected()
             if (
                 populator.draft is None
                 or str(populator.apply_button.cget("state")) != "normal"
                 or populator._image_pending
+                or (
+                    require_update_compatibility_change
+                    and populator._cad_pending
+                )
             ):
                 if time.monotonic() >= state["deadline"]:
                     raise TimeoutError(
-                        "The LCSC review form did not receive an applicable live draft: "
+                        "The LCSC review form or its asynchronous previews did not settle: "
                         f"status={populator.status_var.get()!r}"
                     )
                 root.after(150, advance)
                 return
 
             draft = populator.draft
+            if (
+                not populator.create_mode
+                and expected_footprint == "Resistor_SMD:R_0402_1005Metric"
+            ):
+                project = populator.schematic.get_project()
+                if not footprint_library_entry_available(
+                    expected_footprint, populator.kicad, project
+                ):
+                    try:
+                        path_map = populator.kicad.get_paths()
+                    except Exception as exc:
+                        path_map = {"get_paths_error": str(exc)}
+                    project_dir = library_module._project_directory(project)
+                    table_candidates = [
+                        (project_dir / "fp-lib-table", project_dir),
+                        *(
+                            (table_path, table_path.parent)
+                            for table_path in library_module._global_library_tables(
+                                "fp-lib-table"
+                            )
+                        ),
+                    ]
+                    table_diagnostics = []
+                    for table_path, base_dir in table_candidates:
+                        if not table_path.is_file() or table_path.is_symlink():
+                            continue
+                        try:
+                            table_data = parse_sexpr(
+                                table_path.read_text(encoding="utf-8")
+                            )
+                            entry = library_module._table_entry(
+                                table_data, "Resistor_SMD"
+                            )
+                            if entry is None:
+                                continue
+                            uri = library_module._entry_text(entry, "uri")
+                            resolved = library_module._uri_path(
+                                base_dir,
+                                uri,
+                                {
+                                    str(key): str(value)
+                                    for key, value in (path_map or {}).items()
+                                    if value not in (None, "")
+                                },
+                            )
+                            table_diagnostics.append({
+                                "table": str(table_path),
+                                "type": library_module._entry_text(entry, "type"),
+                                "uri": uri,
+                                "resolved": str(resolved) if resolved else None,
+                                "resolved_is_dir": bool(
+                                    resolved is not None and resolved.is_dir()
+                                ),
+                                "resolved_library_exists": bool(
+                                    resolved is not None
+                                    and (resolved / "R_0402_1005Metric.kicad_mod").is_file()
+                                ),
+                            })
+                        except Exception as exc:
+                            table_diagnostics.append({
+                                "table": str(table_path),
+                                "error": str(exc),
+                            })
+                    root_diagnostics = []
+                    for key, value in (path_map or {}).items():
+                        ipc_root = Path(str(value)).expanduser()
+                        for candidate_root in (
+                            ipc_root,
+                            ipc_root / "footprints",
+                            ipc_root / "share" / "kicad" / "footprints",
+                        ):
+                            library_dir = candidate_root / "Resistor_SMD.pretty"
+                            item = library_dir / "R_0402_1005Metric.kicad_mod"
+                            root_diagnostics.append({
+                                "ipc_key": key,
+                                "root": str(candidate_root),
+                                "library_exists": library_dir.is_dir(),
+                                "library_symlink": library_dir.is_symlink(),
+                                "item_exists": item.is_file(),
+                                "item_symlink": item.is_symlink(),
+                                "resolved_item": (
+                                    str(item.resolve(strict=False))
+                                    if item.exists() else None
+                                ),
+                            })
+                    env_footprints = {
+                        key: value
+                        for key, value in os.environ.items()
+                        if "FOOTPRINT_DIR" in key
+                    }
+                    raise RuntimeError(
+                        "KiCad's standard Resistor_SMD footprint did not resolve: "
+                        f"{expected_footprint}; paths={path_map!r}; "
+                        f"env={env_footprints!r}; tables={table_diagnostics!r}; "
+                        f"roots={root_diagnostics!r}"
+                    )
+                populator._update_field_feedback()
+                if require_update_compatibility_change:
+                    if (
+                        populator._original_footprint
+                        == populator.footprint_var.get().strip()
+                    ):
+                        raise RuntimeError(
+                            "Update capture did not create a footprint change: "
+                            f"{populator._original_footprint!r}"
+                        )
+                    compatibility_notes = tuple(populator._notes_messages)
+                    if not any(
+                        note.startswith("Warning: Update proposes a footprint change")
+                        for note in compatibility_notes
+                    ):
+                        raise RuntimeError(
+                            "Update capture is missing the footprint compatibility warning: "
+                            f"{compatibility_notes!r}"
+                        )
+                feedback = populator._field_feedback["footprint"][1]
+                if feedback.winfo_ismapped():
+                    raise RuntimeError(
+                        "A standard KiCad footprint is incorrectly flagged as unavailable: "
+                        f"{feedback.cget('text')!r}"
+                    )
             if not populator.candidate_tree.get_children():
                 raise RuntimeError(
                     "The shared catalogue match list did not render a selected part."
                 )
-            if populator.catalogue_vars["lcsc"].get() != expected_lcsc:
+            if (
+                expected_lcsc is not None
+                and populator.catalogue_vars["lcsc"].get() != expected_lcsc
+            ):
                 raise RuntimeError(
                     "The shared catalogue preview does not match the selected part: "
                     f"{populator.catalogue_vars['lcsc'].get()!r} != {expected_lcsc!r}"
                 )
+            candidate_iids = populator.candidate_tree.get_children()
+            if require_alternatives and (
+                len(candidate_iids) < 2
+                or not populator.candidate_section.winfo_ismapped()
+            ):
+                raise RuntimeError(
+                    "Update-mode passive search did not display multiple alternatives."
+                )
+            footprint_column_width = int(
+                populator.candidate_tree.column("footprint", "width")
+            )
+            if footprint_column_width < 270:
+                raise RuntimeError(
+                    "The passive-match Footprint column is too narrow to show a "
+                    "standard full KiCad identifier: "
+                    f"width={footprint_column_width}px."
+                )
+            if assert_basic_shortlist:
+                if len(candidate_iids) > 5:
+                    raise RuntimeError(
+                        "Passive value search returned "
+                        f"{len(candidate_iids)} rows; expected at most five."
+                    )
+                classes = [
+                    (
+                        0 if populator.candidate_rows[iid][0].is_basic is True
+                        else 1 if populator.candidate_rows[iid][0].is_basic is False
+                        else 2
+                    )
+                    for iid in candidate_iids
+                ]
+                if classes != sorted(classes):
+                    raise RuntimeError("Passive shortlist did not rank Basic parts first.")
             image_name = str(populator.image_label.cget("image") or "")
             image_placeholder = str(populator.image_label.cget("text") or "")
             if require_image and not image_name:
@@ -1188,21 +2119,114 @@ def _drive_populator_form(
                     "The shared preview has neither a supplier photo nor an explicit "
                     f"image fallback: {image_placeholder!r}"
                 )
+            expected_source = (
+                "JLCPCB keyword search"
+                if expected_lcsc is None
+                else "JLCPCB parts-page endpoint"
+            )
             if (
-                draft.lcsc != expected_lcsc
+                (expected_lcsc is not None and draft.lcsc != expected_lcsc)
                 or draft.kind != "resistor"
                 or draft.value != expected_value
-                or draft.footprint != expected_footprint
-                or "JLCPCB parts-page endpoint" not in draft.source_label
+                or (expected_footprint is not None and draft.footprint != expected_footprint)
+                or expected_source not in draft.source_label
                 or "live response" not in draft.source_label
             ):
                 raise RuntimeError(
                     "The LCSC form is not showing the expected fresh "
-                    f"{expected_value}/0402 draft for {expected_lcsc}: "
+                    f"{expected_value} draft for {expected_lcsc or 'value search'}: "
                     f"lcsc={draft.lcsc!r}, kind={draft.kind!r}, value={draft.value!r}, "
                     f"footprint={draft.footprint!r}, source={draft.source_label!r}"
                 )
             root.update_idletasks()
+
+            workspace_width = int(populator.review_workspace.winfo_width())
+            properties_width = int(populator.properties_column.winfo_width())
+            preview_width = int(populator.preview_column.winfo_width())
+            selected_part_width = int(populator.product_preview.frame.winfo_width())
+            content_width = int(populator.workspace_content.winfo_width())
+            cad_visible = populator.cad_preview.frame.winfo_ismapped()
+            if workspace_width <= 0:
+                raise RuntimeError("The component review workspace has no measurable width.")
+            if cad_visible:
+                if preview_width / workspace_width > 0.42:
+                    raise RuntimeError(
+                        "The KiCad CAD candidate pane exceeds its 40% width budget: "
+                        f"preview={preview_width}px workspace={workspace_width}px."
+                    )
+                if properties_width / workspace_width < 0.58:
+                    raise RuntimeError(
+                        "The KiCad properties pane is narrower than the 60% layout target: "
+                        f"properties={properties_width}px workspace={workspace_width}px."
+                    )
+            elif (
+                populator.preview_column.winfo_ismapped()
+                or properties_width / workspace_width < 0.94
+            ):
+                raise RuntimeError(
+                    "The unused CAD column did not collapse to give the properties "
+                    "editor the full review row: "
+                    f"properties={properties_width}px workspace={workspace_width}px "
+                    f"preview_mapped={populator.preview_column.winfo_ismapped()}."
+                )
+            if selected_part_width < content_width * 0.95:
+                raise RuntimeError(
+                    "The JLCPCB selected-part section does not span the entire row: "
+                    f"card={selected_part_width}px content={content_width}px."
+                )
+            if populator.footprint_entry.winfo_width() < 220:
+                raise RuntimeError(
+                    "The Footprint property editor is too narrow to review its value: "
+                    f"width={populator.footprint_entry.winfo_width()}px."
+                )
+            if (
+                populator.notes_indicator.winfo_ismapped()
+                and populator.notes_indicator.winfo_height() > 36
+            ):
+                raise RuntimeError(
+                    "The general review-notes indicator is not compact: "
+                    f"height={populator.notes_indicator.winfo_height()}px."
+                )
+
+            # Exercise form-style inline feedback for both blocking errors and warnings.
+            message = (
+                "Use a KiCad Library:Footprint identifier, for example "
+                "Resistor_SMD:R_0603_1608Metric."
+            )
+            for level, caption in (("error", "Error"), ("warning", "Warning")):
+                populator._set_field_feedback("footprint", level, message)
+                root.update()
+                _entry, feedback_label, field_label = (
+                    populator._field_feedback["footprint"]
+                )
+                expected_style = f"Validation{caption}.TEntry"
+                expected_label_style = f"Validation{caption}.TLabel"
+                if (
+                    _entry.cget("style") != expected_style
+                    or field_label.cget("style") != expected_label_style
+                    or feedback_label.cget("style") != expected_label_style
+                    or not feedback_label.winfo_ismapped()
+                    or feedback_label.cget("text") != f"{caption}: {message}"
+                ):
+                    raise RuntimeError(
+                        f"The {caption.lower()} Footprint feedback is not shown inline."
+                    )
+                if feedback_label.winfo_rooty() < (
+                    _entry.winfo_rooty() + _entry.winfo_height()
+                ):
+                    raise RuntimeError(
+                        "The Footprint feedback label is not positioned below its input."
+                    )
+            populator._set_field_feedback("footprint", None)
+            populator._update_field_feedback()
+            root.update()
+
+            _assert_auto_hide_scrollbar(
+                populator.content_scrollbar, "Add/Update workspace"
+            )
+            _assert_auto_hide_scrollbar(
+                populator.candidate_scrollbar, "Add/Update candidate list"
+            )
             if not populator.proposal_rows.winfo_children():
                 raise RuntimeError("The LCSC review form contains no proposed fields.")
             if not populator.apply_button.winfo_viewable():
@@ -1213,132 +2237,71 @@ def _drive_populator_form(
                     "The component workspace did not create a scrollable content area."
                 )
 
+            _assert_advanced_filter_control(populator)
+
             _capture_window(root, output_dir / proposal_asset)
+            _expand_populator_to_full_height(populator)
             _capture_window(root, output_dir / light_asset)
             apply_tk_theme(root, "dark")
+            populator._update_advanced_filter_button()
             root.update()
+            _assert_auto_hide_scrollbar(
+                populator.content_scrollbar, "Add/Update workspace"
+            )
+            _assert_auto_hide_scrollbar(
+                populator.candidate_scrollbar, "Add/Update candidate list"
+            )
+            toolbar_style = populator.ttk.Style(root)
+            toolbar_foreground = toolbar_style.lookup(
+                "ToolbarLink.TButton", "foreground"
+            )
+            active_accent = root._kicad_jlcpcb_palette["accent"]
+            if toolbar_foreground.casefold() != active_accent.casefold():
+                raise RuntimeError(
+                    "The Filters button text did not adopt the active theme accent: "
+                    f"style={toolbar_foreground!r}, palette={active_accent!r}."
+                )
+            active_filter_count = populator._active_advanced_filter_count()
+            expected_filter_label = (
+                "Filters"
+                if not active_filter_count
+                else f"Filters ({active_filter_count})"
+            )
+            if (
+                populator.advanced_filters_button.cget("text") != expected_filter_label
+                or populator.advanced_filters_button.winfo_width() < 54
+                or not populator.advanced_filters_button.winfo_viewable()
+            ):
+                raise RuntimeError(
+                    "The labelled Filters control is clipped or not visible in dark mode: "
+                    f"text={populator.advanced_filters_button.cget('text')!r}, "
+                    f"expected={expected_filter_label!r}, "
+                    f"width={populator.advanced_filters_button.winfo_width()}."
+                )
             _capture_window(root, output_dir / dark_asset)
             apply_tk_theme(root, "light")
+            populator._update_advanced_filter_button()
             root.update()
+            _assert_auto_hide_scrollbar(
+                populator.content_scrollbar, "Add/Update workspace"
+            )
+            _assert_auto_hide_scrollbar(
+                populator.candidate_scrollbar, "Add/Update candidate list"
+            )
 
             original_askyesno = populator.messagebox.askyesno
             original_showerror = populator.messagebox.showerror
 
-            def confirm(title: str, message: str, parent=None) -> bool:
-                if title != confirmation_title:
-                    raise RuntimeError(
-                        f"Unexpected confirmation title: {title!r}; "
-                        f"expected {confirmation_title!r}."
-                    )
-                if required_confirmation_text.casefold() not in message.casefold():
-                    raise RuntimeError(
-                        "The confirmation text omitted its required safety/behavior "
-                        f"explanation: {message!r}"
-                    )
-
-                dismissal_errors: list[str] = []
-
-                def capture_and_accept() -> None:
-                    try:
-                        # Crop to the production form window. The native modal
-                        # remains layered over its parent, without the large Xvfb
-                        # desktop area or unrelated Eeschema controls.
-                        _capture_window(root, output_dir / confirmation_asset)
-                    except BaseException as exc:
-                        dismissal_errors.append(
-                            f"confirmation screenshot failed: {type(exc).__name__}: {exc}"
-                        )
-                    try:
-                        search = subprocess.run(
-                            [
-                                "xdotool",
-                                "search",
-                                "--onlyvisible",
-                                "--name",
-                                title,
-                            ],
-                            check=False,
-                            capture_output=True,
-                            text=True,
-                            timeout=10,
-                        )
-                        windows = [
-                            item.strip()
-                            for item in search.stdout.splitlines()
-                            if item.strip()
-                        ]
-                        if search.returncode == 0 and windows:
-                            # Message boxes are separate X11 windows. Focus the
-                            # exact title from askyesno, then send Return to that
-                            # window rather than whichever editor window happens
-                            # to own the global focus.
-                            window_id = windows[-1]
-                            focus = subprocess.run(
-                                ["xdotool", "windowfocus", "--sync", window_id],
-                                check=False,
-                                capture_output=True,
-                                text=True,
-                                timeout=10,
-                            )
-                            if focus.returncode:
-                                raise RuntimeError(
-                                    "could not focus confirmation window: "
-                                    + (focus.stderr.strip() or str(focus.returncode))
-                                )
-                            result = subprocess.run(
-                                [
-                                    "xdotool",
-                                    "key",
-                                    "--clearmodifiers",
-                                    "--window",
-                                    window_id,
-                                    "Return",
-                                ],
-                                check=False,
-                                capture_output=True,
-                                text=True,
-                                timeout=10,
-                            )
-                        else:
-                            result = subprocess.run(
-                                ["xdotool", "key", "--clearmodifiers", "Return"],
-                                check=False,
-                                capture_output=True,
-                                text=True,
-                                timeout=10,
-                            )
-                            if search.returncode:
-                                dismissal_errors.append(
-                                    "could not locate the confirmation window by title; "
-                                    "used the active-window fallback"
-                                )
-                        if result.returncode:
-                            dismissal_errors.append(
-                                "could not accept the confirmation dialog: "
-                                + (result.stderr.strip() or str(result.returncode))
-                            )
-                    except BaseException as exc:
-                        dismissal_errors.append(
-                            f"could not dismiss the confirmation dialog: "
-                            f"{type(exc).__name__}: {exc}"
-                        )
-
-                # askyesno runs a nested Tk event loop. A scheduled callback can
-                # capture the actual modal messagebox, then accept its Yes button.
-                root.after(500, capture_and_accept)
-                accepted = original_askyesno(
-                    title, message, parent=parent or root
-                )
-                if dismissal_errors:
-                    raise RuntimeError("; ".join(dismissal_errors))
-                if not accepted:
-                    raise RuntimeError("The automated visual fixture did not confirm the action.")
-                return accepted
-
             def unexpected_error(title: str, message: str, parent=None):
                 raise RuntimeError(f"{title}: {message}")
 
-            populator.messagebox.askyesno = confirm
+            def unexpected_confirmation(title: str, message: str, parent=None):
+                raise RuntimeError(
+                    "Component actions must not open a confirmation dialog: "
+                    f"{title}: {message}"
+                )
+
+            populator.messagebox.askyesno = unexpected_confirmation
             populator.messagebox.showerror = unexpected_error
             try:
                 populator.apply()
@@ -1348,6 +2311,11 @@ def _drive_populator_form(
 
             validate_result(populator)
             if cursor_completion:
+                if not populator.cursor_placement_started:
+                    raise RuntimeError(
+                        "Add mode did not hand the generated symbol to KiCad's cursor."
+                    )
+                time.sleep(0.25)
                 _capture_desktop(output_dir / completed_asset)
                 subprocess.run(
                     ["xdotool", "key", "--clearmodifiers", "Escape"],
@@ -1357,9 +2325,7 @@ def _drive_populator_form(
                     timeout=5,
                 )
                 time.sleep(0.15)
-                expected_count = getattr(
-                    populator, "_visual_initial_symbol_count", None
-                )
+                expected_count = getattr(populator, "_visual_initial_symbol_count", None)
                 if expected_count is not None:
                     actual_count = len(list(iter_schematic_symbols(populator.schematic)))
                     if actual_count != expected_count:
@@ -1367,21 +2333,19 @@ def _drive_populator_form(
                             "Escape did not cancel cursor placement cleanly: "
                             f"symbol count changed {expected_count} -> {actual_count}."
                         )
+            elif populator.create_mode:
+                if not populator.placement_completed or populator.placed_symbol is None:
+                    raise RuntimeError(
+                        "Add mode did not place and select the generated project symbol."
+                    )
+                time.sleep(0.25)
+                _capture_desktop(output_dir / completed_asset)
             else:
                 root.update()
                 _capture_window(root, output_dir / completed_asset)
             state["done"] = True
             close_populator()
         except BaseException as exc:
-            if cursor_completion:
-                try:
-                    _capture_desktop(
-                        output_dir / "add-component-chooser-failure.png"
-                    )
-                except Exception as capture_exc:
-                    failures.append(
-                        f"chooser diagnostic capture failed: {capture_exc}"
-                    )
             failures.append(f"{type(exc).__name__}: {exc}")
             try:
                 close_populator()
@@ -1410,10 +2374,10 @@ def _capture_passive_component_workflows(
     """Exercise both modes of the unified component action against live Eeschema."""
     # Populate: the entrypoint requires exactly one selected generic passive.
     schematic.clear_selection()
-    schematic.add_to_selection([symbols["R2"]])
+    schematic.add_to_selection([symbols["R1"]])
     selected = find_selected_component(schematic)
-    if selected.reference != "R2":
-        raise RuntimeError("The populate UI fixture did not select R2.")
+    if selected.reference != "R1":
+        raise RuntimeError("The populate UI fixture did not select R1.")
 
     editable_symbol, resolved_library_id, create_mode = resolve_component_action_target(
         schematic, list(schematic.get_selection())
@@ -1439,8 +2403,26 @@ def _capture_passive_component_workflows(
     )
     if verified_fixture_library_id != "Device:R":
         raise RuntimeError(
-            "The selected R2 fixture is not the canonical stock Device:R definition: "
+            "The selected R1 fixture is not the canonical stock Device:R definition: "
             f"{verified_fixture_library_id!r}"
+        )
+    # The live supplier-preload step above writes the default 0402 mapping.
+    # Set R1 to a different valid stock footprint after preload so the Update
+    # dialog has a real 0603 -> 0402 compatibility change to review.
+    editable_symbol.footprint_field.text.value = "Resistor_SMD:R_0603_1608Metric"
+    update_schematic_symbol(schematic, editable_symbol)
+    original_footprint = str(
+        getattr(
+            getattr(editable_symbol.footprint_field, "text", None),
+            "value",
+            "",
+        )
+        or ""
+    ).strip()
+    if original_footprint != "Resistor_SMD:R_0603_1608Metric":
+        raise RuntimeError(
+            "Could not seed the Update compatibility fixture footprint: "
+            f"{original_footprint!r}"
         )
     populate = ComponentPopulator(
         schematic,
@@ -1453,24 +2435,52 @@ def _capture_passive_component_workflows(
     )
 
     populate.root.geometry("1024x768+780+30")
-    populate.lcsc_var.set("C60489")
+    if populate.lcsc_var.get() != "10k":
+        raise RuntimeError(
+            "Update mode did not prefill the selected generic passive's 10k value."
+        )
+    populate.footprint_filter_var.set("0402")
+    populate.tolerance_filter_var.set("5%")
+    populate._toggle_advanced_filters()
+    # Update retains the selected stock symbol while proposing the catalogue
+    # package. The CAD tabs provide an external comparison; the compatibility
+    # note warns that pad layout and 3D fit may change even though symbol pins
+    # and graphics remain untouched.
+    request_cad_assets = populate._request_cad_assets
+
+    def request_local_stock_mapping(details: Any, draft: ComponentDraft) -> None:
+        availability_check = populator_module.footprint_library_entry_available
+        try:
+            populator_module.footprint_library_entry_available = (
+                lambda *_args, **_kwargs: True
+            )
+            request_cad_assets(details, draft)
+        finally:
+            populator_module.footprint_library_entry_available = availability_check
+
+    populate._request_cad_assets = request_local_stock_mapping
     populate.lookup()
 
-    def validate_populate_result(_populator: ComponentPopulator) -> None:
+    def validate_populate_result(populator: ComponentPopulator) -> None:
+        details = populator.selected_details
+        draft = populator.draft
         updated = next(
-            (item for item in find_linked_components(schematic) if item.reference == "R2"),
+            (item for item in find_linked_components(schematic) if item.reference == "R1"),
             None,
         )
         if (
-            updated is None
-            or updated.part_code != "C60489"
-            or updated.value != "10k"
-            or updated.footprint != "Resistor_SMD:R_0402_1005Metric"
-            or updated.manufacturer_part_number != "RC0402JR-0710KL"
+            details is None
+            or draft is None
+            or details.lcsc == "C60489"
+            or updated is None
+            or updated.part_code != details.lcsc
+            or updated.value != draft.value
+            or updated.footprint != draft.footprint
+            or updated.manufacturer_part_number != details.manufacturer_part_number
         ):
             raise RuntimeError(
-                "The confirmed populate UI action did not write the reviewed LCSC fields "
-                "back into R2 through KiCad IPC."
+                "The selected Update-mode alternative was not written back to R1 "
+                "through KiCad IPC."
             )
 
     _drive_populator_form(
@@ -1479,26 +2489,25 @@ def _capture_passive_component_workflows(
         proposal_asset="populate-component-proposed.png",
         light_asset="populate-component-light.png",
         dark_asset="populate-component-dark.png",
-        confirmation_asset="populate-component-confirmation.png",
         completed_asset="populate-component-applied.png",
-        confirmation_title="Confirm component property update",
-        required_confirmation_text=(
-            "pins, units and electrical pin mapping will NOT be changed"
-        ),
-        expected_lcsc="C60489",
+        expected_lcsc=None,
         expected_value="10k",
         expected_footprint="Resistor_SMD:R_0402_1005Metric",
         validate_result=validate_populate_result,
+        assert_basic_shortlist=True,
+        require_alternatives=True,
+        avoid_lcsc="C60489",
+        require_update_compatibility_change=True,
     )
     print(
-        "live-update-mode-ui=passed selected=R2 lcsc=C60489 "
-        "result=updated-and-saved",
+        "live-update-mode-ui=passed selected=R1 "
+        f"lcsc={populate.selected_details.lcsc} result=updated-and-saved",
         flush=True,
     )
 
     # Add: the entrypoint requires an empty Eeschema selection. The project-local
     # library is already registered by the live fixture, so this exercises the
-    # same reload-and-cursor-handoff path used after the first-use reopen/retry.
+    # same reload-and-place path that users get after the first-use reopen/retry.
     schematic.clear_selection()
     selection = list(schematic.get_selection())
     if selection:
@@ -1517,22 +2526,34 @@ def _capture_passive_component_workflows(
         theme="light",
     )
     create.root.geometry("1024x768+780+30")
-    create._visual_initial_symbol_count = len(list(iter_schematic_symbols(schematic)))
-    create.lcsc_var.set("C105637")
+    create._visual_initial_symbol_count = len(
+        list(iter_schematic_symbols(schematic))
+    )
+    create.lcsc_var.set("10k")
     create.lookup()
 
     def validate_create_result(populator: ComponentPopulator) -> None:
+        details = populator.selected_details
         generated = populator.generated_library
         if (
-            not populator.closed
-            or not populator.cursor_placement_started
+            details is None
+            or populator.draft is None
+            or populator.draft.kind != "resistor"
+            or populator.draft.value != "10k"
             or generated is None
-            or generated.library_id != "JLCPCB_Generated:R_C105637"
-            or generated.symbol_name != "R_C105637"
+            or generated.symbol_name != f"R_{details.lcsc}"
+            or generated.library_id != f"JLCPCB_Generated:R_{details.lcsc}"
+            or not generated.library_path.is_file()
+            or populator.symbol is not None
+            or not populator.cursor_placement_started
         ):
             raise RuntimeError(
-                "The confirmed add-component workflow did not generate the expected "
-                "project-local passive symbol and hand it to KiCad's cursor tool."
+                "The passive value-search Add action did not generate the selected "
+                "project-local resistor symbol and hand it to KiCad's native cursor tool."
+            )
+        if len(list(iter_schematic_symbols(schematic))) != populator._visual_initial_symbol_count:
+            raise RuntimeError(
+                "Cursor handoff inserted a schematic instance before the user placed the symbol."
             )
         focused = subprocess.run(
             ["xdotool", "getwindowfocus"],
@@ -1546,9 +2567,36 @@ def _capture_passive_component_workflows(
                 "KiCad did not regain focus with the generated symbol on the cursor: "
                 f"focused={focused!r}, editor={populator.editor_window_id!r}."
             )
-        if len(list(iter_schematic_symbols(schematic))) != populator._visual_initial_symbol_count:
+        generated_root = parse_sexpr(
+            generated.library_path.read_text(encoding="utf-8")
+        )
+        generated_symbol = next(
+            (
+                node for node in generated_root
+                if isinstance(node, list)
+                and node
+                and getattr(node[0], "value", "") == "symbol"
+                and len(node) > 1
+                and getattr(node[1], "value", "") == generated.symbol_name
+            ),
+            None,
+        )
+        if generated_symbol is None:
+            raise RuntimeError("The selected passive symbol is missing from the generated library.")
+        generated_properties = {
+            node[1].value: node[2].value
+            for node in generated_symbol
+            if isinstance(node, list)
+            and len(node) >= 3
+            and getattr(node[0], "value", "") == "property"
+        }
+        if (
+            generated_properties.get("Value") != "10k"
+            or generated_properties.get("LCSC") != details.lcsc
+            or generated_properties.get("MPN") != details.manufacturer_part_number
+        ):
             raise RuntimeError(
-                "Cursor handoff unexpectedly inserted a schematic instance before placement."
+                "Generated passive symbol is missing the chosen catalogue value or metadata."
             )
 
     _drive_populator_form(
@@ -1557,23 +2605,178 @@ def _capture_passive_component_workflows(
         proposal_asset="add-component-proposed.png",
         light_asset="add-component-light.png",
         dark_asset="add-component-dark.png",
-        confirmation_asset="add-component-confirmation.png",
         completed_asset="add-component-cursor.png",
-        confirmation_title="Confirm new schematic component",
-        required_confirmation_text=(
-            "original KiCad symbol pin numbers, pin types, units and graphics are retained"
-        ),
-        expected_lcsc="C105637",
-        expected_value="1k",
-        expected_footprint="Resistor_SMD:R_0402_1005Metric",
+        expected_lcsc=None,
+        expected_value="10k",
+        expected_footprint=None,
         validate_result=validate_create_result,
-        require_image=True,
+        assert_basic_shortlist=True,
+        avoid_lcsc="C60489",
         cursor_completion=True,
     )
     print(
-        "live-add-mode-ui=passed cursor_attached=true "
-        "library_id=JLCPCB_Generated:R_C105637",
+        "live-add-mode-ui=passed "
+        f"query=10k selected={create.selected_details.lcsc} "
+        f"library_id={create.generated_library.library_id} "
+        "placement=native-cursor-handoff",
         flush=True,
+    )
+
+
+def _capture_easyeda_3d_preview(
+    schematic: Any,
+    kicad: Any,
+    output_dir: Path,
+    cache_dir: Path,
+) -> None:
+    """Capture the scrolled production CAD panel after a live EasyEDA fallback lookup.
+
+    The fixture clears the proposed footprint before the normal CAD lookup callback.
+    This exercises the same branch used when a selected part has no usable local
+    footprint mapping; the provider, STEP download and KiCad render remain real.
+    """
+    failures: list[str] = []
+    for lcsc in ("C109323", "C60489", "C105637", "C2889348"):
+        populator = ComponentPopulator(
+            schematic,
+            None,
+            cache_dir / f"easyeda-3d-preview-{lcsc}",
+            create_mode=True,
+            kicad=kicad,
+            theme="light",
+        )
+        populator.root.geometry("1120x1000+780+20")
+        original_request = populator._request_cad_assets
+
+        def request_external_cad(
+            details: Any,
+            draft: ComponentDraft,
+            *,
+            target=populator,
+            request=original_request,
+        ) -> None:
+            # Clear the initial proposal once to force the app's supported
+            # fallback path. _render_draft requests again after the result arrives;
+            # clearing on that second call would undo the synchronized candidate.
+            requested_code = str(details.lcsc or "").strip().upper()
+            if target._cad_lcsc != requested_code:
+                target.footprint_var.set("")
+                target._manual_proposal_fields.discard("footprint")
+            request(details, draft)
+
+        populator._request_cad_assets = request_external_cad
+        populator.lcsc_var.set(lcsc)
+        populator.lookup()
+        state = {"captured": False, "deadline": time.monotonic() + 120.0}
+        errors: list[str] = []
+
+        def advance() -> None:
+            try:
+                root = populator.root
+                root.update()
+                if (
+                    populator.selected_details is None
+                    or populator.draft is None
+                    or populator.selected_details.lcsc != lcsc
+                ):
+                    if time.monotonic() >= state["deadline"]:
+                        raise TimeoutError(
+                            f"JLCPCB detail lookup did not settle for {lcsc}: "
+                            f"{populator.status_var.get()!r}"
+                        )
+                    root.after(150, advance)
+                    return
+                if populator._image_pending or populator._cad_pending:
+                    if time.monotonic() >= state["deadline"]:
+                        raise TimeoutError(
+                            f"EasyEDA CAD lookup did not settle for {lcsc}: "
+                            f"{populator.cad_status_var.get()!r}"
+                        )
+                    root.after(150, advance)
+                    return
+
+                assets = populator._cad_assets
+                if assets is None:
+                    raise RuntimeError(
+                        f"EasyEDA returned no CAD candidate for {lcsc}: "
+                        f"{populator.cad_status_var.get()!r}"
+                    )
+                if not assets.has_footprint:
+                    raise RuntimeError(
+                        f"EasyEDA returned no usable footprint for {lcsc}: "
+                        f"{assets.warnings!r}"
+                    )
+                if populator.footprint_var.get().strip() != assets.footprint_library_id:
+                    raise RuntimeError(
+                        "The Footprint field is not synchronized to the visible CAD "
+                        "candidate: "
+                        f"field={populator.footprint_var.get()!r}, "
+                        f"candidate={assets.footprint_library_id!r}"
+                    )
+                if populator.draft.footprint != assets.footprint_library_id:
+                    raise RuntimeError(
+                        "The component draft Footprint does not match the visible CAD "
+                        "candidate: "
+                        f"draft={populator.draft.footprint!r}, "
+                        f"candidate={assets.footprint_library_id!r}"
+                    )
+                if not assets.has_3d_model or not assets.model_preview_png:
+                    raise RuntimeError(
+                        f"EasyEDA supplied no renderable STEP preview for {lcsc}: "
+                        f"{assets.warnings!r}"
+                    )
+
+                full_size = _expand_populator_to_full_height(populator)
+                notebook = populator.cad_preview.notebook
+                model_tab = str(populator.cad_preview.model_tab)
+                if notebook.select() != model_tab:
+                    notebook.select(populator.cad_preview.model_tab)
+                    root.update_idletasks()
+                    root.update()
+                _assert_flat_cad_tabs(
+                    populator.cad_preview, root,
+                    expected_page=populator.cad_preview.model_tab,
+                )
+                model_label = populator.cad_preview.model_label
+                if (
+                    not model_label.winfo_ismapped()
+                    or not str(model_label.cget("image") or "")
+                ):
+                    raise RuntimeError(
+                        "The 3D model tab is not selected or its rendered image is missing."
+                    )
+
+                _capture_window(root, output_dir / "add-component-light.png")
+                apply_tk_theme(root, "dark")
+                root.update()
+                _capture_window(root, output_dir / "add-component-dark.png")
+                apply_tk_theme(root, "light")
+                root.update()
+                print(
+                    "live-easyeda-3d-preview=passed "
+                    f"lcsc={lcsc} model_uuid={assets.model_uuid} "
+                    f"preview_bytes={len(assets.model_preview_png)} "
+                    f"window={full_size[0]}x{full_size[1]} tab=3D-model",
+                    flush=True,
+                )
+                state["captured"] = True
+                populator.close()
+            except BaseException as exc:
+                errors.append(f"{type(exc).__name__}: {exc}")
+                try:
+                    populator.close()
+                except Exception:
+                    pass
+
+        populator.root.after(200, advance)
+        populator.run()
+        if state["captured"]:
+            return
+        failures.append(f"{lcsc}: {errors[0] if errors else 'capture stopped before completion'}")
+
+    raise RuntimeError(
+        "Could not capture a live EasyEDA STEP preview from the fallback candidates: "
+        + "; ".join(failures)
     )
 
 
@@ -1657,6 +2860,7 @@ def main() -> int:
         raise FileNotFoundError("kicad-cli-nightly or kicad-cli is required")
 
     _validate_live_supplier_data(cache_dir)
+    _verify_x11_keyboard_input()
 
     work_dir = Path(tempfile.mkdtemp(prefix="jlcpcb-live-eeschema-", dir=output_dir))
     process = None
@@ -1676,6 +2880,9 @@ def main() -> int:
         _capture_live_selection_workflow(schematic, symbols, output_dir, cache_dir)
         _capture_passive_component_workflows(
             schematic, symbols, kicad, output_dir, cache_dir
+        )
+        _capture_easyeda_3d_preview(
+            schematic, kicad, output_dir, cache_dir
         )
         cli_version = _render_native_symbols(cli, output_dir)
 

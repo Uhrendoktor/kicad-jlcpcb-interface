@@ -57,8 +57,24 @@ class VerifyVisualBundleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "inventory mismatch"):
             verify_bundle(self.root, self.source_sha)
 
+    def test_all_application_views_publish_full_height_window_screenshots(self) -> None:
+        for name in (
+            "component-browser-light.png",
+            "component-browser-dark.png",
+            "component-properties-light.png",
+            "component-properties-dark.png",
+            "populate-component-light.png",
+            "populate-component-dark.png",
+            "add-component-light.png",
+            "add-component-dark.png",
+        ):
+            self.assertIn(name, ASSET_NAMES)
+        self.assertFalse(any("cad-preview" in name for name in ASSET_NAMES))
+
     def test_workflow_evidence_uses_a_static_screenshot(self) -> None:
         self.assertIn("schematic-properties-opened.png", ASSET_NAMES)
+        self.assertIn("add-component-placed-selected.png", ASSET_NAMES)
+        self.assertNotIn("add-component-chooser-open.png", ASSET_NAMES)
         self.assertFalse(any(name.lower().endswith(".gif") for name in ASSET_NAMES))
 
 

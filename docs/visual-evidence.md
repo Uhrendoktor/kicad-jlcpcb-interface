@@ -64,44 +64,57 @@ The paired captures show the same production windows in both palettes. GitHub se
   <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/component-properties-selected.png" alt="Selected component properties with catalogue image, stock, pricing and MPN results" width="620">
 </p>
 
+The Overview and focused Properties captures also expand the production detail canvas
+and result tables to show the complete fixture content without scrolling. Their
+light/dark pairs are exported at the full window height.
+
 ### Add or Update Component
 
-There is one Eeschema command and one component workspace. Properties, Update and Add share the same catalogue preview, supplier image path, identity and stock/price presentation. Update and Add use a scrollable review page with a persistent action footer; candidate results appear only when the search returns alternatives. Only the mode-specific KiCad inputs and final action differ. The live examples use resistor records for deterministic supplier data; non-passive behavior is covered by the unit-test suite described below.
+There is one Eeschema command and one component workspace. Properties, Update and Add
+share the same catalogue preview, supplier image path, identity and stock/price
+presentation. Update and Add use a scrollable review page with a persistent action
+footer, consistent toolbar and card surfaces. Basic listings rank first for passive and
+keyword searches; the Basic-only checkbox can hide Extended and unclassified results.
 
-<table>
-  <tr>
-    <th>One symbol selected · update its fields</th>
-    <th>No symbol selected · add a project-local symbol</th>
-  </tr>
-  <tr>
-    <td>
-      <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-proposed.png" alt="Update-mode proposal showing confidence, fields and review notes before updating a selected schematic symbol" width="420">
-    </td>
-    <td>
-      <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-proposed.png" alt="Add-mode proposal showing catalogue matches and cursor-placement guidance before generating a project-local symbol" width="420">
-    </td>
-  </tr>
-</table>
+The Update and Add captures expand the actual Tk window to the complete review-page
+height. Each image therefore includes the top search area, candidate/catalogue preview,
+all KiCad proposal fields, CAD tabs (when available), review notes and the fixed action
+footer in one image. No stitched scroll states or mockups are used.
+
+#### One symbol selected · update its fields
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png">
+    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Full-height Update Component window showing the complete review workspace." width="100%">
+  </picture>
+</p>
+
+#### No symbol selected · add a project-local symbol
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
+    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Full-height Add Component window showing CAD preview tabs, 3D model and the complete form." width="100%">
+  </picture>
+</p>
+
+The CAD preview uses three tabs—**Symbol**, **Footprint** and **3D model**—instead of
+stacking the three pictures vertically. The 3D tab is selected automatically when a
+STEP model has been rendered. The temporary KiCad board used for this render omits
+only the Reference property; the actual imported footprint is not altered.
 
 <details>
-  <summary>Show confirmation and completion states</summary>
+  <summary>Show Update and Add completion states</summary>
 
   <table>
     <tr>
-      <th>Update confirmation</th>
-      <th>Update result</th>
+      <th>Update result · fields written directly</th>
+      <th>Add result · placed and selected</th>
     </tr>
     <tr>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-confirmation.png" alt="Confirmation explaining that the selected symbol's graphics, pins and electrical mapping remain unchanged" width="420"></td>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Updated schematic fields after confirming the review for an existing selected component" width="420"></td>
-    </tr>
-    <tr>
-      <th>Add confirmation</th>
-      <th>Add result</th>
-    </tr>
-    <tr>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-confirmation.png" alt="Confirmation describing project-local KiCad symbol generation and placement" width="420"></td>
-      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-cursor.png" alt="Eeschema with a generated project-local component attached to the mouse cursor, ready to place or cancel" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-applied.png" alt="Reviewed fields written directly to the selected schematic symbol with no confirmation dialog" width="420"></td>
+      <td><img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-cursor.png" alt="Generated 10k resistor selected in KiCad's native Add Symbol chooser and attached to the cursor" width="420"></td>
     </tr>
   </table>
 </details>
@@ -123,25 +136,26 @@ This still image shows the linked resistor selected in Eeschema alongside its fo
 
 ## What is exercised
 
-The visual capture runs the production application windows, not separately drawn mockups. It forces the light palette, reapplies the dark palette to each live root, and captures both states from the same widgets; this checks that theme changes update ttk and classic Tk controls without rebuilding the window.
+The visual capture runs the production application windows, not separately drawn mockups. It forces the light palette, reapplies the dark palette to each live root, and captures both states from the same widgets; this checks that theme changes update ttk and classic Tk controls without rebuilding the window. Overview, Properties, Update and Add captures expand their content areas and result tables until their vertical scroll positions show the complete content.
 
 | Workflow | Live GUI / IPC evidence |
 | --- | --- |
 | Component Overview | Captures unfiltered, filtered and selected-row states. Verifies live JLCPCB detail source, product image, MPN alternatives and the completed cost/stock summary. |
 | Component Properties | Opens the focused properties window from a selected linked Eeschema symbol and captures its loaded catalogue view. |
 | Properties controls | Calls Select in schematic and Select same part on sheet; verifies the Eeschema selection; copies the LCSC ID and verifies the clipboard; invokes LCSC search, supplier product, datasheet and MPN-result actions and checks that each opens an HTTPS URL. |
-| Add or Update Component — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, verifies the shared match list and catalogue preview, waits for the asynchronous supplier image when present, captures the proposal and native confirmation, applies the reviewed update and reads the resulting fields back through IPC. |
-| Add or Update Component — add mode | Clears the Eeschema selection, drives the same lookup/review layout, verifies the match list and catalogue preview, waits for the supplier image when present, captures the proposal and native confirmation, generates the project-local symbol, uses KiCad's native Place Symbol chooser to attach it to the cursor, captures that state, and presses Escape so the schematic fixture remains unchanged. |
+| Add or Update Component — update mode | Selects a generic resistor in Eeschema, drives the actual LCSC lookup/review window, verifies the shared match list and catalogue preview, waits for the asynchronous supplier image when present, captures the proposal, applies the reviewed update directly without a confirmation dialog and reads the resulting fields back through IPC. |
+| Add or Update Component — add mode | Clears the Eeschema selection, searches for `10k`, verifies the shortlist is limited to five exact candidates and ranks Basic listings first, captures the selected catalogue preview and proposal, proceeds directly to generation without a confirmation window, generates/reuses the selected project-local resistor symbol, and verifies that KiCad's native Add Symbol chooser selects the generated symbol and returns to Eeschema with the symbol attached to the cursor. |
+| Add or Update Component — external CAD preview | Uses a live LCSC detail record, forces the no-local-footprint fallback, downloads EasyEDA CAD and an available STEP model, renders the 3D preview with KiCad CLI, selects the 3D tab and captures the entire window height in both themes. |
 | Theme pairs | Captures the overview, properties and both Add or Update Component modes in both light and dark palettes, reusing each live widget tree. |
 | Native symbol examples | Exports the stock resistor/capacitor symbols, and the live fixture also exports the generated project-local passive symbol, with KiCad CLI. |
 
-The live GUI capture verifies both selection contexts of the shared workspace using resistor examples: update mode requires a fresh direct response for LCSC C60489 and verifies its 10 kΩ / 0402 interpretation; add mode independently fetches LCSC C105637 and verifies its 1 kΩ / 0402 interpretation. The form capture uses a compact 1024 × 768 window and checks that the action remains visible while the main content scrolls. These examples demonstrate shared catalogue presentation and mode-specific controls; they do not define the supported component scope. Unit tests additionally cover inductor/LED classification, arbitrary selected-symbol metadata updates, multi-pin IC symbol copying and manual KiCad symbol selection. The GUI capture does not yet exercise every non-passive family or the manual symbol-entry interaction. Both mode-specific screenshots fail closed rather than silently falling back to cached data. The proposal/result screenshots document those controlled examples; the actual supplier facts are those returned at capture time.
+The live GUI capture verifies both selection contexts of the shared workspace using resistor examples. It also checks the compact Basic-only checkbox, its tooltip and no-auto-search behavior; Basic-first keyword and passive result ordering are covered by unit tests. The Advanced filters render as a compact single-row strip, Clear is a small inline link, both dropdowns remain editable despite their preset suggestions, active values are summarized next to the funnel, and the funnel badge reflects active constraints. Update mode searches the value `10k` with separate advanced filters for the `0402` package and `5%` tolerance, verifies that multiple alternatives are visible, selects a different part from the original C60489 and verifies its reviewed fields are written to the selected symbol; add mode searches the nominal value `10k`, shows a maximum of five Basic-first exact candidates, selects a candidate not already present in the fixture library, and verifies native cursor handoff and Escape cancellation without inserting a symbol. The visual job expands the Tk window to the full scrollable content height and verifies that the canvas reports all content as visible before saving the screenshot. The cursor screenshot documents KiCad's native placement workflow without adding coordinate controls. Unit tests additionally cover inductor/LED classification, arbitrary selected-symbol metadata updates, multi-pin IC symbol copying and manual KiCad symbol selection. The GUI capture does not yet exercise every non-passive family or the manual symbol-entry interaction. Both mode-specific screenshots fail closed rather than silently falling back to cached data. The proposal/result screenshots document those controlled examples; the actual supplier facts are those returned at capture time.
 
 ## Capture design
 
 The demo schematic is populated through the live KiCad IPC API with controlled example references, values, LCSC links and MPN fields. The first resistor is initially a placeholder; the fixture then exercises the same draft builder and IPC write-back used by the general update mode.
 
-For generated-library coverage, the fixture seeds a project-local `JLCPCB_Generated` table entry and a `C60489` resistor *before* Eeschema starts. This lets the add mode fetch a second part (`C105637`), extend the already-loaded library, and hand the new symbol to the cursor without hitting the first-use table-registration limitation. The test checks the generated library's native fields, hidden custom metadata, stock two-pin topology, project table entry and KiCad CLI export. The live add-mode capture opens the generated symbol in KiCad's native cursor tool, captures the cursor-attached state and presses Escape rather than inserting a fixture instance. Separately, a unit test covers the first-use reload failure and verifies that the error explains the saved table row and the required close/reopen/retry workflow.
+For generated-library coverage, the fixture seeds a project-local `JLCPCB_Generated` table entry and a `C60489` resistor *before* Eeschema starts. The Add mode extends or reuses that library from its live `10k` value search, then opens KiCad's native Add Symbol chooser, selects the generated symbol and leaves placement to the user. The capture verifies the symbol's IPC position and cursor handoff and Escape cancellation without adding a schematic instance. The test checks the generated library's native fields, hidden custom metadata, stock two-pin topology, project table entry and KiCad CLI export. Separately, a unit test covers the first-use reload failure and verifies that the error explains the saved table row and the required close/reopen/retry workflow.
 
 The properties-control capture checks:
 
@@ -171,10 +185,10 @@ Pull-request runs upload the generated directory as the `kicad-jlcpcb-visual-doc
 On Ubuntu, install the same classes of system dependencies used by CI, then run:
 
 ```bash
-sudo apt-get install kicad-nightly kicad-nightly-symbols python3.12-venv python3-tk python3-pil python3-pil.imagetk xvfb xauth xdotool
+sudo apt-get install kicad-nightly kicad-nightly-symbols kicad-nightly-footprints python3.12-venv python3-tk python3-pil python3-pil.imagetk xvfb xauth xdotool
 python3.12 -m venv --system-site-packages .venv-visual
 .venv-visual/bin/pip install -r plugin/kicad-jlcpcb-interface/requirements.txt
-xvfb-run -a -s "-screen 0 1920x1500x24" \
+xvfb-run -a -s "-screen 0 1920x3000x24" \
   .venv-visual/bin/python tests/capture_visual_docs.py --output-dir artifacts/visual-docs
 ```
 

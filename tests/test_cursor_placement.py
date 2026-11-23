@@ -153,7 +153,7 @@ class CursorPlacementTests(unittest.TestCase):
                 xdotool="xdotool",
                 command_runner=FakeRunner(),
             )
-    
+
     def test_uses_the_native_place_symbol_ipc_action_when_available(self):
         runner = FakeRunner(["0x200", "0x100"])
         actions = []
@@ -161,6 +161,7 @@ class CursorPlacementTests(unittest.TestCase):
         class FakeKiCad:
             def run_action(self, action):
                 actions.append(action)
+                return SimpleNamespace(status="RAS_OK")
 
         start_native_symbol_placement(
             "0x100",
@@ -183,6 +184,7 @@ class CursorPlacementTests(unittest.TestCase):
         class FakeKiCad:
             def run_action(self, action):
                 actions.append(action)
+                return SimpleNamespace(status="RAS_OK")
 
         with patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None):
             start_native_symbol_placement(
@@ -208,6 +210,61 @@ class CursorPlacementTests(unittest.TestCase):
                 )
 
 
+
+
+    def test_falls_back_to_add_hotkey_when_ipc_status_is_not_ok(self):
+        runner = FakeRunner(["0x200", "0x100"])
+
+        class FakeKiCad:
+            def run_action(self, _action):
+                return SimpleNamespace(status="RAS_INVALID")
+
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            kicad=FakeKiCad(),
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+
+        self.assertIn(
+            ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        )
+
+    def test_reports_non_ok_ipc_status_when_xdotool_is_unavailable(self):
+        class FakeKiCad:
+            def run_action(self, _action):
+                return SimpleNamespace(status="RAS_FRAME_NOT_OPEN")
+
+        with patch("kicad_jlcpcb.cursor_placement.shutil.which", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "RAS_FRAME_NOT_OPEN"):
+                start_native_symbol_placement(
+                    "0x100",
+                    "R_C60489",
+                    kicad=FakeKiCad(),
+                    xdotool=None,
+                )
+
+    def test_accepts_numeric_ras_ok_status(self):
+        runner = FakeRunner(["0x200", "0x100"])
+
+        class FakeKiCad:
+            def run_action(self, _action):
+                return SimpleNamespace(status=1)
+
+        start_native_symbol_placement(
+            "0x100",
+            "R_C60489",
+            kicad=FakeKiCad(),
+            xdotool="xdotool",
+            command_runner=runner,
+            pause=lambda _seconds: None,
+        )
+
+        self.assertNotIn(
+            ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        )
 
 if __name__ == "__main__":
     unittest.main()

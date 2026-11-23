@@ -12,12 +12,21 @@ sys.path.insert(0, str(PLUGIN))
 
 from kicad_jlcpcb.theme import (  # noqa: E402
     THEME_ENVIRONMENT_VARIABLE,
+    UI_FONT_SIZES,
+    UI_SPACING,
+    AutoHideScrollbar,
     palette_for_theme,
     resolve_theme,
 )
 
 
 class ThemeResolutionTests(unittest.TestCase):
+    def test_shared_ui_tokens_define_spacing_and_typography(self):
+        self.assertEqual(UI_SPACING, {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24})
+        self.assertEqual(UI_FONT_SIZES["caption"], 8)
+        self.assertEqual(UI_FONT_SIZES["body"], 9)
+        self.assertEqual(UI_FONT_SIZES["title"], 16)
+
     def test_explicit_theme_overrides_the_desktop(self):
         with patch("kicad_jlcpcb.theme._desktop_prefers_dark", return_value=False):
             self.assertEqual(resolve_theme("dark"), "dark")
@@ -88,6 +97,15 @@ class ThemeResolutionTests(unittest.TestCase):
                             else:
                                 kde.write_text(original, encoding="utf-8")
 
+    def test_auto_hide_scrollbar_has_compact_idle_and_clear_active_widths(self):
+        self.assertEqual(AutoHideScrollbar.IDLE_WIDTH, 2)
+        self.assertEqual(AutoHideScrollbar.ACTIVE_WIDTH, 10)
+        self.assertGreater(
+            AutoHideScrollbar.ACTIVE_WIDTH,
+            AutoHideScrollbar.IDLE_WIDTH * 3,
+        )
+        self.assertEqual(AutoHideScrollbar.HIDE_DELAY_MS, 900)
+
     def test_palettes_have_distinct_readable_surfaces(self):
         light = palette_for_theme("light")
         dark = palette_for_theme("dark")
@@ -96,6 +114,15 @@ class ThemeResolutionTests(unittest.TestCase):
         self.assertNotEqual(light["foreground"], dark["foreground"])
         self.assertIn("accent_foreground", light)
         self.assertIn("accent_foreground", dark)
+        self.assertIn("basic_foreground", light)
+        self.assertIn("basic_foreground", dark)
+        self.assertNotEqual(light["basic_foreground"], light["muted"])
+        self.assertNotEqual(dark["basic_foreground"], dark["muted"])
+        for palette in (light, dark):
+            for severity in ("error", "warning", "info"):
+                self.assertIn(severity, palette)
+                self.assertNotEqual(palette[severity], palette["foreground"])
+                self.assertNotEqual(palette[severity], palette["muted"])
         light["background"] = "#000000"
         self.assertNotEqual(palette_for_theme("light")["background"], "#000000")
 

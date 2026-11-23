@@ -107,14 +107,30 @@ def start_native_symbol_placement(
         )
     run_action = getattr(kicad, "run_action", None)
     action_started = False
+    action_failure = "is not available"
     if callable(run_action):
         try:
-            run_action("eeschema.InteractiveDrawing.placeSymbol")
-            action_started = True
-        except Exception:
-            # Older IPC builds do not expose run_action; fall back to the
-            # configured Add Symbol hotkey when X11 automation is available.
-            action_started = False
+            response = run_action("eeschema.InteractiveDrawing.placeSymbol")
+            status = getattr(response, "status", None)
+            if getattr(status, "name", None):
+                status_name = str(status.name)
+            elif isinstance(status, str):
+                status_name = status
+            elif isinstance(status, int) and not isinstance(status, bool):
+                status_name = {
+                    0: "RAS_UNKNOWN",
+                    1: "RAS_OK",
+                    2: "RAS_INVALID",
+                    3: "RAS_FRAME_NOT_OPEN",
+                }.get(status, f"status {status}")
+            else:
+                status_name = str(status) if status is not None else "missing status"
+            action_started = status_name == "RAS_OK"
+            if not action_started:
+                action_failure = f"returned {status_name}"
+        except Exception as exc:
+            # Older IPC builds may not expose run_action; try the X11 hotkey.
+            action_failure = f"raised {type(exc).__name__}: {exc}"
 
     if action_started and not executable:
         # The native chooser is open. Leave it for manual selection when the
@@ -122,9 +138,10 @@ def start_native_symbol_placement(
         return
     if not executable:
         raise RuntimeError(
-            "This KiCad build does not expose the native Place Symbol IPC action, "
-            "and xdotool is unavailable. Use a KiCad build with the IPC action or "
-            "install xdotool on an X11 desktop."
+            "KiCad's native Place Symbol IPC action "
+            f"{action_failure}, and xdotool is unavailable. Use a KiCad build "
+            "that returns RAS_OK for the Place Symbol action or install xdotool "
+            "on an X11 desktop."
         )
 
     def send(*arguments: str) -> str:
@@ -147,8 +164,9 @@ def start_native_symbol_placement(
     if not action_started:
         if not editor_window_id:
             raise RuntimeError(
-                "Could not identify the active Eeschema window. Launch this action "
-                "from the Schematic Editor to enable cursor placement."
+                "Could not identify the active Eeschema window. "
+                f"The native Place Symbol IPC action {action_failure}. "
+                "Launch this action from the Schematic Editor on an X11 desktop."
             )
         editor_pid = send("getwindowpid", str(editor_window_id))
         if not editor_pid:

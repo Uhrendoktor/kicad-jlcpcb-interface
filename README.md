@@ -10,7 +10,7 @@ Link schematic symbols to LCSC part numbers, check catalogue availability, and a
 
 [Install](#install) · [Quick start](#quick-start) · [User guide](docs/user-guide.md)
 
-> **Supported scope:** a selected editable schematic symbol of any component type can receive reviewed catalogue fields without changing its library symbol or pin mapping. For new parts, the tool suggests stock symbols and footprints where mappings are known; otherwise users can enter a KiCad Library:Symbol, Value and optional Footprint. Project-local copies preserve the chosen stock symbol's pins and graphics. The tool does not infer manufacturer-specific pin maps or generate PCB copper/3D assets.
+> **Supported scope:** a selected editable schematic symbol of any component type can receive reviewed catalogue fields without changing its library symbol or pin mapping. For new parts, the tool prefers reviewed/local KiCad mappings, then offers credential-free EasyEDA CAD discovery by LCSC number when a symbol or footprint is unresolved. Retrieved symbol and footprint candidates are previewed and proposed in editable fields before project-local import. When EasyEDA supplies a STEP model, the tool downloads it, shows a KiCad-rendered 3D preview and imports it with the accepted footprint. It does not infer manufacturer-specific pin maps or create missing 3D geometry.
 
 ## What it helps you do
 
@@ -86,34 +86,52 @@ When a catalogue row needs closer inspection, **Select in schematic** takes you 
 | Nothing selected | **Add** | Search the catalogue, review the suggested symbol and fields, then create and place a project-local copy of a KiCad stock symbol. |
 | Multiple items or a non-symbol object | — | The action stops and asks you to select one symbol or clear the selection. |
 
-Both contexts use the same review-first dialog, which shows inference confidence, catalogue source/freshness and warnings. Its heading and available controls adapt to the selection: update mode edits catalogue fields on the selected symbol; add mode also exposes the KiCad `Library:Symbol`, reference prefix and native cursor-placement guidance. Recognized passives prefill their symbol, value, reference prefix and reviewed footprint mapping from the selected catalogue row. Value and Footprint remain editable.
+Both contexts use the same review-first dialog, which shows inference confidence, catalogue source/freshness and warnings. Its heading and available controls adapt to the selection: update mode edits catalogue fields on the selected symbol; add mode exposes symbol overrides only when automatic mapping is uncertain. Routine resistor/capacitor value searches select the stock symbol and reference prefix automatically. Value and Footprint remain editable; Footprint is optional during symbol creation.
 
-The screenshots show the two contexts of that one action—not separate commands:
+The review workspace places editable KiCad properties and proposal metadata in the
+left column, with the supplier record and tabbed Symbol / Footprint / 3D model
+previews in the right column. Missing or invalid entries show feedback directly below
+the affected field. Review notes use explicit **Error**, **Warning** and **Info**
+labels alongside icons and theme-aware colors, so severity is not conveyed by color
+alone.
 
-<table>
-  <tr>
-    <td valign="top" width="50%">
-      <strong>One symbol selected · update its catalogue fields</strong>
-      <p>Review Value, Footprint and catalogue metadata without replacing the selected symbol or changing its pin mapping.</p>
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png">
-        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Update context of the unified action, with one schematic symbol selected and its catalogue fields proposed." width="320">
-      </picture>
-    </td>
-    <td valign="top" width="50%">
-      <strong>No symbol selected · add a project-local copy</strong>
-      <p>Search by LCSC code or free text, review the proposed KiCad symbol, Value and optional Footprint, then place the new symbol.</p>
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
-        <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Add context of the unified action, with no symbol selected and project-local symbol options visible." width="320">
-      </picture>
-    </td>
-  </tr>
-</table>
+The screenshots below are full-height captures of the production Add/Update window.
+They include the complete scrollable workspace in one image, rather than separate
+screenshots for the top and lower scroll positions. Open an image at full size to read
+the fields and review notes.
 
-In add mode, the tool suggests a generic stock symbol only when the catalogue description or attributes support a recognizable category. You can edit that suggestion or enter a KiCad identifier manually (for example, `Amplifier_Operational:LM358`) whenever the mapping is uncertain. The project-local library copies the chosen standalone symbol's original pins, units and graphics; it does not infer a manufacturer-specific pinout. Symbols that extend another library symbol must be replaced with a standalone choice.
+### One symbol selected · update its catalogue fields
 
-Add mode is cursor-only: after confirmation, the generated project-local symbol opens in KiCad's native Add Symbol tool and is attached to the mouse cursor. Click in the schematic to place it or press Escape to cancel. The plugin uses KiCad's Place Symbol IPC action when available and the native Add Symbol hotkey through `xdotool` as a fallback; it does not ask for placement coordinates. A generated project-local symbol can be reused on subsequent runs.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-dark.png">
+    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/populate-component-light.png" alt="Full-height Update Component window showing the complete review workspace and fixed action footer." width="100%">
+  </picture>
+</p>
+
+### No symbol selected · add a project-local copy
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-dark.png">
+    <img src="https://raw.githubusercontent.com/Uhrendoktor/kicad-jlcpcb-interface/refs/heads/docs/previews/previews/add-component-light.png" alt="Full-height Add Component window showing catalogue details, CAD preview tabs with the 3D model selected, KiCad fields and the fixed action footer." width="100%">
+  </picture>
+</p>
+
+The EasyEDA previews share one compact tab strip: **Symbol**, **Footprint** and
+**3D model**. When a STEP model is available and KiCad can render it, the 3D tab is
+selected automatically; otherwise the best available 2D tab is selected. The 3D
+preview removes the footprint's Reference property from a temporary render-only copy,
+so the silkscreen identifier cannot be drawn over the model. The footprint imported
+into the project retains its original Reference property and silkscreen settings.
+
+For exact resistor/capacitor values such as `10k`, `4k7` or `100nF`, Add mode shows at most five exact matches. Basic listings rank first across passive-value and general keyword searches. The **Basic parts only** checkbox hides Extended and unclassified results; leaving it unchecked keeps those alternatives available behind Basic parts. A direct LCSC-number lookup always returns the exact requested record. Selecting a passive automatically chooses `Device:R` or `Device:C`, its reference prefix, a reviewed package-to-footprint mapping when available, and the catalogue fields. You can still edit Value and Footprint. For other part searches, the suggested generic stock symbol remains editable; enter a KiCad identifier manually (for example, `Amplifier_Operational:LM358`) whenever the mapping is uncertain. The project-local library copies the chosen standalone symbol's original pins, units and graphics; it does not infer a manufacturer-specific pinout.
+
+Clicking **Generate & select component** creates or reuses the project-local symbol and opens KiCad's native Add Symbol chooser. The generated symbol is selected automatically when X11/xdotool is available; otherwise select it manually in the chooser. Click in the schematic to place it or press Esc to cancel. No X/Y placement fields or coordinate entry are exposed.
+
+When downloadable EasyEDA CAD is available, **Export to library** lets you choose a schematic symbol library (`.kicad_sym`), footprint library (`.pretty`) and 3D-model directory. The assets are registered in the active project's KiCad library tables; the STEP path in the exported footprint is updated to the selected model folder. Keep these destinations inside the project for portable ${KIPRJMOD} references. Existing assets with different content are never overwritten.
+
+In Update mode, **Sync with library** can apply the reviewed part properties to the writable symbol-library definition and every schematic instance using that same `Library:Symbol` identity. It requires confirmation and does not modify KiCad's system libraries; symbols from stock libraries must first be copied to a project or user library with KiCad Symbol Editor.
 
 > **First use in a project:** when the generated-library table entry does not yet exist, the open Eeschema session may not recognize the new library immediately. The library and table entry are saved, but no instance is placed. Close and reopen the project, then repeat the same add-mode search; the existing generated symbol is reused.
 
@@ -121,11 +139,11 @@ For detailed field behavior and troubleshooting, see the **[User guide](docs/use
 ## Data, accuracy and limitations
 
 - **Conservative symbol handling.** Update mode works on one editable selected symbol of any component family and never replaces its graphics, library identity or pin mapping. Add mode suggests common generic symbols (resistor, capacitor, inductor, diode, LED, fuse and crystal) and can clone a manually selected standalone KiCad symbol. A suggestion is not a verified manufacturer pinout.
-- **Reviewable footprints.** Reviewed mappings cover common SMD resistor/capacitor/inductor sizes, selected LED sizes and diode packages. Other packages remain blank until entered by the user. Footprints are optional for symbol generation, but required before normal PCB layout.
-- **Search behavior.** Add mode supports LCSC-code lookup, keyword search by MPN/device name, and exact nominal-value matching for supported resistor/capacitor values. A passive value query such as `10k` shows up to five exact-value options, with Basic parts ranked first. Selecting a row fills the generic `Device:R` or `Device:C` symbol, Value, reference prefix, reviewed SMD footprint mapping and hidden catalogue metadata from that listing. Other keyword matches remain candidates to review, not guaranteed electrical equivalents.
-- **Placement.** Add mode always uses KiCad's native Add Symbol cursor tool; the generated symbol is preselected when X11/xdotool is available, or the native chooser is opened through KiCad IPC for manual selection. There is no coordinate-placement mode.
-- **No pin-map or PCB asset generation.** The add-on does not infer IC pin assignments/electrical types, create copper footprints or generate 3D models. It copies the symbol pin definitions the user selected; verify symbol and footprint compatibility against the datasheet before board use or ordering.
-- **Supplier data.** Catalogue detail and search use JLCPCB website endpoints that are not a supported public components API and may change. Source/freshness labels distinguish direct JLCPCB results, community fallbacks and cached snapshots.
+- **Reviewable footprints.** Reviewed mappings cover common SMD resistor/capacitor/inductor sizes, selected LED sizes and diode packages. When no mapping is available, a best-effort public EasyEDA lookup can supply a footprint candidate and SVG preview. The Footprint field remains editable, and downloaded geometry is registered in a project-local `.pretty` library only when the user accepts the candidate through Add or Update. Footprints are optional for symbol generation, but required before normal PCB layout.
+- **Search behavior.** Add and Update modes support LCSC-code and keyword searches. The primary search field accepts a passive value, part number or keyword. Basic listings are ranked first for both passive-value and general keyword searches. The **Basic parts only** checkbox can exclude Extended and unclassified listings; it is off by default so alternatives remain available. Exact LCSC-code lookups remain exact. Optional package/KiCad footprint and tolerance filters live in a collapsed, one-row Advanced filters strip. Its two editable dropdowns use built-in common-value suggestions, not live catalogue options; custom values can be typed. Active constraints are summarized beside the funnel icon. Choosing a preset does not search automatically: Search or Enter sends the main query to JLCPCB and applies the package/tolerance constraints to the returned records. Up to five matching passive candidates are shown; Update alternatives populate the proposal without replacing the selected symbol. Other keyword matches are candidates to review, not guaranteed electrical equivalents.
+- **Placement.** Add mode opens KiCad's native Add Symbol chooser after the project-local library is generated or reloaded. The generated symbol is preselected automatically when X11/xdotool is available; otherwise it can be chosen manually. Click to place it or press Esc to cancel. No coordinates are inserted automatically.
+- **Reviewable 3D assets, not generated models.** When the public EasyEDA package metadata contains a 3D-model UUID, the add-on fetches the STEP file, attaches a project-relative model reference to the candidate footprint and attempts a native KiCad 3D render for review. Parts without an upstream STEP model remain 2D-only. No 3D geometry is synthesized, and model alignment/material details are not guaranteed. External symbols, footprints and model attribution must be checked against the manufacturer datasheet before board use or ordering.
+- **Supplier and CAD data.** JLCPCB catalogue detail/search and EasyEDA CAD discovery use public website endpoints, not contracted public component APIs; they may change or rate-limit requests. EasyEDA CAD lookup requires no credentials. Source/freshness and CAD preview labels distinguish supplier catalogue data from external CAD candidates.
 - **Indicative availability.** Stock and unit prices are snapshots, not a quote, reservation or purchase guarantee. Related MPN-search results are comparison candidates, not guaranteed drop-in replacements.
 - **Separate properties window.** Component Properties is a separate add-on window; the KiCad IPC plugin API does not provide extension tabs inside KiCad's built-in Symbol Properties dialog.
 
@@ -145,5 +163,6 @@ CI checks Python 3.12–3.14 and runs a live visual job with KiCad nightly, Eesc
 
 - **[User guide](docs/user-guide.md)** — all three actions, linking fields, catalogue data, workflows and troubleshooting.
 - **[Visual evidence](docs/visual-evidence.md)** — screenshot inventory, real-GUI capture design, provenance and reproduction.
+- **[CAD asset retrieval](docs/cad-asset-retrieval-feasibility.md)** — provider behavior, credential-free access, licensing, preview UI and safe project-library import design.
 - **[Changelog](CHANGELOG.md)** — implementation history.
 - **[License](LICENSE)** — MIT.

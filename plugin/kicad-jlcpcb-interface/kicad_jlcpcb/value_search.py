@@ -1,9 +1,10 @@
-"""Exact-value discovery for supported JLCPCB passive parts."""
+"""Exact passive value discovery with optional footprint and tolerance filters."""
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 from .draft import ComponentDraft, build_component_draft
@@ -23,6 +24,15 @@ _SCALE = {
 }
 _RESISTANCE_WORDS = re.compile(r"\b(?:resistor|resistors|resistance)\b", re.IGNORECASE)
 _CAPACITANCE_WORDS = re.compile(r"\b(?:capacitor|capacitors|capacitance)\b", re.IGNORECASE)
+_PACKAGE_SIZE_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:0201|0402|0603|0805|1206|1210|1812|2010|2512)(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
+_TOLERANCE_ATTRIBUTE_NAMES = {
+    "tolerance", "tol", "resistancetolerance", "capacitancetolerance",
+    "resistortolerance", "capacitortolerance",
+    "tolerancepercent", "tolerancepct",
+}
 
 
 def is_lcsc_lookup_query(query: str) -> bool:
@@ -33,6 +43,29 @@ def is_lcsc_lookup_query(query: str) -> bool:
     if re.fullmatch(r"\d{4,}", text):
         return True
     return bool(re.search(r"(?:^|[/=_-])C\d{3,}(?:[./?#&]|$)", text, re.IGNORECASE))
+
+
+def rank_basic_first(
+    results: Iterable[JlcPartDetails], *, basic_only: bool = False
+) -> list[JlcPartDetails]:
+    """Return catalogue records with Basic listings first, preserving supplier order.
+
+    When basic_only is enabled, Extended and unclassified records are excluded.
+    With the filter off, they remain available after the Basic group.
+    """
+    candidates = [
+        details
+        for details in results
+        if not basic_only or details.is_basic is True
+    ]
+    return sorted(
+        candidates,
+        key=lambda details: (
+            0 if details.is_basic is True
+            else 1 if details.is_basic is False
+            else 2
+        ),
+    )
 
 
 def _decimal_value(raw: str, kind: str) -> Decimal:
@@ -116,23 +149,173 @@ def parse_passive_value_query(query: str) -> tuple[str, Decimal]:
     return kind, _decimal_value(normalized, kind)
 
 
+@dataclass(frozen=True, slots=True)
+class PassiveSearchCriteria:
+    """Normalized filters for a combined passive value/package/tolerance query."""
+
+    kind: str
+    value: Decimal
+    footprint: str = ""
+    tolerance: Decimal | None = None
+    supplier_query: str = ""
+
+
+def parse_passive_search_query(
+    query: str,
+    *,
+    footprint: str = "",
+    tolerance: str = "",
+) -> PassiveSearchCriteria:
+    """Normalize a passive value and its separate advanced search filters.
+
+    The primary query contains only the electrical value. Package/footprint and
+    tolerance are supplied independently by the advanced search controls.
+    """
+    raw = str(query or "").strip()
+    if not raw:
+        raise ValueError("Enter a passive value such as 10k or 100nF.")
+
+    kind, value = parse_passive_value_query(raw)
+    requested_footprint = str(footprint or "").strip()
+    requested_tolerance = str(tolerance or "").strip()
+    tolerance_value = None
+    if requested_tolerance:
+        normalized_tolerance = requested_tolerance.replace("％", "%").strip()
+        match = re.fullmatch(
+            r"(?:±|\+/-)?\s*(\d+(?:\.\d+)?)\s*%?",
+            normalized_tolerance,
+        )
+        if not match:
+            raise ValueError("Enter a tolerance such as 1%, 5% or 10%.")
+        tolerance_value = Decimal(match.group(1))
+        if tolerance_value <= 0 or tolerance_value > 100:
+            raise ValueError("Tolerance must be greater than 0% and at most 100%.")
+
+    return PassiveSearchCriteria(
+        kind=kind,
+        value=value,
+        footprint=requested_footprint,
+        tolerance=tolerance_value,
+        supplier_query=raw,
+    )
+
+
+def passive_tolerance_label(details: JlcPartDetails) -> str:
+    """Return the supplier's stated passive tolerance, when available.
+
+    JLCPCB's search and detail payloads do not always expose a separate
+    Tolerance attribute. Some listings state tolerance only in the supplier's
+    product description (for example, "... resistor ±5% 0402 ..."). Accept
+    only an explicit ± or +/- percentage from that description; do not infer
+    tolerance from an MPN or an unstated numeric value.
+    """
+    for name, raw_value in details.attributes.items():
+        normalized = re.sub(r"[^a-z0-9]", "", str(name).casefold())
+        if normalized in _TOLERANCE_ATTRIBUTE_NAMES and raw_value not in (None, ""):
+            return str(raw_value).strip()
+
+    match = re.search(
+        r"(?:±|\+/-)\s*\d+(?:\.\d+)?\s*%",
+        details.description,
+        re.IGNORECASE,
+    )
+    return match.group(0).strip() if match else ""
+
+
+def _passive_tolerance(details: JlcPartDetails) -> Decimal | None:
+    raw = passive_tolerance_label(details)
+    match = re.search(r"(?P<value>\d+(?:\.\d+)?)\s*%", raw)
+    if not match:
+        return None
+    try:
+        return Decimal(match.group("value"))
+    except InvalidOperation:
+        return None
+
+
+def _matches_footprint(
+    requested: str, details: JlcPartDetails, draft: ComponentDraft
+) -> bool:
+    """Match supplier package data first, then a mapped KiCad footprint.
+
+    An explicit supplier package is authoritative. In particular, a 0402x4
+    resistor network must not pass a 0402 discrete-resistor filter merely
+    because the generic symbol mapper inferred a single-resistor footprint.
+    """
+    if not requested:
+        return True
+
+    def normalize(value: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+
+    supplier_package = str(details.package or "").strip()
+    supplier_package_code = _PACKAGE_SIZE_RE.search(supplier_package)
+    package_code = _PACKAGE_SIZE_RE.fullmatch(requested)
+    if package_code:
+        if supplier_package:
+            return bool(
+                supplier_package_code
+                and supplier_package_code.group().casefold() == requested.casefold()
+            )
+        mapped_package_code = _PACKAGE_SIZE_RE.search(draft.footprint or "")
+        return bool(
+            mapped_package_code
+            and mapped_package_code.group().casefold() == requested.casefold()
+        )
+
+    wanted = normalize(requested)
+    if not wanted:
+        return False
+
+    requested_package_code = _PACKAGE_SIZE_RE.search(requested)
+    if supplier_package and requested_package_code:
+        if (
+            supplier_package_code is None
+            or supplier_package_code.group().casefold()
+            != requested_package_code.group().casefold()
+        ):
+            return False
+
+    candidates = (supplier_package, draft.footprint)
+    return any(wanted in normalize(candidate) for candidate in candidates if candidate)
+
+
 def exact_passive_candidates(
     query: str,
     results: Iterable[JlcPartDetails],
     *,
-    limit: int | None = None,
+    footprint: str = "",
+    tolerance: str = "",
+    max_results: int = 5,
+    basic_only: bool = False,
 ) -> list[tuple[JlcPartDetails, ComponentDraft]]:
-    """Filter exact-value SMD passives, rank Basic first, and optionally limit results."""
-    wanted_kind, wanted_value = parse_passive_value_query(query)
+    """Return a small exact-value shortlist, preferring Basic purchasable parts.
+
+    Basic listings always rank ahead of Extended and unclassified listings.
+    Extended parts only fill the shortlist when fewer than five suitable Basic
+    parts are available.
+    """
+    criteria = parse_passive_search_query(
+        query, footprint=footprint, tolerance=tolerance
+    )
     matches: dict[str, tuple[JlcPartDetails, ComponentDraft]] = {}
     for details in results:
+        if basic_only and details.is_basic is not True:
+            continue
         if details.is_buyable is False:
             continue
         try:
             draft = build_component_draft(details)
-            if draft.kind != wanted_kind or draft.confidence != "high":
+            if draft.kind != criteria.kind or draft.confidence != "high":
                 continue
-            if _decimal_value(draft.value, draft.kind) != wanted_value:
+            if _decimal_value(draft.value, draft.kind) != criteria.value:
+                continue
+            if not _matches_footprint(criteria.footprint, details, draft):
+                continue
+            if (
+                criteria.tolerance is not None
+                and _passive_tolerance(details) != criteria.tolerance
+            ):
                 continue
         except (ValueError, InvalidOperation):
             continue
@@ -155,7 +338,5 @@ def exact_passive_candidates(
         stock = details.stock if details.stock is not None else -1
         return library_rank, preferred_rank, stock_rank, price_rank, -stock, details.lcsc
 
-    ordered = sorted(matches.values(), key=rank)
-    if limit is None:
-        return ordered
-    return ordered[: max(0, int(limit))]
+    limit = max(1, min(int(max_results), 20))
+    return sorted(matches.values(), key=rank)[:limit]
