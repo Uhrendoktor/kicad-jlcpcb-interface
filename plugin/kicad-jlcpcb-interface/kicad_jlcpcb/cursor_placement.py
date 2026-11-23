@@ -292,9 +292,9 @@ def start_native_symbol_placement(
         # The Filter control belongs to the left tree pane, not the full-width
         # chooser. Keep the click well inside that pane on wide displays.
         filter_x = min(220, max(80, int(chooser_width * 0.12)))
-        # LIB_TREE creates the Filter wxSearchCtrl at the top of the chooser.
-        # Keep the click inside that short search row (not in the symbol tree).
-        filter_y = min(28, max(12, int(chooser_height * 0.025)))
+        # LIB_TREE creates a roughly 32px Filter wxSearchCtrl at the top of
+        # the chooser. Click in its vertical centre, not on the top border.
+        filter_y = 30
         send(
             "mousemove",
             "--sync",
@@ -307,6 +307,24 @@ def start_native_symbol_placement(
     send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
     pause(0.8)
+    try:
+        from PIL import ImageGrab
+
+        output_dir = os.environ.get("OUTPUT_DIR")
+        if output_dir:
+            debug_path = os.path.join(
+                output_dir, "add-component-chooser-filter-debug.png"
+            )
+            ImageGrab.grab(bbox=(0, 0, 1920, 1500)).save(debug_path)
+            print(
+                "cursor-filter-debug="
+                f"window={chooser_id!r} geometry={chooser_geometry!r} "
+                f"filter_xy=({filter_x},{filter_y}) "
+                f"screenshot={debug_path}",
+                flush=True,
+            )
+    except Exception as exc:
+        print(f"cursor-filter-debug-capture-failed={type(exc).__name__}: {exc}", flush=True)
     # LIB_TREE handles Up/Down/Enter while the Filter control has focus. Move
     # to the first filtered symbol and accept it without leaving the search box.
     send("key", "--clearmodifiers", "Down")
