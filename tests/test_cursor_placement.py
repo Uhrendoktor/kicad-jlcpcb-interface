@@ -29,6 +29,11 @@ class FakeRunner:
         if command == "getwindowfocus":
             value = self.outputs.pop(0) if self.outputs else "0x100"
             return SimpleNamespace(stdout=value, returncode=0)
+        if command == "getwindowgeometry":
+            return SimpleNamespace(
+                stdout="X=0\nY=0\nWIDTH=1400\nHEIGHT=1100\nSCREEN=0",
+                returncode=0,
+            )
         if command == "getwindowclassname":
             return SimpleNamespace(stdout="eeschema", returncode=0)
         if command == "getwindowname":
@@ -249,6 +254,11 @@ class CursorPlacementTests(unittest.TestCase):
                         else "0x100"
                     )
                     return SimpleNamespace(stdout=focused, returncode=0)
+                if command == "getwindowgeometry":
+                    return SimpleNamespace(
+                        stdout="X=0\nY=0\nWIDTH=1400\nHEIGHT=1100\nSCREEN=0",
+                        returncode=0,
+                    )
                 if command == "getwindowname":
                     title = (
                         "Choose Symbol"
@@ -286,6 +296,24 @@ class CursorPlacementTests(unittest.TestCase):
         )
         self.assertIn(
             ["xdotool", "key", "--clearmodifiers", "a"], runner.commands
+        )
+        self.assertIn(
+            ["xdotool", "windowactivate", "--sync", "0x100"], runner.commands
+        )
+        self.assertIn(
+            [
+                "xdotool",
+                "mousemove",
+                "--sync",
+                "--window",
+                "0x100",
+                "1120",
+                "385",
+            ],
+            runner.commands,
+        )
+        self.assertIn(
+            ["xdotool", "click", "--clearmodifiers", "1"], runner.commands
         )
 
     def test_reports_non_ok_ipc_status_when_xdotool_is_unavailable(self):
