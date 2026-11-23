@@ -275,9 +275,38 @@ def start_native_symbol_placement(
     # The tree applies text filters through a debounce timer; wait for it to
     # regenerate and preselect the matching library item before pressing Enter.
     send("windowfocus", "--sync", chooser_id)
+    chooser_geometry = send("getwindowgeometry", "--shell", chooser_id)
+    chooser_dimensions = {}
+    for line in chooser_geometry.splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key in {"WIDTH", "HEIGHT"}:
+            try:
+                chooser_dimensions[key] = int(value)
+            except ValueError:
+                pass
+    chooser_width = chooser_dimensions.get("WIDTH", 0)
+    chooser_height = chooser_dimensions.get("HEIGHT", 0)
+    if chooser_width > 250 and chooser_height > 250:
+        # The dialog gives keyboard focus to its symbol tree on some wxGTK
+        # builds. Click the Filter field explicitly before replacing its text.
+        filter_x = min(chooser_width - 100, max(100, int(chooser_width * 0.25)))
+        filter_y = min(chooser_height - 100, max(35, int(chooser_height * 0.08)))
+        send(
+            "mousemove",
+            "--sync",
+            "--window",
+            chooser_id,
+            str(filter_x),
+            str(filter_y),
+        )
+        send("click", "--clearmodifiers", "1")
     send("key", "--clearmodifiers", "ctrl+a")
     send("type", "--clearmodifiers", "--delay", "12", symbol_name)
-    pause(0.6)
+    pause(0.8)
+    # Move focus from the Filter entry to the filtered symbol list, then
+    # accept its selected match. This avoids sending Return to the text box.
+    send("key", "--clearmodifiers", "Tab")
+    pause(0.1)
     send("key", "--clearmodifiers", "Return")
 
     for _ in range(30):
