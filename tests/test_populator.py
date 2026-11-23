@@ -118,7 +118,7 @@ class TkGarbageCollectionLeaseTests(unittest.TestCase):
 
 
 class ComponentCreationApplyTests(unittest.TestCase):
-    def test_add_action_places_without_confirmation_dialog(self):
+    def test_add_action_hands_symbol_to_cursor_without_confirmation_dialog(self):
         details = JlcPartDetails(
             lcsc="C12345",
             description="10kΩ thick film resistor",
@@ -139,6 +139,9 @@ class ComponentCreationApplyTests(unittest.TestCase):
 
             def get(self):
                 return self.value
+
+            def set(self, value):
+                self.value = value
 
         project = object()
         kicad = object()
@@ -165,6 +168,8 @@ class ComponentCreationApplyTests(unittest.TestCase):
         populator.root = SimpleNamespace(
             grab_current=Mock(return_value=None),
             iconify=Mock(),
+            deiconify=Mock(),
+            lift=Mock(),
             update_idletasks=Mock(),
         )
         populator.tk = SimpleNamespace(TclError=RuntimeError)
